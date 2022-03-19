@@ -1,5 +1,5 @@
 # Rig Builder
-Rig Builder is an easy to use ui maker for python scripts. Mostly used in Maya rigging.
+Rig Builder is a flexible UI maker for python scripts. Mostly used in Maya rigging but can be adapted for any other purposes.
 
 ![rb1](https://user-images.githubusercontent.com/9614751/159115306-4226af19-0d0a-4096-876c-f2180257b7f6.PNG)
 
@@ -45,8 +45,7 @@ There are three kinds of variables for each attribute:
   This sets the default value of the attribute.
 
 ## References
-When saved, the module contains all its children recursively, so it's safe to transfer the topmost module only. Each saved module has its own unique number (uuid).
-But actually there is some module resolving job is being done while the module is loading. 
+When saved, the module contains all its children recursively, so it's safe to transfer the topmost module only. Each saved module has its own unique id (uuid), which is used in reference resolving when the module is loading. 
 By default, when a module with uuid is loading, it tries to update its own data by finding the reference module in the following sequence:
 * Search module with the same uuid in local path.
 * If not found, search in server path.
@@ -59,7 +58,9 @@ You can change the loading behavior in the Module Selector (when TAB pressed).
 This approach allows you to work on modules (locally) and at the same time not have problems with existing modules on server.
   
 ## Connections
-Module attributes can be connected to each other. You can connect either to parent attributes or to adjacent ones in any nesting. Thus, any parent module can always be considered completely independent (since no child can communicate with attributes above the parent). Only attributes with the same widget type can be connected! Connections are bidirectional - you can change either end of the connection.
+Module attributes can be connected to each other. You can connect either to parent attributes or to adjacent ones in any nesting. 
+Thus, any parent module can always be considered completely independent (since no child can communicate with attributes above the parent). 
+Only attributes with the same widget type can be connected. Connections are bidirectional - you can change either end of the connection.
 
 ## Representation of the module
 
@@ -80,17 +81,17 @@ In addition, several predefined variables and functions are available:
 |evaluateBezierCurveFromX (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
 
 ## Custom widget
-Currently a lot of widgets available now for your attributes.
+Currently a lot of widgets available for your attributes.
 
 ![rb3](https://user-images.githubusercontent.com/9614751/159117051-dd100f67-8159-4fa2-8fae-eb1921a64bae.PNG)
 
-To create new attribute widget, you need to define a class that derives from `TemplateWidget` (defined in `widgets/base.py`).
+If you want to create new attribute widget, you need to define a class derived from `TemplateWidget` (defined in `widgets/base.py`).
 For this class, you need to implement two functions:
-* getJsonData()<br>
+* `getJsonData()`<br>
   The function should return the state of the widget in json format, where the key "default" must point to another key, which will be the default value for the attribute.<br>
   For example, {"text": "hello world", "default": "text"}
   
-* setJsonData(data)<br>
+* `setJsonData(data)`<br>
   The function should set the widget to match data.
   By executing setJsonData(getJsonData ()) the widget must guarantee that the state will not change.
 
