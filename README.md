@@ -50,3 +50,17 @@ Module attributes can be connected to each other. You can connect either to pare
 ## Representation of the module
 
 ![scheme drawio (2)](https://user-images.githubusercontent.com/9614751/159116041-0eb5c6d9-ce91-41a6-959e-425a5fad063e.png)
+
+## Writing code
+In general, the code is written in the usual way, except that you can use attribute variables using @ as `@set_output(@input * 2)`
+In addition, several predefined variables and functions are available:
+
+| Variable | Description |
+| -- | -- |
+|MODULE_NAME |	Current module name |
+|MODULE_TYPE |	Current module type |
+|SHOULD_RUN_CHILDREN |	If False then don’t run children |
+|copyJson (function) |	Fast copy json-compatible data |
+|error/warning (function) |	Error/warning in log |
+|evaluateBezierCurve (function) |	For curve widget. Evaluate point on bezier f(@curve, param) => [x, y] |
+|evaluateBezierCurveFromX (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
