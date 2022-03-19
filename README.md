@@ -43,6 +43,20 @@ There are three kinds of variables for each attribute:
 * Attribute value setting function (@set) <br>
   `@set_input(3)`, `@set_list([1,2,3,4])`<br>
   This sets the default value of the attribute.
+
+## References
+When saved, the module contains all its children recursively, so it's safe to transfer the topmost module only. Each saved module has its own unique number (uuid).
+But actually there is some module resolving job is being done while the module is loading. 
+By default, when a module with uuid is loading, it tries to update its own data by finding the reference module in the following sequence:
+* Search module with the same uuid in local path.
+* If not found, search in server path.
+* If not found, load from the current file.<b
+                                              >
+You can change the loading behavior in the Module Selector (when TAB pressed). 
+
+![rb2](https://user-images.githubusercontent.com/9614751/159116864-4be14fca-3904-48dc-a337-b35d945fee7e.PNG)
+
+This approach allows you to work on modules (locally) and at the same time not have problems with existing modules on server.
   
 ## Connections
 Module attributes can be connected to each other. You can connect either to parent attributes or to adjacent ones in any nesting. Thus, any parent module can always be considered completely independent (since no child can communicate with attributes above the parent). Only attributes with the same widget type can be connected! Connections are bidirectional - you can change either end of the connection.
