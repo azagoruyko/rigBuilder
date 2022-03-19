@@ -43,3 +43,10 @@ There are three kinds of variables for each attribute:
 * Attribute value setting function (@set) <br>
   `@set_input(3)`, `@set_list([1,2,3,4])`<br>
   This sets the default value of the attribute.
+  
+## Connections
+Module attributes can be connected to each other. You can connect either to parent attributes or to adjacent ones in any nesting. Thus, any parent module can always be considered completely independent (since no child can communicate with attributes above the parent). Only attributes with the same widget type can be connected! Connections are bidirectional - you can change either end of the connection.
+
+## Representation of the module
+
+![scheme drawio (2)](https://user-images.githubusercontent.com/9614751/159116041-0eb5c6d9-ce91-41a6-959e-425a5fad063e.png)
