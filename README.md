@@ -64,3 +64,50 @@ In addition, several predefined variables and functions are available:
 |error/warning (function) |	Error/warning in log |
 |evaluateBezierCurve (function) |	For curve widget. Evaluate point on bezier f(@curve, param) => [x, y] |
 |evaluateBezierCurveFromX (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
+
+## Custom widget
+
+To create new attribute widget, you need to define a class that derives from `TemplateWidget` (defined in `widgets/base.py`).
+For this class, you need to implement two functions:
+* getJsonData()<br>
+  The function should return the state of the widget in json format, where the key "default" must point to another key, which will be the default value for the attribute.<br>
+  For example, {"text": "hello world", "default": "text"}
+  
+* setJsonData(data)<br>
+  The function should set the widget to match data.
+  By executing setJsonData(getJsonData ()) the widget must guarantee that the state will not change.
+
+Any changes in the state of the widget must be recorded by emitting `somethingChanged` slot of the base class. For example, stateChanged, textChanged, and other slots must emit `self.somethingChanged.emit()` directly or indirectly. Thus, working with the interface, the program receives all registered changes to the widget and saves the json state to the corresponding attribute of the module.
+
+After writing the class, you need to add the loading of the widget to `widgets/__init__.py`.
+And finally, in `templateWidgets.py` you need to register the name of the created widget in the `TemplateWidgets` variable.
+
+Below is an example of a custom checkBox widget. Notice the class name and the implementation of the two main methods getJsonData and setJsonData.
+```python
+from .base import *
+
+class CheckBoxTemplateWidget(TemplateWidget):
+    def __init__(self, **kwargs):
+        super(CheckBoxTemplateWidget, self).__init__(**kwargs)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        layout.setContentsMargins(0, 0, 0, 0) 
+
+        self.checkBox = QCheckBox()
+        self.checkBox.stateChanged.connect(self.somethingChanged)
+        layout.addWidget(self.checkBox)
+
+    def getJsonData(self):
+        return {"checked": self.checkBox.isChecked(), "default": "checked"}
+
+    def setJsonData(self, value):
+        self.checkBox.setChecked(True if value["checked"] else False)
+```
+
+## Module as a tool
+Each module can be run in Maya in a separate window. Execute the following python script to do it.
+```python
+import rigBuilder
+rigBuilder.RigBuilderTool("Tools/ExportBindPose.xml", x=500, y=200, width=400, height=200).show() # path can be relative or absolute
+```
