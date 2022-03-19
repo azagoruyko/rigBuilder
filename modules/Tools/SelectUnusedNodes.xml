@@ -1,0 +1,20 @@
+<module name="selectUnusedNodes" type="Tools/SelectUnusedNodes" muted="0" uid="ab761cd64d194e00a36920a9780abbdc">
+<run><![CDATA[import pymel.core as pm
+
+nodes = []
+for n in pm.ls(dep=True):
+    if pm.objectType(n) in ["objectSet", "network"]:
+        continue
+        
+    if isinstance(n, pm.nt.Transform) or isinstance(n, pm.nt.Shape):
+        continue
+        
+    if not n.outputs():
+        nodes.append(n)
+        
+pm.select(nodes)]]></run>
+<attributes>
+</attributes>
+<children>
+</children>
+</module>

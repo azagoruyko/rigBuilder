@@ -1,0 +1,36 @@
+<module name="saveLoadRbfPoses" type="Tools/SaveLoadRbfPoses" muted="0" uid="9927f29b07e34a1696b0a9d75fe780ce">
+<run><![CDATA[import pymel.core as pm
+import rbfPoseEditor as rbf
+import json
+
+if @mode == 0: # save
+    data = {}
+    for rbfNode in pm.ls(type="rbfPose"):
+        j = rbfNode.drivenNode.get()
+        rbfPose = rbf.RbfPose(rbfNode)
+        data[j.name()] = rbfPose.toJson()
+        print(rbfNode)
+        
+    with open(@file, "w") as f:
+        json.dump(data, f)
+        
+else: # load
+    with open(@file, "r") as f:
+        data = json.load(f)
+        
+    for j in data:
+        if pm.objExists(j):
+            rbfPose = rbf.RbfPose.getOrCreate(j)
+            rbfPose.fromJson(data[j])
+            rbfPose.connectOutput()
+            print j
+        else:
+            pm.warning("Cannot find "+j)
+        ]]></run>
+<attributes>
+<attr name="mode" template="radioButton" category="General" connect=""><![CDATA[{"current": 1, "items": ["Save", "Load"], "default": "current"}]]></attr>
+<attr name="file" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nimport os\nf,_ = Qt.QtWidgets.QFileDialog.getOpenFileName(None, \"Select a file\", os.path.dirname(value))\nif v: value = f", "buttonLabel": "...", "value": "c:/data.txt"}]]></attr>
+</attributes>
+<children>
+</children>
+</module>

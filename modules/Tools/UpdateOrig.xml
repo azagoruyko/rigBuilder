@@ -1,0 +1,50 @@
+<module name="updateOrig" type="Tools/UpdateOrig" muted="0" uid="c878100bf5724b20a74098b3a9340a04">
+<run><![CDATA[import pymel.core as pm
+
+sourceGeoList = [pm.PyNode(geo) for geo in @sourceGeoList]
+sampleSpace = @sampleSpace_data["items"].index(@sampleSpace)+1
+
+def findOrig(geo):
+    geo = pm.PyNode(geo)
+    origs = [sh for sh in geo.getShapes() if not sh.inMesh.listConnections() and geo.numVertices() == sh.numVertices()]
+    if origs:
+        return origs[0]
+    else:
+        warning("Cannot find orig shape for '%s'"%geo)
+
+def transferMeshAttributes(mesh, newMesh):
+    orig = findOrig(mesh)
+    if orig:    
+        intermediateObject = orig.intermediateObject.get()    
+        orig.intermediateObject.set(False)
+        
+        pm.transferAttributes(
+                    newMesh, orig, transferPositions=@positions, transferNormals=@normals, transferUVs=@uv*2, # 0, 1-current, 2-all
+                    transferColors=2, sampleSpace=sampleSpace, sourceUvSpace='map1', searchMethod=3,
+                    flipUVs=0, colorBorders=1)
+                    
+        pm.delete(orig, ch=True)
+        orig.intermediateObject.set(intermediateObject)                          
+    else:
+        warning("Cannot find orig for '%s'"%localName)
+            
+for newMesh in sourceGeoList:
+    namespace = newMesh.namespace()
+    
+    localMesh = str(newMesh.stripNamespace())
+    if pm.objExists(localMesh):
+        transferMeshAttributes(pm.PyNode(localMesh), newMesh)            
+    else:        
+        warning("Cannot find '%s'"%localMesh)
+]]></run>
+<attributes>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "<html>\nImport new geometry with namespace (or create reference).<br> \nThe script finds local name by stripping namespace from <b>sourceGeoList</b> objects and use <i>transferAttributes</i> for orig shape.\n</html>"}]]></attr>
+<attr name="sourceGeoList" template="listBox" category="General" connect=""><![CDATA[{"default": "items", "items": ["boy_rig_v001:head_geo", "boy_rig_v001:neck_2_geo"]}]]></attr>
+<attr name="positions" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": false}]]></attr>
+<attr name="normals" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>
+<attr name="uv" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>
+<attr name="sampleSpace" template="comboBox" category="General" connect=""><![CDATA[{"current": "local", "items": ["world", "local", "uv", "component", "topology"], "default": "current"}]]></attr>
+</attributes>
+<children>
+</children>
+</module>

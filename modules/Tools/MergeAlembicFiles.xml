@@ -1,0 +1,55 @@
+<module name="mergeAlembicFiles" type="Tools/MergeAlembicFiles" muted="0" uid="8842a3bb7e3c4fdaab8eb106ca7e1b4b">
+<run><![CDATA[import pymel.core as pm
+import os
+
+outputPath = @folder+"/output.abc"
+endFrame = 0
+
+abcFiles = os.listdir(@folder)
+beginProgress("Processing files", len(abcFiles))
+
+abcList = []
+for i, f in enumerate(abcFiles):
+    if f.endswith(".abc"):
+        stepProgress(i)
+        abc = pm.PyNode(pm.AbcImport(@folder+"/"+f, mode="import",setToStartFrame=True))        
+        abc.offset.set(endFrame)        
+        geo = abc.outPolyMesh[0].outputs()[0]
+        geo.v.set(0)
+
+        abcList.append({"geo":geo, "frame":endFrame})
+        
+        endFrame += abc.endFrame.get()
+endProgress()
+                                
+orig = abcList[0]["geo"].duplicate()[0]
+orig.rename("original")
+orig.v.set(1)
+bs = pm.blendShape([item["geo"] for item in abcList], orig)[0]
+
+NumPoses = len(abcList)
+beginProgress("Setting keyframes", len(NumPoses))
+for i in range(NumPoses):
+    stepProgress(i)
+    
+    pm.currentTime(abcList[i]["frame"])    
+    for k in range(NumPoses):
+        if i==k:
+            bs.weight[k].set(1)
+        else:            
+            bs.weight[k].set(0)
+            
+        pm.setKeyframe(bs.weight[k])
+endProgress()
+        
+pm.keyTangent(bs, ott="step",animation="objects")
+pm.playbackOptions(min=1, max=endFrame)
+
+pm.AbcExport(j="-frameRange 1 {endFrame} -dataFormat ogawa -root {node} -file {file}".format(endFrame=endFrame, node=orig, file=outputPath))
+]]></run>
+<attributes>
+<attr name="folder" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nfolder = Qt.QtWidgets.QFileDialog.getExistingDirectory(None, \"Select directory\", value)\nif folder: value = folder", "buttonLabel": "...", "value": "D:/Temp/skirt03/alembic"}]]></attr>
+</attributes>
+<children>
+</children>
+</module>

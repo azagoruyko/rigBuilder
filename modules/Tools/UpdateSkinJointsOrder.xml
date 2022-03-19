@@ -1,0 +1,28 @@
+<module name="updateSkinJointsOrder" type="Tools/UpdateSkinJointsOrder" muted="0" uid="7c7821c84228436a910e421f8979a2d0">
+<run><![CDATA[import pymel.core as pm
+
+jointsFromGeo = pm.PyNode(@getOrderFromGeo)
+joints = pm.PyNode(pm.mel.eval("findRelatedSkinCluster "+jointsFromGeo)).getInfluence()
+
+for geo in @geoList:
+    if not pm.mel.eval("findRelatedSkinCluster "+geo):
+        warning("%s is not skinned"%geo)
+        continue
+    
+    newGeo = pm.duplicate(geo)[0]
+    pm.skinCluster(newGeo, joints, tsb=True)
+        
+    pm.select(geo, newGeo)
+    pm.copySkinWeights(nm=True, sa="closestPoint", ia=["oneToOne", "closestJoint"])
+    
+    pm.delete(geo)
+    newGeo.rename(geo)
+]]></run>
+<attributes>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "Algorithm: duplicate, skin, copy skin."}]]></attr>
+<attr name="getOrderFromGeo" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "wSkinBase"}]]></attr>
+<attr name="geoList" template="listBox" category="General" connect=""><![CDATA[{"default": "items", "items": ["F_Europeans_head", "F_Afro_head_quad", "F_Asians_head", "M_skin_100_body", "M_skin_100_hat", "skin_017_body", "skin_017_hair", "skin_017_mask", "skin_024_hat", "skin_024_body", "skin_019_body", "skin_019_hat", "skin_003_body"]}]]></attr>
+</attributes>
+<children>
+</children>
+</module>

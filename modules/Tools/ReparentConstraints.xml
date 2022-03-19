@@ -1,0 +1,36 @@
+<module name="reparentConstraints" type="Tools/ReparentConstraints" muted="0" uid="6caf2ff361d4411c8863bb65637acd2f">
+<run><![CDATA[import pymel.core as pm
+
+# reparent constraints
+
+for c in pm.ls(type="constraint"):
+    if pm.objectType(c) == "pointConstraint":
+        objects = c.constraintTranslateX.outputs() + c.constraintTranslateY.outputs() + c.constraintTranslateZ.outputs()
+        if objects and c.getParent() != objects[0]:
+            objects[0] | c
+            print objects[0], c
+
+    if pm.objectType(c) in ["orientConstraint", "aimConstraint"]:
+        objects = c.constraintRotateX.outputs() + c.constraintRotateY.outputs() + c.constraintRotateZ.outputs()
+        if objects and c.getParent() != objects[0]:
+            objects[0] | c
+            print objects[0], c
+
+    if pm.objectType(c) == "parentConstraint":
+        objects = c.constraintTranslateX.outputs() + c.constraintTranslateY.outputs() + c.constraintTranslateZ.outputs()
+        objects += c.constraintRotateX.outputs() + c.constraintRotateY.outputs() + c.constraintRotateZ.outputs()
+        if objects and c.getParent() != objects[0]:
+            objects[0] | c
+            print objects[0], c
+
+    if pm.objectType(c) == "scaleConstraint":
+        objects = c.constraintScaleX.outputs() + c.constraintScaleX.outputs() + c.constraintScaleX.outputs()
+        if objects and c.getParent() != objects[0]:
+            objects[0] | c
+            print objects[0], c
+]]></run>
+<attributes>
+</attributes>
+<children>
+</children>
+</module>

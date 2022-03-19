@@ -1,0 +1,42 @@
+<module name="bindMode" type="Tools/BindMode" muted="0" uid="c7ae99e054f94721afc9256cf449e180">
+<run><![CDATA[import pymel.core as pm
+
+joints = [pm.PyNode(j) for j in @joints]
+
+def getJointsSkinClusters(joint):
+    skins = [obj for obj in pm.PyNode(joint).worldMatrix.listConnections() if pm.objectType(obj)=="skinCluster"]
+    return set(skins)
+
+if not @mode: # make rebind
+    for j in joints:
+        for skin in getJointsSkinClusters(j):
+            idx = skin.indexForInfluenceObject(j)
+        
+            if not pm.isConnected(j.worldInverseMatrix, skin.bindPreMatrix[idx]):
+                j.worldInverseMatrix >> skin.bindPreMatrix[idx]
+    
+    print "Go to Bind mode"
+    @set_mode("Bind")
+else:
+    for j in joints:
+        for skin in getJointsSkinClusters(j):
+            idx = skin.indexForInfluenceObject(j)
+        
+            matrix = j.worldInverseMatrix.get()
+
+            if pm.isConnected(j.worldInverseMatrix, skin.bindPreMatrix[idx]):
+                j.worldInverseMatrix // skin.bindPreMatrix[idx]
+                
+            skin.bindPreMatrix[idx].set(matrix)
+    
+    print "Exit Bind mode"
+    @set_mode("")
+        ]]></run>
+<attributes>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> to enter Bind mode.<br>\n2. Change joints position.<br>\n3. Press <b>Run</b> to exit Bind mode.<br>\n</html>"}]]></attr>
+<attr name="mode" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": ""}]]></attr>
+<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"default": "items", "items": ["Head_M", "Eye_R", "EyeEnd_R", "Eye_L", "EyeEnd_L", "R_brow_2_joint", "L_brow_2_joint", "R_brow_1_joint", "L_brow_1_joint", "L_lids_up_joint", "L_lids_low_joint", "R_lids_up_joint", "R_lids_low_joint", "M_head_up_custom_joint", "M_head_low_custom_joint"]}]]></attr>
+</attributes>
+<children>
+</children>
+</module>
