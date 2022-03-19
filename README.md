@@ -106,7 +106,7 @@ class CheckBoxTemplateWidget(TemplateWidget):
 ```
 
 ## Module as a tool
-Each module can be run in Maya in a separate window. Execute the following python script to do it.
+Each module can be run in Maya in a separate window.
 ```python
 import rigBuilder
 rigBuilder.RigBuilderTool("Tools/ExportBindPose.xml", x=500, y=200, width=400, height=200).show() # path can be relative or absolute
