@@ -51,10 +51,10 @@ By default, when a module with uuid is loading, it tries to update its own data 
 * Search module with the same uuid in local path.
 * If not found, search in server path.
 * If not found, load from the current file.<b
-                                              >
+                                              
 You can change the loading behavior in the Module Selector (when TAB pressed). 
 
-![rb2](https://user-images.githubusercontent.com/9614751/159116864-4be14fca-3904-48dc-a337-b35d945fee7e.PNG)
+![rb2](https://user-images.githubusercontent.com/9614751/159116931-841fe887-438c-4110-bd41-ab9d4531c744.PNG)
 
 This approach allows you to work on modules (locally) and at the same time not have problems with existing modules on server.
   
