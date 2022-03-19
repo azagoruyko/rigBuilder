@@ -22,16 +22,16 @@ rigBuilder.mainWindow.show()
 |templateWidgets.py |	Widgets set up here|
 
 ## The Basics
-The main working element of the program is the module. A module is a container with attributes and executable Python code.
+The main working element is a module. The module is a container with attributes and executable Python code.
 Modules can be hierarchically linked. Data is stored in attributes. Attribute is a field that contains json-compatible data:
 * Numbers  -  12, 3.14, -0.123
 * Strings  -  Hello world!
 * Lists  -  [This, list, [1,2,3]]
 * Dictionaries  -  {a: 1, b: 2, list:[1,2,3]}
 
-The attributes store all the information describing the corresponding widget. By transmitting such information, the system of connections is implemented.
+The attributes store all the information about the corresponding widget. By transmitting such information, connections are implemented.
 
-Modules are launched sequentially from top to bottom in the hierarchy, starting from the current one. In the module code, its own attributes are available as variables with the @ prefix.
+Modules are launched sequentially from top to bottom in the hierarchy, starting from the current module. In the module code, its own attributes are available as variables with the @ prefix.
 
 There are three kinds of variables for each attribute:
 * Default value (@).<br>
@@ -43,4 +43,3 @@ There are three kinds of variables for each attribute:
 * Attribute value setting function (@set) <br>
   `@set_input(3)`, `@set_list([1,2,3,4])`<br>
   This sets the default value of the attribute.
-
