@@ -80,6 +80,9 @@ In addition, several predefined variables and functions are available:
 |evaluateBezierCurveFromX (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
 
 ## Custom widget
+Currently a lot of widgets available now for your attributes.
+
+![rb3](https://user-images.githubusercontent.com/9614751/159117051-dd100f67-8159-4fa2-8fae-eb1921a64bae.PNG)
 
 To create new attribute widget, you need to define a class that derives from `TemplateWidget` (defined in `widgets/base.py`).
 For this class, you need to implement two functions:
