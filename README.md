@@ -50,7 +50,8 @@ But actually there is some module resolving job is being done while the module i
 By default, when a module with uuid is loading, it tries to update its own data by finding the reference module in the following sequence:
 * Search module with the same uuid in local path.
 * If not found, search in server path.
-* If not found, load from the current file.
+* If not found, load from the current file.<b
+                                              >
 You can change the loading behavior in the Module Selector (when TAB pressed). 
 
 ![rb2](https://user-images.githubusercontent.com/9614751/159116864-4be14fca-3904-48dc-a337-b35d945fee7e.PNG)
