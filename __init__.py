@@ -700,9 +700,6 @@ class TreeWidget(QTreeWidget):
         elif ctrl and key == Qt.Key_S:
             self.saveModule()
 
-        elif ctrl and key == Qt.Key_E:
-            self.exportModule()
-
         elif ctrl and key == Qt.Key_I:
             self.importModule()
 
@@ -736,10 +733,6 @@ class TreeWidget(QTreeWidget):
             menu.addAction(muteAction)
 
             menu.addSeparator()
-            exportAction = QAction("Export\tCTRL-E", self)
-            exportAction.triggered.connect(self.exportModule)
-            menu.addAction(exportAction)        
-
             saveAction = QAction("Save\tCTRL-S", self)
             saveAction.triggered.connect(self.saveModule)
             menu.addAction(saveAction)        
@@ -772,22 +765,6 @@ class TreeWidget(QTreeWidget):
 
         menu.popup(event.globalPos())
 
-    def exportModule(self):
-        selected =  self.selectedItems()
-        if selected:
-            item = selected[0]
-
-            defaultPath = item.module.loadedFrom or RigBuilderLocalPath+"/modules/"+item.module.name+".xml"
-            if IsMayaAvailable:
-                sceneDir = os.path.dirname(api.MFileIO.currentFile())
-                if sceneDir:
-                    defaultPath = sceneDir + "/" + item.module.name
-
-            path, _ = QFileDialog.getSaveFileName(self.mainWindow, "Export", defaultPath, "*.xml")
-            if path:
-                item.module.saveToFile(path)
-                self.updateItemToolTip(item)
-
     def importModule(self):
         defaultPath = RigBuilderLocalPath+"/modules/"
 
@@ -815,33 +792,30 @@ class TreeWidget(QTreeWidget):
             self.mainWindow.logWidget.ensureCursorVisible()
 
     def saveModule(self):
-        if QMessageBox.question(self, "Rig Builder", "Save modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            for item in self.selectedItems():
-                if item.module.isLoadedFromServer():
-                    relativePath = os.path.relpath(item.module.loadedFrom, RigBuilderPath+"/modules")
-                    outputPath = RigBuilderLocalPath+"/modules/"+relativePath
+        msg = "\n".join(["%s -> %s"%(item.module.name, item.module.getSavePath() or "N/A") for item in self.selectedItems()])
 
+        if QMessageBox.question(self, "Rig Builder", "Save modules?\n%s"%msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            for item in self.selectedItems():
+                outputPath = item.module.getSavePath()
+
+                if not outputPath:
+                    name = item.module.type or item.module.name
+                    outputPath, _ = QFileDialog.getSaveFileName(self.mainWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+name, "*.xml")
+
+                if outputPath:
                     dirname = os.path.dirname(outputPath)
                     if not os.path.exists(dirname):
                         os.makedirs(dirname)
 
                     item.module.saveToFile(outputPath)
 
-                elif item.module.isLoadedFromLocal():
-                    item.module.saveToFile(item.module.loadedFrom)
-
-                else:
-                    name = item.module.type or item.module.name
-                    outputPath, _ = QFileDialog.getSaveFileName(self.mainWindow, "Save "+item.text(0), RigBuilderLocalPath+"/modules/"+name, "*.xml")
-                    if outputPath:
-                        item.module.saveToFile(outputPath)
-
-                self.updateItemToolTip(item)
+                    self.updateItemToolTip(item)
 
     def saveAsModule(self):
         for item in self.selectedItems():
+            outputDir = os.path.dirname(api.MFileIO.currentFile())
             name = item.module.type or item.module.name
-            outputPath, _ = QFileDialog.getSaveFileName(self.mainWindow, "Save "+item.text(0), RigBuilderLocalPath + "/modules/"+name, "*.xml")
+            outputPath, _ = QFileDialog.getSaveFileName(self.mainWindow, "Save as "+item.module.name, outputDir + "/" +name, "*.xml")
 
             if outputPath:                
                 item.module.uid = generateUid()

@@ -242,6 +242,14 @@ class Module(object):
         if path and os.path.exists(path):
             return path
 
+    def getSavePath(self):
+        if self.isLoadedFromServer():
+            relativePath = os.path.relpath(self.loadedFrom, RigBuilderPath+"/modules")
+            return os.path.realpath(RigBuilderLocalPath+"/modules/"+relativePath)
+
+        else: # local or somewhere else
+            return self.loadedFrom
+            
     def update(self):
         origPath = self.getReferenceFile() or self.loadedFrom
         if origPath:
