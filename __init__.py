@@ -455,7 +455,7 @@ class TreeWidget(QTreeWidget):
 
         self.moduleListDialog = ModuleListDialog()
 
-        self.setHeaderLabels(["Name", "Type", "Source"])
+        self.setHeaderLabels(["Name", "Type", "Source", "UID"])
         self.setSelectionMode(QAbstractItemView.ExtendedSelection) # ExtendedSelection
 
         if "setSectionResizeMode" in dir(self.header()):
@@ -530,9 +530,9 @@ class TreeWidget(QTreeWidget):
 
         # set selected style
         if modelIdx in self.selectedIndexes():
-            painter.fillRect(rect.x()-1, rect.y(), rect.width(), rect.height()-1, QColor(80, 96, 154, 60))
+            painter.fillRect(rect.x()-1, rect.y(), painter.viewport().width()-1, rect.height()-1, QColor(80, 96, 154, 60))
             painter.setPen(QColor(73, 146, 158))
-            painter.drawRect(rect.x()-1, rect.y(), rect.width(), rect.height()-1)
+            painter.drawRect(rect.x()-1, rect.y(), painter.viewport().width()-1, rect.height()-1)
 
         painter.setPen(QColor(210, 210, 210))
         if isParentReference:
@@ -561,8 +561,8 @@ class TreeWidget(QTreeWidget):
         elif item.module.isLoadedFromServer():
             painter.drawText(sourceRect, "server")
 
-        elif item.module.uid: # draw uid
-            painter.drawText(sourceRect, "uid:"+item.module.uid[:5])
+        uidRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 3))
+        painter.drawText(uidRect, item.module.uid[:8])
 
         painter.restore()
 
@@ -670,8 +670,10 @@ class TreeWidget(QTreeWidget):
             tooltip.append("<b>File modification time</b>: %s"%time.strftime("%Y/%m/%d %H:%M", time.localtime(os.path.getmtime(fname))))
         item.setToolTip(0, "<br>".join(tooltip))
 
+        item.setToolTip(3, item.module.uid)
+
     def makeItemFromModule(self, module):
-        item = QTreeWidgetItem([module.name+" ", module.type+" ", " "])
+        item = QTreeWidgetItem([module.name+" ", module.type+" ", " ", module.uid])
         item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
         item.module = module
 
