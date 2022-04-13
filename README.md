@@ -1,7 +1,7 @@
 # Rig Builder
 Rig Builder is a flexible UI maker for python scripts. Mostly used in Maya rigging but can be adapted for any other purposes.
 
-![rb1](https://user-images.githubusercontent.com/9614751/159115306-4226af19-0d0a-4096-876c-f2180257b7f6.PNG)
+![rb](https://user-images.githubusercontent.com/9614751/163259226-61f06392-d2e4-4674-909d-7a8e8a4833a4.PNG)
 
 ## How to run
 Add *rigBuilder* folder to your script path and run the following:
