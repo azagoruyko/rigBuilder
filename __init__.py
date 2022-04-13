@@ -561,6 +561,9 @@ class TreeWidget(QTreeWidget):
         elif item.module.isLoadedFromServer():
             painter.drawText(sourceRect, "server")
 
+        elif item.module.uid: # draw uid
+            painter.drawText(sourceRect, "uid:"+item.module.uid[:5])
+
         painter.restore()
 
     def paintEvent(self, event):
