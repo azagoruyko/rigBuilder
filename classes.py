@@ -79,11 +79,11 @@ class Attribute(object):
                self.template == other.template and\
                self.connect == other.connect
 
-    def toXml(self):
+    def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
                  ("template", self.template),
                  ("category", self.category),
-                 ("connect", self.connect)]
+                 ("connect", self.connect if keepConnections else "")]
 
         attrsStr = " ".join(["%s=\"%s\""%(k,v) for k, v in attrs])
 
@@ -186,7 +186,7 @@ class Module(object):
     def findAttributes(self, name):
         return [a for a in self._attributes if a.name == name]
 
-    def toXml(self):
+    def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
                  ("type", self.type),
                  ("muted", int(self.muted)),
@@ -200,11 +200,11 @@ class Module(object):
                                  "</run>"]))
 
         template.append("<attributes>")
-        template += [a.toXml() for a in self._attributes]
+        template += [a.toXml(keepConnections) for a in self._attributes]
         template.append("</attributes>")
 
         template.append("<children>")
-        template += [ch.toXml() for ch in self._children]
+        template += [ch.toXml(True) for ch in self._children] # keep connections for inner modules only
         template.append("</children>")
 
         template.append("</module>")
@@ -290,7 +290,7 @@ class Module(object):
             self.uid = generateUid()
 
         with open(fileName, "w") as f:
-            f.write(self.toXml())
+            f.write(self.toXml(False))
 
         self.loadedFrom = os.path.realpath(fileName)
 
