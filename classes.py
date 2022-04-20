@@ -100,6 +100,16 @@ class Attribute(object):
         attr.data = json.loads(root.text.replace("__default__", "default")) # backward compatibility
         return attr
 
+class Channel(object):
+    def __init__(self, module, path):
+        self.module, self.attr = module.findModuleAndAttributeByPath(path)
+    
+    def get(self):
+        return self.attr.data[self.attr.data["default"]]
+
+    def set(self, value):
+        self.attr.data[self.attr.data["default"]] = value
+
 class Module(object):
     AttributePrefix = "attr_"
 
@@ -168,8 +178,10 @@ class Module(object):
         child.parent = None
         self._children.remove(child)
 
-    def findChildren(self, name):
-        return [ch for ch in self._children if ch.name == name]
+    def findChild(self, name):
+        for ch in self._children:
+            if ch.name == name:
+                return ch
 
     def clearAttributes(self):
         self._attributes = []
@@ -183,8 +195,10 @@ class Module(object):
     def removeAttribute(self, attr):
         self._attributes = [a for a in self._attributes if a is not attr]
 
-    def findAttributes(self, name):
-        return [a for a in self._attributes if a.name == name]
+    def findAttribute(self, name):
+        for a in self._attributes:
+            if a.name == name:
+                return a
 
     def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
@@ -259,16 +273,16 @@ class Module(object):
 
             # keep attribute values
             for origAttr in origModule._attributes:
-                foundAttrs = self.findAttributes(origAttr.name)
-                if foundAttrs and foundAttrs[0].template == origAttr.template: # use first found
+                foundAttr = self.findAttribute(origAttr.name)
+                if foundAttr and foundAttr.template == origAttr.template: # use first found
                     origDefaultKey = origAttr.data.get("default")
 
-                    if origDefaultKey and origAttr.data.get(origDefaultKey) and foundAttrs[0].data.get(origDefaultKey): # copy default value only
-                        origAttr.data[origDefaultKey] = foundAttrs[0].data[origDefaultKey]
+                    if origDefaultKey and origAttr.data.get(origDefaultKey) and foundAttr.data.get(origDefaultKey): # copy default value only
+                        origAttr.data[origDefaultKey] = foundAttr.data[origDefaultKey]
                     else:
-                        origAttr.data = foundAttrs[0].data
+                        origAttr.data = foundAttr.data
 
-                    origAttr.connect = foundAttrs[0].connect
+                    origAttr.connect = foundAttr.connect
 
                 newAttributes.append(origAttr)
 
@@ -335,14 +349,14 @@ class Module(object):
 
         currentParent = self
         for module in moduleList:
-            found = currentParent.findChildren(module)
+            found = currentParent.findChild(module)
             if found:
-                currentParent = found[0]
+                currentParent = found
             else:
                 return (None, None)
 
-        found = currentParent.findAttributes(attr)
-        return (currentParent, found[0]) if found else (currentParent, None)
+        found = currentParent.findAttribute(attr)
+        return (currentParent, found) if found else (currentParent, None)
 
     def resolveConnections(self):
         for attr in self._attributes:
@@ -363,6 +377,7 @@ class Module(object):
                 raise AttributeResolverError(self.name + ": cannot resolve connection for '%s' which is '%s'"%(attr.name, attr.connect))
 
     def run(self, globalsEnv, uiCallback=None):
+
         def printer(msg):
             print(msg)
 
@@ -399,6 +414,8 @@ class Module(object):
         localsEnv = {"SHOULD_RUN_CHILDREN": True,
                      "MODULE_NAME": self.name,
                      "MODULE_TYPE": self.type,
+                     "SELF": self,
+                     "Channel": Channel,
                      "copyJson": copyJson,
                      "error": lambda x: printer("Error: " + x),
                      "warning": lambda x: printer("Warning: " + x)}

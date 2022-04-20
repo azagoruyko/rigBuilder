@@ -525,7 +525,7 @@ class TreeWidget(QTreeWidget):
             painter.fillRect(nameRect, QBrush(QColor(170, 50, 50)))
 
         itemParent = item.parent()
-        if itemParent and len(itemParent.module.findChildren(item.module.name)) > 1:
+        if itemParent and len([ch for ch in itemParent.module.getChildren() if ch.name == item.module.name]) > 1:
             painter.fillRect(nameRect, QBrush(QColor(170, 50, 50)))
 
         # set selected style
@@ -1335,7 +1335,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "copyJson", "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
+        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "SELF", "Channel", "copyJson", "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
                  "beginProgress", "stepProgress", "endProgress", "currentTabIndex", "getMultiData", "getCompoundData"]
 
         prefix = "@"
