@@ -783,6 +783,8 @@ class TreeWidget(QTreeWidget):
         if not path:
             return
 
+        Module.updateUidsCache()
+
         try:
             m = Module.loadFromFile(path)
             m.update()
