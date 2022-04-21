@@ -1088,6 +1088,7 @@ class EditTemplateWidget(QWidget):
             w = editAttrsWidget.insertCustomWidget(self.template, idx+2)
             w.templateWidget.setJsonData(self.templateWidget.getJsonData())
             w.nameWidget.setText(self.nameWidget.text())
+            w.connectedTo = self.connectedTo
             self.deleteLater()
 
     def upBtnClicked(self):
@@ -1097,6 +1098,7 @@ class EditTemplateWidget(QWidget):
             w = editAttrsWidget.insertCustomWidget(self.template, idx-1)
             w.templateWidget.setJsonData(self.templateWidget.getJsonData())
             w.nameWidget.setText(self.nameWidget.text())
+            w.connectedTo = self.connectedTo
             self.deleteLater()
 
 class EditAttributesWidget(QWidget):
