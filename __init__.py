@@ -840,7 +840,7 @@ class TreeWidget(QTreeWidget):
     def locateModuleFile(self):
         for item in self.selectedItems():
             if item and os.path.exists(item.module.loadedFrom):
-                os.system("explorer /select,%s"%os.path.realpath(item.module.loadedFrom))
+                os.system("explorer /select,%s"%os.path.realpath(item.module.loadedFrom).encode(sys.getfilesystemencoding()))
 
     def clearAll(self):
         ok = QMessageBox.question(self, "Rig Builder", "Remove all modules?",
