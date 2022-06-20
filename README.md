@@ -63,8 +63,7 @@ Thus, any parent module can always be considered completely independent (since n
 Only attributes with the same widget type can be connected. Connections are bidirectional - you can change either end of the connection.
 
 ## Representation of the module
-
-![scheme drawio (2)](https://user-images.githubusercontent.com/9614751/159116041-0eb5c6d9-ce91-41a6-959e-425a5fad063e.png)
+![scheme](https://user-images.githubusercontent.com/9614751/174614277-bfb903d5-d2e2-4119-92c4-138a7091e836.png)
 
 ## Writing code
 In general, the code is written in the usual way, except that you can use attribute variables using @ like `@set_output(@input * 2)`
