@@ -18,16 +18,11 @@ from .editor import *
 import widgets
 from .templateWidgets import * # TemplateWidgets variable
 
-try:
-    import maya.cmds as cmds
-    import pymel.api as api
+import maya.cmds as cmds
+import pymel.api as api
 
-    from shiboken2 import wrapInstance
-    mayaMainWindow = wrapInstance(long(api.MQtUtil.mainWindow()), QMainWindow)
-
-    IsMayaAvailable = True
-except ImportError:
-    IsMayaAvailable = False
+from shiboken2 import wrapInstance
+mayaMainWindow = wrapInstance(long(api.MQtUtil.mainWindow()), QMainWindow)
 
 ScriptGlobals = {}
 
@@ -773,10 +768,9 @@ class TreeWidget(QTreeWidget):
     def importModule(self):
         defaultPath = RigBuilderLocalPath+"/modules/"
 
-        if IsMayaAvailable:
-            sceneDir = os.path.dirname(api.MFileIO.currentFile())
-            if sceneDir:
-                defaultPath = sceneDir + "/"
+        sceneDir = os.path.dirname(api.MFileIO.currentFile())
+        if sceneDir:
+            defaultPath = sceneDir + "/"
 
         path, _ = QFileDialog.getOpenFileName(self.mainWindow, "Import", defaultPath, "*.xml")
 
@@ -1474,8 +1468,8 @@ def getChildrenCount(item):
     return count
 
 class RigBuilderMainWindow(QFrame):
-    def __init__(self, **kwargs):
-        super(RigBuilderMainWindow, self).__init__(**kwargs)
+    def __init__(self):
+        super(RigBuilderMainWindow, self).__init__(parent=mayaMainWindow)
 
         self.setWindowTitle("Rig Builder")
         self.setGeometry(400, 200, 1300, 700)
@@ -1574,8 +1568,7 @@ class RigBuilderMainWindow(QFrame):
         self.logWidget.clear()
         self.showLog()
 
-        if IsMayaAvailable:
-            cmds.undoInfo(ock=True) # open undo block
+        cmds.undoInfo(ock=True) # open undo block
 
         with captureOutput(self.logWidget):
             startTime = time.time()
@@ -1600,23 +1593,16 @@ class RigBuilderMainWindow(QFrame):
                 traceback.print_exc(file=sys.stdout)
             finally:
                 print("Done in %.2fs"%(time.time() - startTime))
-
-                if IsMayaAvailable:
-                    cmds.undoInfo(cck=True) # close undo block
+                cmds.undoInfo(cck=True) # close undo block
 
         self.progressBarWidget.endProgress()
         self.attributesWidget.update()
 
 class RigBuilderToolWindow(QFrame):
-    def __init__(self, modulePath, **kwargs):
-        super(RigBuilderToolWindow, self).__init__(**kwargs)
+    def __init__(self, module):
+        super(RigBuilderToolWindow, self).__init__(parent=mayaMainWindow)
 
-        self.module = Module.loadFromFile(modulePath)
-        self.module.update()
-
-        self.setWindowTitle("Rig Builder Tool - "+os.path.basename(modulePath))
-        self.setGeometry(kwargs.get("x",600), kwargs.get("y",200), kwargs.get("width",700), kwargs.get("height",500))
-
+        self.module = module
         self.setWindowFlags(self.windowFlags() | Qt.Window | Qt.Tool)
 
         layout = QVBoxLayout()
@@ -1680,8 +1666,7 @@ class RigBuilderToolWindow(QFrame):
         self.logWidget.clear()
         self.showLog()
 
-        if IsMayaAvailable:
-            cmds.undoInfo(ock=True) # open undo block
+        cmds.undoInfo(ock=True) # open undo block
 
         with captureOutput(self.logWidget):
             startTime = time.time()
@@ -1697,23 +1682,39 @@ class RigBuilderToolWindow(QFrame):
                 traceback.print_exc(file=sys.stdout)
             finally:
                 print("Done in %.2fs"%(time.time() - startTime))
-
-                if IsMayaAvailable:
-                    cmds.undoInfo(cck=True) # close undo block
+                cmds.undoInfo(cck=True) # close undo block
 
         self.attributesWidget.update()
 
-def RigBuilderTool(path, **kwargs):
-    modulePath = os.path.dirname(__file__.decode(sys.getfilesystemencoding())) + "/modules"
-    if os.path.exists(path):
-        realPath = path
-    elif os.path.exists(modulePath+"/"+path):
-        realPath = modulePath+"/"+path
+def RigBuilderTool(spec, x=700, y=300, width=700, height=500, child=None): # spec can be full path, relative path, uid
+    modulePath = os.path.expandvars(spec)
+
+    if Module.ServerUids.get(spec): # check uid
+       modulePath = Module.ServerUids[spec] 
+        
+    elif os.path.exists(modulePath): # check full path
+       pass
+
+    elif os.path.exists(RigBuilderPath+"/modules/"+modulePath): # check relative path
+        modulePath = RigBuilderPath+"/modules/"+modulePath
+
     else:
-        print("Cannot find '%s'"%path)
+        cmds.warning("Cannot load '{}' module".format(spec))
         return
 
-    return RigBuilderToolWindow(realPath, parent=mayaMainWindow if IsMayaAvailable else None, **kwargs)
+    module = Module.loadFromFile(modulePath)
+    module.update()
+
+    if child:
+        module = module.findChild(child)
+        if not module:
+            cmds.warning("Cannot find '{}' child".format(child))
+            return
+
+    w = RigBuilderToolWindow(module)
+    w.setWindowTitle("Rig Builder Tool - {} - {}".format(modulePath, module.getPath()))
+    w.setGeometry(x, y, width, height)
+    return w
 
 def setStylesheet(w):
     folder = os.path.dirname(__file__.decode(sys.getfilesystemencoding()))
@@ -1725,11 +1726,4 @@ def setStylesheet(w):
 if not os.path.exists(RigBuilderLocalPath):
     os.makedirs(RigBuilderLocalPath+"/modules")
 
-if __name__ == '__main__':
-    app = QApplication([]) 
-    mainWindow = RigBuilderMainWindow()    
-    mainWindow.show()
-    #RigBuilderTool("Tools/ExportBindPose.xml").show()
-    app.exec_()
-else:
-    mainWindow = RigBuilderMainWindow(parent=mayaMainWindow if IsMayaAvailable else None)
+mainWindow = RigBuilderMainWindow()
