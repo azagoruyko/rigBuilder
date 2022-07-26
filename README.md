@@ -4,6 +4,8 @@ Rig Builder is a flexible UI maker for python scripts. Mostly used in Maya riggi
 ![rb](https://user-images.githubusercontent.com/9614751/163259226-61f06392-d2e4-4674-909d-7a8e8a4833a4.PNG)
 
 ## How to run
+Install Qt.py.
+
 Add *rigBuilder* folder to your script path and run the following:
 ```python
 import rigBuilder
