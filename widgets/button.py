@@ -63,7 +63,7 @@ class ButtonTemplateWidget(TemplateWidget):
                 mainWindow.attributesWidget.update()
     
     def getDefaultData(self):
-        return {"command": "a = module.findAttributes('attr')[0]\nprint(a.data)",
+        return {"command": "a = module.findAttribute('attr')\nprint(a.data)",
                 "label": "Press me",
                 "default": "label"}
 

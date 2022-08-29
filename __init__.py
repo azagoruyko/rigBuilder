@@ -1333,7 +1333,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "SELF", "Channel", "copyJson", "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
+        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "Channel", "copyJson", "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
                  "beginProgress", "stepProgress", "endProgress", "currentTabIndex", "getMultiData", "getCompoundData"]
 
         prefix = "@"

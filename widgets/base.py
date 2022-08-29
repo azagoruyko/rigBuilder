@@ -77,6 +77,5 @@ def smartConversion(x):
     except ValueError:
         return unicode(x)
 
-def smartConversionToText(x):
-    v = json.dumps(x)
-    return v[1:-1] if v.startswith("\"") else v
+def fromSmartConversion(x):
+    return json.dumps(x) if type(x) not in [str, unicode] else x

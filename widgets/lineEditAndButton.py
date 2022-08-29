@@ -62,7 +62,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
                 "default": "value"}
 
     def setCustomText(self, value):
-        self.textWidget.setText(smartConversionToText(value))
+        self.textWidget.setText(fromSmartConversion(value))
 
     def setJsonData(self, data):
         self.setCustomText(data["value"])

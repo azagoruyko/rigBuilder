@@ -102,7 +102,9 @@ class Attribute(object):
 
 class Channel(object):
     def __init__(self, module, path):
+        assert module, "Channel: module is None"
         self.module, self.attr = module.findModuleAndAttributeByPath(path)
+        assert self.module and self.attr, "Channel: cannot resolve '{}' path".format(path)
     
     def get(self):
         return self.attr.data[self.attr.data["default"]]
@@ -414,8 +416,7 @@ class Module(object):
         localsEnv = {"SHOULD_RUN_CHILDREN": True,
                      "MODULE_NAME": self.name,
                      "MODULE_TYPE": self.type,
-                     "SELF": self,
-                     "Channel": Channel,
+                     "Channel": lambda x: Channel(self.parent, x),
                      "copyJson": copyJson,
                      "error": lambda x: printer("Error: " + x),
                      "warning": lambda x: printer("Warning: " + x)}

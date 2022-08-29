@@ -159,6 +159,6 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.setRowCount(len(items))
         for r, row in enumerate(items):
             for c, data in enumerate(row):
-                self.tableWidget.setItem(r, c, QTableWidgetItem(smartConversionToText(data)))
+                self.tableWidget.setItem(r, c, QTableWidgetItem(fromSmartConversion(data)))
 
         self.updateSize()

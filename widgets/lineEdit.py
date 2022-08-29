@@ -104,7 +104,7 @@ class LineEditTemplateWidget(TemplateWidget):
                 "validator": self.validator}
 
     def setJsonData(self, data):
-        self.textWidget.setText(smartConversionToText(data["value"]))
+        self.textWidget.setText(fromSmartConversion(data["value"]))
         self.validator = data.get("validator", 0)
         self.minValue = data.get("min", "")
         self.maxValue = data.get("max", "")
@@ -124,10 +124,3 @@ class LineEditTemplateWidget(TemplateWidget):
                 self.sliderWidget.setValue(float(data["value"])*100)
         else:
             self.sliderWidget.hide()
-'''
-import sys
-app = QApplication([])
-w = LineEditTemplateWidget()
-w.show()
-app.exec_()
-'''
