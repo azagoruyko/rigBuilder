@@ -76,7 +76,6 @@ In addition, several predefined variables and functions are available:
 |MODULE_NAME |	Current module name |
 |MODULE_TYPE |	Current module type |
 |SHOULD_RUN_CHILDREN |	If False then don’t run children |
-|SELF |	Current module as Module class |
 |Channel | Attributes accessor. See below |
 |copyJson (function) |	Fast copy json-compatible data |
 |error/warning (function) |	Error/warning in log |
@@ -86,12 +85,12 @@ In addition, several predefined variables and functions are available:
 ## Channels
 Modules can access parent and neibour attributes using Channel approach. Channels have `get` and `set` methods.
 ```python
-input = Channel(SELF.parent, "/input") # access 'input' attribute of the parent module
+input = Channel("/input") # access 'input' attribute of the parent module
 input.set("hello world")
 ```
 Actually channels can be used to find and obtain any attribute handle for reading/writing.
 ```python
-someAttr = Channel(SELF, "/someChild/someAttr").get() # get current module's 'someChild' child module and its 'someAttr' attribute
+someAttr = Channel("/someChild/someAttr").get() # get parent module's 'someChild' child module and its 'someAttr' attribute
 ```
 
 ## Custom widget
