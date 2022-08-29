@@ -689,7 +689,7 @@ class TreeWidget(QTreeWidget):
         key = event.key()
 
         if key == Qt.Key_Insert:
-            self.addTopLevelItem(self.makeItemFromModule(Module("module")))
+            self.insertModule()
 
         elif ctrl and key == Qt.Key_D:
             self.duplicateModule()
@@ -716,7 +716,7 @@ class TreeWidget(QTreeWidget):
         menu = QMenu(self)
 
         newAction = QAction("New\tINSERT", self)
-        newAction.triggered.connect(lambda: self.addTopLevelItem(self.makeItemFromModule(Module("module"))))
+        newAction.triggered.connect(self.insertModule)
         menu.addAction(newAction)
 
         importAction = QAction("Import\tCTRL-I", self)
@@ -764,6 +764,16 @@ class TreeWidget(QTreeWidget):
         menu.addAction(clearAction)
 
         menu.popup(event.globalPos())
+
+    def insertModule(self):
+        item = self.makeItemFromModule(Module("module"))
+
+        sel = self.selectedItems()
+        if sel:
+            sel[0].addChild(item)
+            sel[0].module.addChild(item.module)
+        else:
+            self.addTopLevelItem(item)    
 
     def importModule(self):
         defaultPath = RigBuilderLocalPath+"/modules/"
