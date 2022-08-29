@@ -65,7 +65,7 @@ Thus, any parent module can always be considered completely independent (since n
 Only attributes with the same widget type can be connected. Connections are bidirectional - you can change either end of the connection.
 
 ## Representation of the module
-![scheme](https://user-images.githubusercontent.com/9614751/174614277-bfb903d5-d2e2-4119-92c4-138a7091e836.png)
+![module representation](https://user-images.githubusercontent.com/9614751/187194450-2c509e82-cb81-444d-b449-ed976985c654.png)
 
 ## Writing code
 In general, the code is written in the usual way, except that you can use attribute variables using @ like `@set_output(@input * 2)`
