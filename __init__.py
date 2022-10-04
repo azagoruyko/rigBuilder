@@ -501,14 +501,14 @@ class TreeWidget(QTreeWidget):
 
         if item.childCount() and rect.x() + rect.width() > rect.x():
             painter.setPen(QPen(QBrush(QColor(100, 100, 100)), 1, Qt.SolidLine))
-            painter.fillRect(QRect(rect.x() - 16, rect.y() + 4, 12, 12), QColor(45, 45, 45))
-            painter.drawRect(rect.x() - 16, rect.y() + 4, 12, 12)
+            painter.fillRect(QRect(rect.x() - 16, rect.y() + 2, 12, 12), QColor(45, 45, 45))
+            painter.drawRect(rect.x() - 16, rect.y() + 2, 12, 12)
             painter.setPen(QPen(QBrush(QColor(120, 120, 120)), 1, Qt.SolidLine))
             if item.isExpanded():
-                painter.drawLine(rect.x() - 7, rect.y() + 10, rect.x() - 13, rect.y() + 10)
+                painter.drawLine(rect.x() - 7, rect.y() + 8, rect.x() - 13, rect.y() + 8)
             else:
-                painter.drawLine(rect.x() - 10, rect.y() + 7, rect.x() - 10, rect.y() + 14)
-                painter.drawLine(rect.x() - 7, rect.y() + 10, rect.x() - 13, rect.y() + 10)
+                painter.drawLine(rect.x() - 10, rect.y() + 5, rect.x() - 10, rect.y() + 12)
+                painter.drawLine(rect.x() - 7, rect.y() + 8, rect.x() - 13, rect.y() + 8)
 
         nameIdx = modelIdx.sibling(modelIdx.row(), 0)
         nameRect = self.visualRect(nameIdx)
@@ -525,10 +525,10 @@ class TreeWidget(QTreeWidget):
 
         # set selected style
         if modelIdx in self.selectedIndexes():
-            painter.fillRect(rect.x()-1, rect.y(), painter.viewport().width()-1, rect.height()-1, QColor(80, 96, 154, 60))
-            painter.setPen(QColor(73, 146, 158))
-            painter.drawRect(rect.x()-1, rect.y(), painter.viewport().width()-1, rect.height()-1)
-
+            painter.fillRect(rect.x()-1, rect.y(), painter.viewport().width(), rect.height(), QColor(80, 96, 154, 60))
+            painter.setPen(QColor(73, 146, 158, 200))
+            painter.drawRect(rect.x()-1, rect.y()+1, painter.viewport().width(), rect.height()-3)
+            
         painter.setPen(QColor(210, 210, 210))
         if isParentReference:
             font = painter.font()
