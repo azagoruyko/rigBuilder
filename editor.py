@@ -739,6 +739,7 @@ class CodeEditorWidget(QTextEdit):
             self.currentFontPointSize = clamp(8, 20, self.currentFontPointSize + d)
 
             self.setStyleSheet("font-size: %dpx;"%self.currentFontPointSize)
+            self.parent().numberBarWidget.update()
 
         else:
             QTextEdit.wheelEvent(self, event)
