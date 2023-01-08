@@ -8,7 +8,7 @@ import sys
 import os
 import json
 
-RootPath = os.path.dirname(os.path.dirname(__file__.decode(sys.getfilesystemencoding()))) # Rig Builder root folder
+RootPath = os.path.dirname(os.path.dirname(__file__))
 
 class TemplateWidget(QWidget):
     somethingChanged = Signal()
@@ -50,7 +50,7 @@ class EditTextDialog(QDialog):
         layout.addWidget(okBtn)
 
     def okBtnClicked(self):
-        self.outputText = unicode(self.textWidget.toPlainText())
+        self.outputText = str(self.textWidget.toPlainText())
         self.accept()
 
 def clearLayout(layout):
@@ -75,7 +75,7 @@ def smartConversion(x):
     try:
         return json.loads(x)
     except ValueError:
-        return unicode(x)
+        return str(x)
 
 def fromSmartConversion(x):
-    return json.dumps(x) if type(x) not in [str, unicode] else x
+    return json.dumps(x) if type(x) not in [str, str] else x

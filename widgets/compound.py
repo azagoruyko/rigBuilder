@@ -106,7 +106,7 @@ class CompoundTemplateWidget(TemplateWidget):
         for i, item in enumerate(layout["items"]):
             c = i % self.numColumns
             r = i / self.numColumns
-            if type(item) in [str, unicode]:
+            if type(item) in [str]:
                 self.gridLayout.addWidget(QLabel(item), r, c)
             else:
                 w = TemplateWidgets[item["template"]](env=self.env)

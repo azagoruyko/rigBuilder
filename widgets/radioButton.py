@@ -44,7 +44,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
             self.buttonsGroupWidget.removeButton(b)
 
     def editClicked(self):
-        items = ";".join([unicode(b.text()) for b in self.buttonsGroupWidget.buttons()])
+        items = ";".join([str(b.text()) for b in self.buttonsGroupWidget.buttons()])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.clearButtons()
@@ -57,7 +57,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
         return {"items": ["Helpers", "Run"], "current": 0, "default": "current"}
         
     def getJsonData(self):
-        return {"items": [unicode(b.text()) for b in self.buttonsGroupWidget.buttons()],
+        return {"items": [str(b.text()) for b in self.buttonsGroupWidget.buttons()],
                 "current": self.buttonsGroupWidget.checkedId(),
                 "default": "current"}
 

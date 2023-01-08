@@ -36,7 +36,7 @@ def smartConversion(x):
         try:
             v = float(x)
         except ValueError:
-            v = unicode(x)
+            v = str(x)
     return v
 
 def copyJson(data):
@@ -46,7 +46,7 @@ def copyJson(data):
     elif type(data) == dict:
         return {k:copyJson(data[k]) for k in data}
 
-    elif type(data) in [int, float, bool, str, unicode]:
+    elif type(data) in [int, float, bool, str]:
         return data
 
     else:
@@ -220,7 +220,7 @@ class Module(object):
         template.append("</attributes>")
 
         template.append("<children>")
-        template += [ch.toXml(True) for ch in self._children] # keep connections for inner modules only
+        template += [ch.toXml(True) for ch in self._children] # keep inner connections only
         template.append("</children>")
 
         template.append("</module>")
@@ -265,7 +265,7 @@ class Module(object):
 
         else: # local or somewhere else
             return self.loadedFrom
-            
+
     def update(self):
         origPath = self.getReferenceFile() or self.loadedFrom
         if origPath:
@@ -306,7 +306,7 @@ class Module(object):
             self.uid = generateUid()
 
         with open(fileName, "w") as f:
-            f.write(self.toXml(False))
+            f.write(self.toXml(False)) # don't keep outter connections
 
         self.loadedFrom = os.path.realpath(fileName)
 

@@ -15,14 +15,14 @@ from Qt.QtWidgets import *
 
 from .classes import *
 from .editor import *
-import widgets
+from .widgets import *
 from .templateWidgets import * # TemplateWidgets variable
 
 import maya.cmds as cmds
 import pymel.api as api
 
 from shiboken2 import wrapInstance
-mayaMainWindow = wrapInstance(long(api.MQtUtil.mainWindow()), QMainWindow)
+mayaMainWindow = wrapInstance(int(api.MQtUtil.mainWindow()), QMainWindow)
 
 ScriptGlobals = {}
 
@@ -180,7 +180,7 @@ class TabAttributesWidget(QWidget):
 
     def setData(self, attr):
         text = json.dumps(attr.data, indent=4).replace("'", "\"")
-        editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=QApplication.activeWindow())
+        editText = EditTextDialog(text, "Set '%s' data"%attr.name, parent=QApplication.activeWindow())
         editText.exec_()
         if editText.result():
             with captureOutput(self.mainWindow.logWidget):
@@ -382,7 +382,7 @@ class ModuleListDialog(QDialog):
 
     def treeItemActivated(self, item, _):
         if item.childCount() == 0:
-            fileName = unicode(item.text(0))
+            fileName = str(item.text(0))
             self.selectedFileName = item.filePath
             self.done(0)
 
@@ -416,7 +416,7 @@ class ModuleListDialog(QDialog):
         UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
         Module.updateUidsCache(UpdateSourceFromInt[updateSource])
 
-        mask = re.escape(unicode(self.maskWidget.text()))
+        mask = re.escape(str(self.maskWidget.text()))
 
         tw = self.treeWidget
         tw.clear()
@@ -516,7 +516,7 @@ class TreeWidget(QTreeWidget):
         typeIdx = modelIdx.sibling(modelIdx.row(), 1)
         typeRect = self.visualRect(typeIdx)
 
-        if not re.match("\\w*", unicode(item.module.name)):
+        if not re.match("\\w*", str(item.module.name)):
             painter.fillRect(nameRect, QBrush(QColor(170, 50, 50)))
 
         itemParent = item.parent()
@@ -541,7 +541,7 @@ class TreeWidget(QTreeWidget):
 
         painter.drawText(nameRect, Qt.AlignLeft | Qt.AlignVCenter, item.module.name)
 
-        if not re.match("^[\\w/ ]*$", unicode(item.module.type)):
+        if not re.match("^[\\w/ ]*$", str(item.module.type)):
             painter.setPen(QColor(200, 200, 200))
             painter.fillRect(typeRect, QBrush(QColor(170, 50, 50)))
 
@@ -644,8 +644,8 @@ class TreeWidget(QTreeWidget):
                 self.mainWindow.codeEditorWidget.update()
 
     def treeItemChanged(self, item):
-        newName = unicode(item.text(0)).strip()
-        newType = unicode(item.text(1)).strip()
+        newName = str(item.text(0)).strip()
+        newType = str(item.text(1)).strip()
 
         item.module.name = replaceSpecialChars(newName)
         item.setText(0, item.module.name)
@@ -988,7 +988,7 @@ class TemplateSelectorDialog(QDialog):
     def update(self):
         clearLayout(self.gridLayout)
 
-        filterText = unicode(self.filterWidget.text())
+        filterText = str(self.filterWidget.text())
 
         for t in sorted(TemplateWidgets.keys()):
             if not filterText or re.search(filterText, t, re.IGNORECASE):
@@ -998,7 +998,7 @@ class TemplateSelectorDialog(QDialog):
                 self.gridLayout.addWidget(w)
 
                 selectBtn = QPushButton("Select")
-                selectBtn.clicked.connect(lambda t=t: self.selectTemplate(t))
+                selectBtn.clicked.connect(lambda _=None, t=t: self.selectTemplate(t))
                 self.gridLayout.addWidget(selectBtn)
 
 class EditTemplateWidget(QWidget):
@@ -1440,7 +1440,7 @@ class MyProgressBar(QWidget):
         self.progressBarWidget.setValue(state["value"])
         self.progressBarWidget.setMaximum(state["max"])
 
-    def beginProgress(self, text, count, updatePercent=0.01):
+    def beginProgress(self, text, count, updatePercent=0):
         q = {"text": text, "max": count, "value": 0, "updatePercent":updatePercent}
         self.queue.append(q)
         self.updateWithState(q)
@@ -1555,8 +1555,8 @@ class RigBuilderMainWindow(QFrame):
             self.vsplitter.setSizes(sizes)
 
     def getModuleGlobalEnv(self):
-        return {"evaluateBezierCurveFromX": widgets.evaluateBezierCurveFromX,
-                "evaluateBezierCurve": widgets.evaluateBezierCurve,
+        return {"evaluateBezierCurveFromX": evaluateBezierCurveFromX,
+                "evaluateBezierCurve": evaluateBezierCurve,
                 "getMultiData": lambda data, idx: data["items"][idx],
                 "getCompoundData": lambda data, idx: data["layout"]["items"][idx],
                 "beginProgress": self.progressBarWidget.beginProgress,
@@ -1615,8 +1615,7 @@ class RigBuilderToolWindow(QFrame):
 
         self.module = module
 
-        self.setWindowFlags(self.windowFlags() | Qt.Window)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(self.windowFlags() | Qt.Window | Qt.Tool)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -1660,8 +1659,8 @@ class RigBuilderToolWindow(QFrame):
             self.vsplitter.setSizes(sizes)
 
     def getModuleGlobalEnv(self):
-        return {"evaluateBezierCurveFromX": widgets.evaluateBezierCurveFromX,
-                "evaluateBezierCurve": widgets.evaluateBezierCurve,
+        return {"evaluateBezierCurveFromX": evaluateBezierCurveFromX,
+                "evaluateBezierCurve": evaluateBezierCurve,
                 "getMultiData": lambda data, idx: data["items"][idx],
                 "getCompoundData": lambda data, idx: data["layout"]["items"][idx],
                 "beginProgress": self.progressBarWidget.beginProgress,
@@ -1737,7 +1736,7 @@ def RigBuilderTool(spec, x=700, y=300, width=700, height=500, child=None): # spe
     return w
 
 def setStylesheet(w):
-    folder = os.path.dirname(__file__.decode(sys.getfilesystemencoding()))
+    folder = os.path.dirname(__file__)
     with open(folder+"/qss/qstyle.qss", "r") as f:
         iconsDir = (folder+"/qss/icons/").replace("\\","/")
         style = f.read().replace("icons/", iconsDir)

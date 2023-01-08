@@ -1,4 +1,4 @@
-<module name="autoTangent" type="Tools/AutoTangents" muted="0" uid="52c3e73f95dd463399ce15d9dd0cc535">
+<module name="autoTangent" type="Tools/AutoTangents" muted="0" uid="fe8646386e674920b0dfd829b30e6736">
 <run><![CDATA[import pymel.core as pm
 import maya.cmds as cmds
 import math
@@ -143,9 +143,9 @@ elif @selected==1:
 
     ]]></run>
 <attributes>
-<attr name="flatten" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": false}]]></attr>
-<attr name="selected" template="radioButton" category="General" connect=""><![CDATA[{"current": 1, "items": ["Keys", "Curves"], "default": "current"}]]></attr>
-<attr name="soft" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "max": "1", "validator": 2, "value": 0.0, "min": "0"}]]></attr>
+<attr name="flatten" template="checkBox" category="General" connect=""><![CDATA[{"__default__": "checked", "checked": false}]]></attr>
+<attr name="selected" template="radioButton" category="General" connect=""><![CDATA[{"current": 1, "items": ["Keys", "Curves"], "__default__": "current"}]]></attr>
+<attr name="soft" template="lineEdit" category="General" connect=""><![CDATA[{"__default__": "value", "max": "1", "validator": 2, "value": 0.0, "min": "0"}]]></attr>
 </attributes>
 <children>
 </children>

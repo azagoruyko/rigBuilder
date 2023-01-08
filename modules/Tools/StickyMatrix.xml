@@ -9,11 +9,8 @@ stickyAttr = pm.PyNode(@stickyAttr)
 joint1 = pm.PyNode(@joint1)
 joint2 = pm.PyNode(@joint2)
 
-remap = pm.createNode("remapValue",n=name+"_remapValue")
-stickyAttr >> remap.inputValue
-
 stickyMatrix = pm.createNode("stickyMatrix", n=name+"_stickyMatrix")
-remap.outValue >> stickyMatrix.sticky
+stickyAttr >> stickyMatrix.sticky
 stickyMatrix.blendAt.set(@blendAt)
 
 for i, j in enumerate([joint1, joint2]):
@@ -86,10 +83,10 @@ decompose2.outputScale >> joint2.s
 
 ]]></run>
 <attributes>
-<attr name="name" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "max": "", "validator": 0, "value": "R_lips_3", "min": ""}]]></attr>
-<attr name="joint1" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "R_lip_upper_3_joint"}]]></attr>
-<attr name="joint2" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "R_lip_lower_3_joint"}]]></attr>
-<attr name="stickyAttr" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "M_jaw_control.sticky"}]]></attr>
+<attr name="name" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "max": "", "validator": 0, "value": "test", "min": ""}]]></attr>
+<attr name="joint1" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "upper"}]]></attr>
+<attr name="joint2" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "lower"}]]></attr>
+<attr name="stickyAttr" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "null1.sticky"}]]></attr>
 <attr name="blendAt" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "max": "1", "validator": 2, "value": 0.5, "min": "0"}]]></attr>
 </attributes>
 <children>
