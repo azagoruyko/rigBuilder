@@ -36,7 +36,7 @@ def smartConversion(x):
         try:
             v = float(x)
         except ValueError:
-            v = str(x)
+            v = unicode(x)
     return v
 
 def copyJson(data):
@@ -46,7 +46,7 @@ def copyJson(data):
     elif type(data) == dict:
         return {k:copyJson(data[k]) for k in data}
 
-    elif type(data) in [int, float, bool, str]:
+    elif type(data) in [int, float, bool, str, unicode]:
         return data
 
     else:
@@ -276,7 +276,7 @@ class Module(object):
             # keep attribute values
             for origAttr in origModule._attributes:
                 foundAttr = self.findAttribute(origAttr.name)
-                if foundAttr and foundAttr.template == origAttr.template: # use first found
+                if origAttr.name and foundAttr and foundAttr.template == origAttr.template: # skip empty named attrs, use first found
                     origDefaultKey = origAttr.data.get("default")
 
                     if origDefaultKey and origAttr.data.get(origDefaultKey) and foundAttr.data.get(origDefaultKey): # copy default value only

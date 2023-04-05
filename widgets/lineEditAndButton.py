@@ -58,7 +58,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def getJsonData(self):
         return {"value": smartConversion(self.textWidget.text().strip()),
                 "buttonCommand": self.buttonCommand,
-                "buttonLabel": str(self.buttonWidget.text()),
+                "buttonLabel": unicode(self.buttonWidget.text()),
                 "default": "value"}
 
     def setCustomText(self, value):

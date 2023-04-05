@@ -65,7 +65,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.listWidget.setMaximumHeight(height)
 
     def editClicked(self):
-        items = ";".join([str(self.listWidget.item(i).text()) for i in range(self.listWidget.count())])
+        items = ";".join([unicode(self.listWidget.item(i).text()) for i in range(self.listWidget.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.listWidget.clear()
@@ -75,7 +75,7 @@ class ListBoxTemplateWidget(TemplateWidget):
     def selectInMayaClicked(self):
         import pymel.core as pm
         
-        items = [str(self.listWidget.item(i).text()) for i in range(self.listWidget.count())]
+        items = [unicode(self.listWidget.item(i).text()) for i in range(self.listWidget.count())]
         pm.select(items)
 
     def getFromMayaClicked(self, add=False):
@@ -113,7 +113,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         return {"items": ["a", "b"], "default": "items"}#, "current": self.listWidget.currentRow()}
 
     def getJsonData(self):
-        return {"items": [str(self.listWidget.item(i).text()) for i in range(self.listWidget.count())], 
+        return {"items": [unicode(self.listWidget.item(i).text()) for i in range(self.listWidget.count())], 
                 #"current": self.listWidget.currentRow(),
                 "default": "items"}
 

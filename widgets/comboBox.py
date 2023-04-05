@@ -38,7 +38,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
         menu.popup(event.globalPos())
 
     def editItems(self):
-        items = ";".join([str(self.comboBox.itemText(i)) for i in range(self.comboBox.count())])
+        items = ";".join([unicode(self.comboBox.itemText(i)) for i in range(self.comboBox.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.comboBox.clear()
@@ -65,8 +65,8 @@ class ComboBoxTemplateWidget(TemplateWidget):
         return {"items": ["a", "b"], "current": "a", "default": "current"}
 
     def getJsonData(self):
-        return {"items": [str(self.comboBox.itemText(i)) for i in range(self.comboBox.count())],                
-                "current": str(self.comboBox.currentText()),
+        return {"items": [unicode(self.comboBox.itemText(i)) for i in range(self.comboBox.count())],                
+                "current": unicode(self.comboBox.currentText()),
                 "default": "current"}
 
     def setJsonData(self, value):

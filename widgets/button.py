@@ -69,7 +69,7 @@ class ButtonTemplateWidget(TemplateWidget):
 
     def getJsonData(self):
         return {"command": self.buttonCommand,
-                "label": str(self.buttonWidget.text()),
+                "label": unicode(self.buttonWidget.text()),
                 "default": "label"}
 
     def setJsonData(self, data):

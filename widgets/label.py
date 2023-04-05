@@ -12,7 +12,9 @@ class LabelTemplateWidget(TemplateWidget):
         layout.setContentsMargins(0, 0, 0, 0) 
 
         self.label = QLabel()
+        self.label.setCursor(Qt.PointingHandCursor)
         self.label.setWordWrap(True)
+        self.label.setToolTip("You can use $ROOT as a path to Rig Builder's root directory, like $ROOT/images/icons")
         self.label.mouseDoubleClickEvent = self.labelDoubleClickEvent
 
         layout.addWidget(self.label)

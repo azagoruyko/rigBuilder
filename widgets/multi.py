@@ -7,12 +7,14 @@ from .lineEditAndButton import *
 from .vector import *
 from .compound import *
 
-TemplateWidgets = {"compound": CompoundTemplateWidget, 
-                   "lineEdit": LineEditTemplateWidget, 
-                   "lineEditAndButton": LineEditAndButtonTemplateWidget, 
-                   "checkBox": CheckBoxTemplateWidget,
-                   "comboBox": ComboBoxTemplateWidget,
-                   "vector": VectorTemplateWidget}
+MultiTemplateWidgets = {
+    "checkBox": CheckBoxTemplateWidget,
+    "comboBox": ComboBoxTemplateWidget,
+    "label": LabelTemplateWidget,
+    "lineEdit": LineEditTemplateWidget,
+    "lineEditAndButton": LineEditAndButtonTemplateWidget,
+    "radioButton": RadioButtonTemplateWidget,
+    "vector": VectorTemplateWidget}
 
 class MultiTemplateWidget(TemplateWidget):
     def __init__(self,  **kwargs):
@@ -24,18 +26,17 @@ class MultiTemplateWidget(TemplateWidget):
         self.setLayout(layout)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        toolsLayout = QHBoxLayout()
+        buttonsLayout = QHBoxLayout()
         resizeBtn = QPushButton("N")
         resizeBtn.clicked.connect(self.resizeItems)
         addBtn = QPushButton("+")
         addBtn.clicked.connect(self.addBtnClicked)
         removeBtn = QPushButton("-")
         removeBtn.clicked.connect(self.removeBtnClicked)        
-        toolsLayout.addWidget(resizeBtn)
-        toolsLayout.addWidget(addBtn)
-        toolsLayout.addWidget(removeBtn)
-        toolsLayout.addStretch()
-        layout.addLayout(toolsLayout)
+        buttonsLayout.addWidget(resizeBtn)
+        buttonsLayout.addWidget(addBtn)
+        buttonsLayout.addWidget(removeBtn)
+        buttonsLayout.addStretch()        
 
         itemsWidget = QWidget()
         self.itemsLayout = QGridLayout()
@@ -44,18 +45,18 @@ class MultiTemplateWidget(TemplateWidget):
         self.itemsLayout.setContentsMargins(0, 0, 0, 0)
         itemsWidget.setLayout(self.itemsLayout)
 
-        self.scrollArea = QScrollArea()
-        self.scrollArea.setWidget(itemsWidget)
-        self.scrollArea.setWidgetResizable(True)    
-        layout.addWidget(self.scrollArea)
-        layout.addStretch()
+        scrollArea = QScrollArea()
+        scrollArea.setWidget(itemsWidget)
+        scrollArea.setWidgetResizable(True)
 
-        self.setContextMenuPolicy(Qt.DefaultContextMenu)
+        layout.addLayout(buttonsLayout)
+        layout.addWidget(scrollArea)
+        layout.addStretch()
 
     def addBtnClicked(self):
         data = self.getJsonData()
 
-        itemData = self.itemsLayout.itemAt(1).widget().getJsonData() if self.itemsLayout.count() > 1 else TemplateWidgets[data["template"]]().getJsonData()
+        itemData = self.itemsLayout.itemAt(1).widget().getJsonData() if self.itemsLayout.count() > 1 else MultiTemplateWidgets[data["template"]]().getJsonData()
 
         data["items"].append(itemData)
         self.setJsonData(data)
@@ -75,7 +76,7 @@ class MultiTemplateWidget(TemplateWidget):
         menu = QMenu(self)
 
         templateMenu = QMenu("Template")
-        for t in sorted(TemplateWidgets):
+        for t in sorted(MultiTemplateWidgets):
             action = QAction(t, self)
             action.setCheckable(True)
             if t == self.template:
@@ -99,11 +100,11 @@ class MultiTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def changeTemplate(self, t):
-        self.setJsonData({"items": [TemplateWidgets[t]().getJsonData()]*(self.itemsLayout.count()/2), "template":t, "default":"values"})
+        self.setJsonData({"items": [MultiTemplateWidgets[t]().getJsonData()]*(self.itemsLayout.count()/2), "template":t, "default":"values"})
         self.somethingChanged.emit()
 
     def getDefaultData(self):
-        return {"items": [TemplateWidgets["checkBox"]().getJsonData()]*2, "values":[], "template":"checkBox", "default":"values"}
+        return {"items": [MultiTemplateWidgets["checkBox"]().getJsonData()]*2, "values":[], "template":"checkBox", "default":"values"}
 
     def getJsonData(self):
         items = []
@@ -127,18 +128,8 @@ class MultiTemplateWidget(TemplateWidget):
         clearLayout(self.itemsLayout)
 
         for i, itemData in enumerate(data["items"]):
-            w = TemplateWidgets[self.template]()
+            w = MultiTemplateWidgets[self.template]()
             w.setJsonData(itemData)
             w.somethingChanged.connect(self.somethingChanged)
             self.itemsLayout.addWidget(QLabel(str("[%d]"%i)), i, 0)
             self.itemsLayout.addWidget(w, i, 1)
-
-'''
-def somethingChanged():print w.getJsonData()
-app = QApplication([])
-w = MultiTemplateWidget()
-w.setJsonData({"items": [LineEditTemplateWidget().getJsonData()]*10, "values":[], "template":"lineEdit", "default":"values"})
-w.somethingChanged.connect(somethingChanged)
-w.show()
-app.exec_()      
-'''

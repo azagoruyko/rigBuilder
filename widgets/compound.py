@@ -1,29 +1,30 @@
 from .base import *
 
+from .button import *
 from .checkBox import *
 from .comboBox import *
 from .curve import *
 from .label import *
 from .lineEdit import *
 from .lineEditAndButton import *
-from .button import *
 from .listBox import *
 from .radioButton import *
 from .text import *
 from .vector import *
 
-TemplateWidgets = {"lineEdit": LineEditTemplateWidget, 
-                   "lineEditAndButton": LineEditAndButtonTemplateWidget, 
-                   "label": LabelTemplateWidget, 
-                   "button": ButtonTemplateWidget, 
-                   "checkBox": CheckBoxTemplateWidget,
-                   "comboBox": ComboBoxTemplateWidget,
-                   "curve": CurveTemplateWidget,
-                   "listBox": ListBoxTemplateWidget,
-                   "radioButton": RadioButtonTemplateWidget,
-                   "text": TextTemplateWidget,
-                   "vector": VectorTemplateWidget}
-
+CompoundTemplateWidgets = {
+    "button": ButtonTemplateWidget,
+    "checkBox": CheckBoxTemplateWidget,
+    "comboBox": ComboBoxTemplateWidget,
+    "curve": CurveTemplateWidget,
+    "label": LabelTemplateWidget,
+    "lineEdit": LineEditTemplateWidget,
+    "lineEditAndButton": LineEditAndButtonTemplateWidget,
+    "listBox": ListBoxTemplateWidget,
+    "radioButton": RadioButtonTemplateWidget,
+    "text": TextTemplateWidget,
+    "vector": VectorTemplateWidget}
+    
 class CompoundTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(CompoundTemplateWidget, self).__init__(**kwargs)
@@ -66,8 +67,8 @@ class CompoundTemplateWidget(TemplateWidget):
             layoutItems = layout.split(";")
             numColumns = int(layoutItems[0])
             for item in layoutItems[1:]:
-                if TemplateWidgets.get(item):
-                    items.append({"template": item, "data":TemplateWidgets[item]().getDefaultData()})
+                if CompoundTemplateWidgets.get(item):
+                    items.append({"template": item, "data":CompoundTemplateWidgets[item]().getDefaultData()})
                 else:
                     items.append(item.strip())
 
@@ -75,8 +76,8 @@ class CompoundTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def getDefaultData(self):
-        return {"layout":{"items": [{"template": "lineEdit", "data":TemplateWidgets["lineEdit"]().getDefaultData()}, 
-                                     "Are you sure?", {"template":"checkBox", "data":TemplateWidgets["checkBox"]().getDefaultData()}], 
+        return {"layout":{"items": [{"template": "lineEdit", "data":CompoundTemplateWidgets["lineEdit"]().getDefaultData()}, 
+                                     "Are you sure?", {"template":"checkBox", "data":CompoundTemplateWidgets["checkBox"]().getDefaultData()}], 
                                      "columns":3}}
 
     def getJsonData(self):        
@@ -106,10 +107,10 @@ class CompoundTemplateWidget(TemplateWidget):
         for i, item in enumerate(layout["items"]):
             c = i % self.numColumns
             r = i / self.numColumns
-            if type(item) in [str]:
+            if type(item) in [str, unicode]:
                 self.gridLayout.addWidget(QLabel(item), r, c)
             else:
-                w = TemplateWidgets[item["template"]](env=self.env)
+                w = CompoundTemplateWidgets[item["template"]](env=self.env)
                 w.setJsonData(item["data"])
                 w.template = item["template"]
                 w.somethingChanged.connect(self.somethingChanged)

@@ -25,7 +25,7 @@ class VectorTemplateWidget(TemplateWidget):
         layout.addWidget(self.zWidget)
 
     def getJsonData(self):
-        return {"value": [float(self.xWidget.text()), float(self.yWidget.text()), float(self.zWidget.text())],
+        return {"value": [float(self.xWidget.text() or 0), float(self.yWidget.text() or 0), float(self.zWidget.text() or 0)],
                 "default": "value"}
 
     def setJsonData(self, value):
