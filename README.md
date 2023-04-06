@@ -9,7 +9,7 @@ Install Qt.py.
 Add *rigBuilder* folder to your script path and run the following:
 ```python
 import rigBuilder
-rigBuilder.mainWindow.show() 
+rigBuilder.rigBuilderWindow.show() 
 ```
 
 ## File structure
