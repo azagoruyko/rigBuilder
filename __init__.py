@@ -74,6 +74,17 @@ def printErrorStack():
             indent += "  "
     print("Error: {}".format(exc_value))
 
+def centerWindow(window):
+    # get the dimensions of the screen
+    screen = QDesktopWidget().screenGeometry()
+    # calculate the center point of the screen
+    center_point = screen.center()
+    # get the dimensions of the window
+    window_geometry = window.frameGeometry()
+    # move the window to the center of the screen
+    window_geometry.moveCenter(center_point)
+    window.move(window_geometry.topLeft())
+
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
 
@@ -1586,11 +1597,12 @@ class RigBuilderToolWindow(QFrame):
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint)
 
         layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        self.vsplitter = WideSplitter(Qt.Vertical)
+        self.setLayout(layout)        
 
         self.logWidget = LogWidget()
+        self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.logWidget.hide()
+
         self.attributesTabWidget = AttributesTabWidget(self.module)
         self.codeEditorWidget = CodeEditorWidget(None)
         self.codeEditorWidget.hide()
@@ -1602,10 +1614,9 @@ class RigBuilderToolWindow(QFrame):
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
 
+        self.vsplitter = WideSplitter(Qt.Vertical)
         self.vsplitter.addWidget(self.attributesTabWidget)
-        self.vsplitter.addWidget(self.logWidget)
-
-        self.vsplitter.setSizes([500, 0])
+        self.vsplitter.addWidget(self.logWidget) # log is hidden by default
 
         layout.addWidget(self.vsplitter)
         layout.addWidget(runBtn)
@@ -1640,6 +1651,7 @@ class RigBuilderToolWindow(QFrame):
 
         self.setFocus()
 
+        self.logWidget.show()
         self.logWidget.clear()
         self.showLog()
 
@@ -1654,7 +1666,6 @@ class RigBuilderToolWindow(QFrame):
 
             try:
                 self.module.run(self.getModuleGlobalEnv(), uiCallback)
-
             except Exception as ex:
                 printErrorStack()
             finally:
@@ -1664,7 +1675,7 @@ class RigBuilderToolWindow(QFrame):
 
         self.attributesTabWidget.updateTabs()
 
-def RigBuilderTool(spec, x=700, y=300, width=700, height=500, child=None): # spec can be full path, relative path, uid
+def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relative path, uid
     modulePath = os.path.expandvars(spec)
 
     if Module.LocalUids.get(spec): # check local uid
@@ -1696,8 +1707,9 @@ def RigBuilderTool(spec, x=700, y=300, width=700, height=500, child=None): # spe
             return
 
     w = RigBuilderToolWindow(module)
-    w.setWindowTitle(u"Rig Builder Tool - {} - {}".format(modulePath, module.getPath()))
-    w.setGeometry(x, y, width, height)
+    w.setWindowTitle(u"Rig Builder Tool - {}".format(module.getPath()))
+    w.adjustSize()
+    centerWindow(w)
     return w
 
 if not os.path.exists(RigBuilderLocalPath):
