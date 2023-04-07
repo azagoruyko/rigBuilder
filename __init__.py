@@ -16,7 +16,6 @@ from Qt.QtWidgets import *
 from .classes import *
 from .editor import *
 import widgets
-from .templateWidgets import * # TemplateWidgets variable
 
 import maya.cmds as cmds
 import pymel.api as api
@@ -118,7 +117,7 @@ class TabAttributesWidget(QWidget):
                     rigBuilderWindow.logWidget.ensureCursorVisible()
 
         for i, a in enumerate(attributes):
-            templateWidget = TemplateWidgets[a.template](env={"mainWindow":rigBuilderWindow, "module": self.module})
+            templateWidget = widgets.TemplateWidgets[a.template](env={"mainWindow":rigBuilderWindow, "module": self.module})
             templateWidget.setJsonData(a.data)
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
 
@@ -196,7 +195,7 @@ class TabAttributesWidget(QWidget):
             with captureOutput(rigBuilderWindow.logWidget):
                 try:
                     data = json.loads(editText.outputText)
-                    tmp = TemplateWidgets[attr.template]() # also we need check for widget compatibility
+                    tmp = widgets.TemplateWidgets[attr.template]() # also we need check for widget compatibility
                     tmp.setJsonData(data)
 
                 except:
@@ -209,7 +208,7 @@ class TabAttributesWidget(QWidget):
                     rigBuilderWindow.attributesTabWidget.updateTabs()
 
     def resetAttr(self, attr):
-        tmp = TemplateWidgets[attr.template]()
+        tmp = widgets.TemplateWidgets[attr.template]()
         attr.data = tmp.getDefaultData()
         attr.connect = ""
         rigBuilderWindow.attributesTabWidget.updateTabs()
@@ -534,10 +533,14 @@ class TreeWidget(QTreeWidget):
         sourceRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 2))        
 
         if item.module.isLoadedFromLocal():
+            painter.setPen(QColor(120, 220, 120))
             painter.drawText(sourceRect, "local")
 
         elif item.module.isLoadedFromServer():
+            painter.setPen(QColor(120, 120, 120))
             painter.drawText(sourceRect, "server")
+
+        painter.setPen(QColor(120, 120, 120))
 
         uidRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 3))
         painter.drawText(uidRect, item.module.uid[:8])
@@ -965,10 +968,10 @@ class TemplateSelectorDialog(QDialog):
 
         filterText = unicode(self.filterWidget.text())
 
-        for t in sorted(TemplateWidgets.keys()):
+        for t in sorted(widgets.TemplateWidgets.keys()):
             if not filterText or re.search(filterText, t, re.IGNORECASE):
                 self.gridLayout.addWidget(QLabel(t))
-                w  = TemplateWidgets[t]()
+                w  = widgets.TemplateWidgets[t]()
                 w.setJsonData(w.getDefaultData())
                 self.gridLayout.addWidget(w)
 
@@ -997,7 +1000,7 @@ class EditTemplateWidget(QWidget):
         self.nameWidget.contextMenuEvent = self.nameContextMenuEvent
         self.nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
 
-        self.templateWidget = TemplateWidgets[template]()
+        self.templateWidget = widgets.TemplateWidgets[template]()
 
         buttonsLayout = QHBoxLayout()
         buttonsLayout.setContentsMargins(0,0,0,0)
@@ -1142,7 +1145,7 @@ class EditAttributesWidget(QWidget):
             self.insertCustomWidget(selector.selectedTemplate)
 
     def insertCustomWidget(self, template, row=None):
-        if not TemplateWidgets.get(template):
+        if not widgets.TemplateWidgets.get(template):
             return
 
         row = self.attributesLayout.count() if row is None else row
