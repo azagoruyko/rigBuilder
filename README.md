@@ -11,18 +11,6 @@ Add *rigBuilder* folder to your script path and run the following:
 import rigBuilder
 rigBuilder.rigBuilderWindow.show() 
 ```
-
-## File structure
-| Name | Description |
-| -- | -- |
-|modules |All modules in xml |
-|qss|Dark style |
-|utils | Utilities such as yapf for python formatting |
-|widgets | Attribute widgets|
-|classes.py	| Definition of the two main classes: Attribute and Module|
-|editor.py |	Python code editor|
-|templateWidgets.py |	Widgets set up here|
-
 ## The Basics
 The main working element is a module. The module is a container with attributes and executable Python code.
 Modules can be hierarchically linked. Data is stored in attributes. Attribute is a field that contains json-compatible data:
@@ -98,25 +86,22 @@ Currently a lot of widgets available for your attributes.
 
 ![rb3](https://user-images.githubusercontent.com/9614751/159117051-dd100f67-8159-4fa2-8fae-eb1921a64bae.PNG)
 
-If you want to create new attribute widget, you need to define a class derived from `TemplateWidget` (defined in `widgets/base.py`).
+If you want to create new attribute widget, you need to define a class derived from `TemplateWidget` (defined in `widgets.py`).
 For this class, you need to implement two functions:
 * `getJsonData()`<br>
   The function should return the state of the widget in json format, where the key "default" must point to another key, which will be the default value for the attribute.<br>
-  For example, {"text": "hello world", "default": "text"}
+  For example: `{"text": "hello world", "default": "text"}`
   
 * `setJsonData(data)`<br>
   The function should set the widget to match data.
-  By executing setJsonData(getJsonData ()) the widget must guarantee that the state will not change.
+  By executing `setJsonData(getJsonData())` the widget must guarantee that the state will not change.
 
-Any changes in the state of the widget must be recorded by emitting `somethingChanged` slot of the base class. For example, stateChanged, textChanged, and other slots must emit `self.somethingChanged.emit()` directly or indirectly. Thus, working with the interface, the program receives all registered changes to the widget and saves the json state to the corresponding attribute of the module.
+Any changes in the state of the widget must be recorded by emitting `somethingChanged` slot of the base class. For example, `stateChanged`, `textChanged`, and other slots must emit `self.somethingChanged.emit()` directly or indirectly. Thus, working with the interface, the program receives all registered changes to the widget and saves the json state to the corresponding attribute of the module.
 
-After writing the class, you need to add the loading of the widget to `widgets/__init__.py`.
-And finally, in `templateWidgets.py` you need to register the name of the created widget in the `TemplateWidgets` variable.
+In `widgets.py` you need to register the name of the created widget in the `TemplateWidgets` variable.
 
-Below is an example of a custom checkBox widget. Notice the class name and the implementation of the two main methods getJsonData and setJsonData.
+Below is an example of a custom checkBox widget. Notice the class name and the implementation of the two main methods `getJsonData` and `setJsonData`.
 ```python
-from .base import *
-
 class CheckBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(CheckBoxTemplateWidget, self).__init__(**kwargs)
@@ -133,11 +118,11 @@ class CheckBoxTemplateWidget(TemplateWidget):
         return {"checked": self.checkBox.isChecked(), "default": "checked"}
 
     def setJsonData(self, value):
-        self.checkBox.setChecked(True if value["checked"] else False)
+        self.checkBox.setChecked(value["checked"])
 ```
 
 ## Module as a tool
-Each module can be run in Maya in a separate window.
+Each module can be run in a separate window.
 ```python
 import rigBuilder
 rigBuilder.RigBuilderTool("Tools/ExportBindPose.xml").show() # path can be relative, absolute or specified by uid
