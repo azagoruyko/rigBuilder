@@ -459,8 +459,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
 
     def buttonClicked(self):
         if self.buttonCommand:
-            import Qt
-            env = {"value": self.textWidget.text(), "Qt": Qt}
+            env = {"value": self.textWidget.text()}
             exec(self.buttonCommand) in env
             self.setCustomText(env["value"])
 

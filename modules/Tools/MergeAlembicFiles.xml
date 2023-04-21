@@ -48,7 +48,7 @@ pm.playbackOptions(min=1, max=endFrame)
 pm.AbcExport(j="-frameRange 1 {endFrame} -dataFormat ogawa -root {node} -file {file}".format(endFrame=endFrame, node=orig, file=outputPath))
 ]]></run>
 <attributes>
-<attr name="folder" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nfolder = Qt.QtWidgets.QFileDialog.getExistingDirectory(None, \"Select directory\", value)\nif folder: value = folder", "buttonLabel": "...", "value": "D:/Temp/skirt03/alembic"}]]></attr>
+<attr name="folder" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nfrom PySide2.QtWidgets import QFileDialog\nfolder = QFileDialog.getExistingDirectory(None, \"Select directory\", value)\nif folder: value = folder", "buttonLabel": "...", "value": "D:/Temp/skirt03/alembic"}]]></attr>
 </attributes>
 <children>
 </children>

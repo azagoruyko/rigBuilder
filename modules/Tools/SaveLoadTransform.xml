@@ -35,7 +35,7 @@ else: # load transformation
 <attributes>
 <attr name="mode" template="radioButton" category="General" connect=""><![CDATA[{"current": 1, "items": ["Save", "Load"], "default": "current"}]]></attr>
 <attr name="objects" template="listBox" category="General" connect=""><![CDATA[{"default": "items", "items": ["M_spine_fk_1_control", "M_spine_fk_2_control", "M_spine_fk_3_control"]}]]></attr>
-<attr name="file" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nimport os\nf,_ = Qt.QtWidgets.QFileDialog.getOpenFileName(None, \"Select a file\", os.path.dirname(value))\nif v: value = f", "buttonLabel": "...", "value": "c:/data.txt"}]]></attr>
+<attr name="file" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nimport os\nfrom PySide2.QtWidgets import QFileDialog\nf,_ = QFileDialog.getOpenFileName(None, \"Select a file\", os.path.dirname(value))\nif v: value = f", "buttonLabel": "...", "value": "c:/data.txt"}]]></attr>
 <attr name="loadAllObjects" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>
 </attributes>
 <children>
