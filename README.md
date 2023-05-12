@@ -12,23 +12,23 @@ rigBuilder.rigBuilderWindow.show()
 ## The Basics
 The main working element is a module. The module is a container with attributes and executable Python code.
 Modules can be hierarchically linked. Data is stored in attributes. Attribute is a field that contains json-compatible data:
-* Numbers  -  12, 3.14, -0.123
-* Strings  -  Hello world!
-* Lists  -  [This, list, [1,2,3]]
-* Dictionaries  -  {a: 1, b: 2, list:[1,2,3]}
+* Numbers  -  `12, 3.14, -0.123`
+* Strings  -  `Hello world!`
+* Lists  -  `[This, list, [1,2,3]]`
+* Dictionaries  -  `{a: 1, b: 2, list:[1,2,3]}`
 
 The attributes store all the information about the corresponding widget. By transmitting such information, connections are implemented.
 
-Modules are launched sequentially from top to bottom in the hierarchy, starting from the current module. In the module code, its own attributes are available as variables with the @ prefix.
+Modules are launched sequentially from top to bottom in the hierarchy, starting from the current module. In the module code, its own attributes are available as variables with the `@` prefix.
 
 There are three kinds of variables for each attribute:
-* Default value (@).<br>
-  Attribute name prefixed with @: `@input`, `@curve`.<br> 
+* Default value (`@`).<br>
+  Attribute name prefixed with `@`: `@input`, `@curve`.<br> 
   This is the value that the widget represents.
-* All attribute data (@_data).<br>
+* Full attribute data (`@_data`).<br>
   `@input_data`, `@curve_data`.<br>
   By changing this data, you can edit the behavior of the widget. 
-* Attribute value setting function (@set) <br>
+* Attribute value setting function (`@set`) <br>
   `@set_input(3)`, `@set_list([1,2,3,4])`<br>
   This sets the default value of the attribute.
 
@@ -59,14 +59,24 @@ In addition, several predefined variables and functions are available:
 
 | Variable | Description |
 | -- | -- |
-|MODULE_NAME |	Current module name |
-|MODULE_TYPE |	Current module type |
-|SHOULD_RUN_CHILDREN |	If False then don’t run children |
-|Channel | Attributes accessor. See below |
-|copyJson (function) |	Fast copy json-compatible data |
-|error/warning (function) |	Error/warning in log |
-|evaluateBezierCurve (function) |	For curve widget. Evaluate point on bezier f(@curve, param) => [x, y] |
-|evaluateBezierCurveFromX (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
+|`MODULE_NAME` |	Current module name |
+|`MODULE_TYPE` |	Current module type |
+|`SHOULD_RUN_CHILDREN` |	If False then don’t run children |
+| `Module` | Runtime module creator like `m = Module("biped/leg");m.run()` |
+|`Channel` | Attributes accessor. See below |
+|`copyJson` (function) |	Fast copy json-compatible data |
+|`error`/`warning` (function) |	Error/warning in log |
+|`evaluateBezierCurve` (function) |	For curve widget. Evaluate point on bezier f(@curve, param) => [x, y] |
+|`evaluateBezierCurveFromX` (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
+
+## Modules
+Modules can be created in scripts during their evaluation with `Module` class.
+```python
+mleg = Module("biped/leg") # can be absolute/relative path or uid
+mleg.name.set("l_leg")
+mleg.joint1.set("l_leg_1_joint")
+mleg.run()
+```
 
 ## Channels
 Modules can access parent and neibour attributes using Channel approach. Channels have `get` and `set` methods.
