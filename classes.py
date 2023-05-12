@@ -6,7 +6,6 @@ import re
 import glob
 import json
 import uuid
-import traceback
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape, unescape
 
@@ -53,6 +52,9 @@ def copyJson(data):
         raise TypeError("Data of %s type is not JSON compatible: %s"%(type(data), str(data)))
 
 class AttributeResolverError(Exception):
+    pass
+
+class ModuleNotFoundError(Exception):
     pass
 
 class CopyJsonError(Exception):
@@ -111,7 +113,7 @@ class Channel(object):
 
     def set(self, value):
         self.attr.data[self.attr.data["default"]] = value
-
+   
 class Module(object):
     AttributePrefix = "attr_"
 
@@ -315,6 +317,37 @@ class Module(object):
         m = Module.fromXml(ET.parse(fileName).getroot())
         m.loadedFrom = os.path.realpath(fileName)
         return m
+    
+    @staticmethod
+    def loadModule(spec): # spec can be full path, relative path or uid
+        modulePath = None
+
+        if Module.LocalUids.get(spec): # check local uid
+            modulePath = Module.LocalUids[spec]
+
+        elif Module.ServerUids.get(spec): # check server uid
+            modulePath = Module.ServerUids[spec]
+
+        else:
+            specPath = os.path.expandvars(spec)
+
+            for path in [specPath,
+                         specPath+".xml",
+                         RigBuilderLocalPath+"/modules/"+spec, 
+                         RigBuilderLocalPath+"/modules/"+spec+".xml",
+                         RigBuilderPath+"/modules/"+spec, 
+                         RigBuilderPath+"/modules/"+spec+".xml"]:
+                
+                if os.path.exists(path):
+                    modulePath = path
+                    break      
+            
+            if not modulePath:
+                raise ModuleNotFoundError("Module '{}' not found".format(spec))
+
+        module = Module.loadFromFile(modulePath)
+        module.update()
+        return module
 
     @staticmethod
     def listModules(path):
@@ -417,6 +450,7 @@ class Module(object):
                      "MODULE_NAME": self.name,
                      "MODULE_TYPE": self.type,
                      "Channel": lambda x: Channel(self.parent, x),
+                     "Module": ModuleInScript,
                      "copyJson": copyJson,
                      "error": lambda x: printer("Error: " + x),
                      "warning": lambda x: printer("Warning: " + x)}
@@ -468,5 +502,42 @@ class Module(object):
                     uids[uid] = fpath
 
         return uids
+
+# used inside modules in scripts  
+class AttributeInScript(object):
+    def __init__(self, attr):
+        self._attribute = attr
+
+    def set(self, v):
+        k = self._attribute.data["default"]
+        self._attribute.data[k] = v
+
+    def get(self):
+        k = self._attribute.data["default"]
+        return self._attribute.data[k]
+
+class ModuleInScript(object):
+    def __init__(self, spec):
+        self._module = Module.loadModule(spec)
+
+    def setAttr(self, attrName, value):
+        attr = self._module.findAttribute(attrName)
+        if attr:
+            AttributeInScript(attr).set(value)
+
+    def getAttr(self, attrName):
+        attr = self._module.findAttribute(attrName)
+        if attr:
+            return AttributeInScript(attr).get()
+
+    def __getattr__(self, name):
+        module = object.__getattribute__(self, "_module")
+
+        attr = module.findAttribute(name)
+        if attr:
+            return AttributeInScript(attr)    
+    
+    def run(self):
+        self._module.run(globals())    
 
 Module.updateUidsCache()

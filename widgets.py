@@ -1,6 +1,6 @@
-from Qt.QtGui import *
-from Qt.QtCore import *
-from Qt.QtWidgets import *
+from PySide2.QtGui import *
+from PySide2.QtCore import *
+from PySide2.QtWidgets import *
 
 import sys
 import os
@@ -460,7 +460,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def buttonClicked(self):
         if self.buttonCommand:
             env = {"value": self.textWidget.text()}
-            exec(self.buttonCommand) in env
+            exec(self.buttonCommand, env)
             self.setCustomText(env["value"])
 
             self.somethingChanged.emit()

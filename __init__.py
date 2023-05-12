@@ -3,15 +3,13 @@
 import time
 import json
 import re
-import traceback
-import subprocess
 import os
 import sys
 from contextlib import contextmanager
 
-from Qt.QtGui import *
-from Qt.QtCore import *
-from Qt.QtWidgets import *
+from PySide2.QtGui import *
+from PySide2.QtCore import *
+from PySide2.QtWidgets import *
 
 from .classes import *
 from .editor import *
@@ -1311,8 +1309,9 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "Channel", "copyJson", "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
-                 "beginProgress", "stepProgress", "endProgress", "currentTabIndex", "getMultiData", "getCompoundData"]
+        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "Module", "Channel", "copyJson", 
+                 "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
+                 "beginProgress", "stepProgress", "endProgress", "currentTabIndex"]
 
         prefix = "@"
         for a in self.module.getAttributes():
@@ -1679,29 +1678,10 @@ class RigBuilderToolWindow(QFrame):
         self.attributesTabWidget.updateTabs()
 
 def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relative path, uid
-    modulePath = os.path.expandvars(spec)
-
-    if Module.LocalUids.get(spec): # check local uid
-       modulePath = Module.LocalUids[spec]
-
-    elif Module.ServerUids.get(spec): # check server uid
-       modulePath = Module.ServerUids[spec]
-
-    elif os.path.exists(modulePath): # check full path
-       pass
-
-    elif os.path.exists(RigBuilderLocalPath+"/modules/"+modulePath): # check relative local path
-        modulePath = RigBuilderLocalPath+"/modules/"+modulePath
-
-    elif os.path.exists(RigBuilderPath+"/modules/"+modulePath): # check relative path
-        modulePath = RigBuilderPath+"/modules/"+modulePath
-
-    else:
+    module = Module.loadModule(spec)
+    if not module:
         cmds.warning("Cannot load '{}' module".format(spec))
         return
-
-    module = Module.loadFromFile(modulePath)
-    module.update()
 
     if child:
         module = module.findChild(child)
