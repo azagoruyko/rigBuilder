@@ -436,7 +436,7 @@ class TreeWidget(QTreeWidget):
 
         self.moduleListDialog = ModuleListDialog()
 
-        self.setHeaderLabels(["Name", "Type", "Source", "UID"])
+        self.setHeaderLabels(["Name", "Path", "Source", "UID"])
         self.setSelectionMode(QAbstractItemView.ExtendedSelection) # ExtendedSelection
 
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -449,7 +449,7 @@ class TreeWidget(QTreeWidget):
         self.setIndentation(30)
 
         self.setMouseTracking(True)
-        self.itemChanged.connect(self.treeItemChanged)
+        self.itemDoubleClicked.connect(self.treeItemDoubleClicked)
 
     def drawRow(self, painter, options, modelIdx):
         painter.save()
@@ -490,11 +490,10 @@ class TreeWidget(QTreeWidget):
                 painter.drawLine(rect.x() - 10, rect.y() + 5, rect.x() - 10, rect.y() + 12)
                 painter.drawLine(rect.x() - 7, rect.y() + 8, rect.x() - 13, rect.y() + 8)
 
-        nameIdx = modelIdx.sibling(modelIdx.row(), 0)
-        nameRect = self.visualRect(nameIdx)
-
-        typeIdx = modelIdx.sibling(modelIdx.row(), 1)
-        typeRect = self.visualRect(typeIdx)
+        nameRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 0))
+        pathRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 1))
+        sourceRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 2))
+        uidRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 3))
 
         if not re.match("\\w*", unicode(item.module.name)):
             painter.fillRect(nameRect, QBrush(QColor(170, 50, 50)))
@@ -521,14 +520,7 @@ class TreeWidget(QTreeWidget):
         painter.drawText(nameRect, Qt.AlignLeft | Qt.AlignVCenter, item.module.name+modifiedSuffix)
 
         painter.setPen(QColor(120, 120, 120))
-
-        if not re.match("^[\\w/ ]*$", unicode(item.module.type)):
-            painter.setPen(QColor(200, 200, 200))
-            painter.fillRect(typeRect, QBrush(QColor(170, 50, 50)))
-
-        painter.drawText(typeRect, Qt.AlignLeft | Qt.AlignVCenter, item.module.type)
-
-        sourceRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 2))        
+        painter.drawText(pathRect, Qt.AlignLeft | Qt.AlignVCenter, item.text(1))        
 
         if item.module.isLoadedFromLocal():
             painter.setPen(QColor(120, 220, 120))
@@ -538,11 +530,8 @@ class TreeWidget(QTreeWidget):
             painter.setPen(QColor(120, 120, 120))
             painter.drawText(sourceRect, "server")
 
-        painter.setPen(QColor(120, 120, 120))
-
-        uidRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 3))
+        painter.setPen(QColor(120, 120, 120))        
         painter.drawText(uidRect, item.module.uid[:8])
-
         painter.restore()
 
     def paintEvent(self, event):
@@ -611,39 +600,20 @@ class TreeWidget(QTreeWidget):
             self.dragItems = []
             self.dragParents = []
 
-    def treeItemChanged(self, item):
-        newName = unicode(item.text(0)).strip()
-        newType = unicode(item.text(1)).strip()
-
-        item.module.name = replaceSpecialChars(newName)
-        item.setText(0, item.module.name)
-
-        item.module.type = newType
-        item.setText(1, item.module.type)
-
-        self.updateItemToolTip(item)
-
-    def updateItemToolTip(self, item):
-        tooltip = []
-        fname = item.module.loadedFrom
-        if item.module.loadedFrom and os.path.exists(fname):
-            tooltip.append("<b>uid</b>: %s"%item.module.uid)
-            tooltip.append("<b>Loaded from</b>: %s"%fname)
-            tooltip.append("<b>File modification time</b>: %s"%time.strftime("%Y/%m/%d %H:%M", time.localtime(os.path.getmtime(fname))))
-        item.setToolTip(0, "<br>".join(tooltip))
-
-        item.setToolTip(3, item.module.uid)
+    def treeItemDoubleClicked(self, item, column):
+        if column == 0: # name
+            newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, item.module.name)
+            if ok and newName:
+                newName = replaceSpecialChars(newName).strip()
+                item.module.name = newName
+                item.setText(0, item.module.name + " ")        
+            item.setExpanded(not item.isExpanded()) # revert expand on double click
 
     def makeItemFromModule(self, module):
-        item = QTreeWidgetItem([module.name+" ", module.type+" ", " ", module.uid])
-        item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
+        item = QTreeWidgetItem([module.name+" ", module.getRelativeLoadedPathString()+" ", " ", module.uid])
+        item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
         item.module = module
         item.module.modified = False
-
-        self.updateItemToolTip(item)
-
-        if module.type and os.path.exists(module.loadedFrom):
-            item.setForeground(0, QColor(80,140,180))
 
         for ch in module.getChildren():
             item.addChild(self.makeItemFromModule(ch))
@@ -763,7 +733,6 @@ class TreeWidget(QTreeWidget):
 
             item = self.makeItemFromModule(m)
             self.addTopLevelItem(item)
-            self.updateItemToolTip(item)
 
         except ET.ParseError:
             print("Error '%s': invalid module"%path)
@@ -784,8 +753,7 @@ class TreeWidget(QTreeWidget):
                 outputPath = item.module.getSavePath()
 
                 if not outputPath:
-                    name = item.module.type or item.module.name
-                    outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+name, "*.xml")
+                    outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+item.module.name, "*.xml")
 
                 if outputPath:
                     dirname = os.path.dirname(outputPath)
@@ -794,27 +762,27 @@ class TreeWidget(QTreeWidget):
 
                     item.module.saveToFile(outputPath)
                     clearModifiedFlag(item.module)
-                    
-                    self.updateItemToolTip(item)
+
+                item.setText(1, item.module.getRelativeLoadedPathString()+" ") # update path string
 
     def saveAsModule(self):
         for item in self.selectedItems():
             outputDir = os.path.dirname(api.MFileIO.currentFile())
-            name = item.module.type or item.module.name
-            outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save as "+item.module.name, outputDir + "/" +name, "*.xml")
+            outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save as "+item.module.name, outputDir + "/" +item.module.name, "*.xml")
 
             if outputPath:
                 item.module.uid = generateUid()
                 item.module.saveToFile(outputPath)
-
-            self.updateItemToolTip(item)
+                item.setText(1, item.module.getRelativeLoadedPathString()+" ") # update path string
 
     def embedModule(self):
         if QMessageBox.question(self, "Rig Builder", "Embed modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             for item in self.selectedItems():
                 item.module.uid = ""
                 item.module.loadedFrom = ""
-            self.updateItemToolTip(item)
+                
+                for i in range(1,4): # clear path, source and uid
+                    item.setText(i, "") # update path string
 
     def locateModuleFile(self):
         for item in self.selectedItems():
@@ -1198,7 +1166,7 @@ class EditAttributesTabWidget(QTabWidget):
             self.tempRunCode = replacePairs(pairs, self.tempRunCode)
 
     def tabBarMouseDoubleClickEvent(self, event):
-        super(EditAttributesTabWidget, self).mouseDoubleClickEvent(self, event)
+        super(EditAttributesTabWidget, self).mouseDoubleClickEvent(event)
 
         idx = self.currentIndex()
         newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, self.tabText(idx))
@@ -1316,7 +1284,6 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         prefix = "@"
         for a in self.module.getAttributes():
             words.append(prefix + a.name)
-            words.append(prefix + a.name + "_data")
             words.append(prefix + "set_"+a.name)
 
         self.editorWidget.words = set(words)

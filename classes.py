@@ -126,8 +126,6 @@ class Module(object):
         self.uid = "" # unique ids are assigned while saving
 
         self.name = name
-        self.type = ""
-
         self.runCode = ""
 
         self.parent = None
@@ -140,7 +138,6 @@ class Module(object):
     def copy(self):
         module = Module(self.name)
         module.uid = self.uid
-        module.type = self.type
         module.runCode = self.runCode
         module._attributes = [a.copy() for a in self._attributes]
 
@@ -159,7 +156,6 @@ class Module(object):
 
         return self.uid == other.uid and\
                self.name == other.name and\
-               self.type == other.type and\
                self.runCode == other.runCode and\
                self.parent == other.parent and\
                all([a==b for a, b in zip(self._attributes, other._attributes)]) and\
@@ -206,7 +202,6 @@ class Module(object):
 
     def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
-                 ("type", self.type),
                  ("muted", int(self.muted)),
                  ("uid", self.uid)]
 
@@ -222,7 +217,7 @@ class Module(object):
         template.append("</attributes>")
 
         template.append("<children>")
-        template += [ch.toXml(True) for ch in self._children] # keep inner connections only
+        template += [ch.toXml(keepConnections=True) for ch in self._children] # keep inner connections only
         template.append("</children>")
 
         template.append("</module>")
@@ -233,7 +228,6 @@ class Module(object):
     def fromXml(root):
         module = Module(root.attrib["name"])
         module.uid = root.attrib.get("uid", "")
-        module.type = root.attrib["type"]
         module.muted = int(root.attrib["muted"])
 
         module.runCode = root.findtext("run")
@@ -259,6 +253,31 @@ class Module(object):
         path = Module.LocalUids.get(self.uid) or Module.ServerUids.get(self.uid)
         if path and os.path.exists(path):
             return path
+
+    def getRelativeLoadedPath(self): # biped/limb.xml, biped.xml, tools/saveSkin.xml, etc
+        norm = lambda p: p.replace("\\", "/")
+        path = norm(self.loadedFrom)
+        path = path.replace(norm(RigBuilderLocalPath+"\\modules\\"), "")
+        path = path.replace(norm(RigBuilderPath+"\\modules\\"), "")
+        return path
+
+    def getRelativeLoadedPathString(self): # relative loaded path or ../folder/child/module.xml
+        if not self.loadedFrom:
+            return ""
+
+        path = ""
+        if self.isLoadedFromServer() or self.isLoadedFromLocal():
+            path = self.getRelativeLoadedPath()
+        else:
+            normLoadedPath = self.loadedFrom.replace("\\", "/")
+            items = normLoadedPath.split("/")
+            MaxPathItems = 3
+            if len(items) > MaxPathItems: # c: folder child module.xml
+                path = "../"+"/".join(items[-MaxPathItems:])
+            else:
+                path = normLoadedPath
+
+        return path.replace(".xml", "")
 
     def getSavePath(self):
         if self.isLoadedFromServer():
@@ -296,7 +315,6 @@ class Module(object):
             for ch in origModule._children:
                 self.addChild(ch)
 
-            self.type = origModule.type
             self.runCode = origModule.runCode
             self.loadedFrom = origModule.loadedFrom
 
@@ -448,7 +466,6 @@ class Module(object):
 
         localsEnv = {"SHOULD_RUN_CHILDREN": True,
                      "MODULE_NAME": self.name,
-                     "MODULE_TYPE": self.type,
                      "Channel": lambda x: Channel(self.parent, x),
                      "Module": ModuleInScript,
                      "copyJson": copyJson,
