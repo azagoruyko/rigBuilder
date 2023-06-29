@@ -60,7 +60,6 @@ In addition, several predefined variables and functions are available:
 | Variable | Description |
 | -- | -- |
 |`MODULE_NAME` |	Current module name |
-|`MODULE_TYPE` |	Current module type |
 |`SHOULD_RUN_CHILDREN` |	If False then don’t run children |
 | `Module` | Runtime module creator like `m = Module("biped/leg");m.run()` |
 |`Channel` | Attributes accessor. See below |
