@@ -219,12 +219,52 @@ class TabAttributesWidget(QWidget):
         destAttr.connect = connect
         rigBuilderWindow.attributesTabWidget.updateTabs()
 
+class SearchReplaceDialog(QDialog):
+    onReplace = Signal(str, str, dict) # old, new, options
+    
+    def __init__(self, options=[], **kwargs):
+        super(SearchReplaceDialog, self).__init__(**kwargs)
+        
+        self.optionsWidgets = {}
+        
+        self.setWindowTitle("Search/Replace")
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        
+        self.searchWidget = QLineEdit("L_")
+        self.replaceWidget = QLineEdit("R_")
+        
+        btn = QPushButton("Replace")
+        btn.clicked.connect(self.replaceClicked)
+        
+        gridLayout = QGridLayout()
+        gridLayout.addWidget(QLabel("Search"),0,0)
+        gridLayout.addWidget(self.searchWidget,0,1)
+        gridLayout.addWidget(QLabel("Replace"),1,0)
+        gridLayout.addWidget(self.replaceWidget,1,1)
+        layout.addLayout(gridLayout)
+        
+        for opt in options:
+            w = QCheckBox(opt)
+            self.optionsWidgets[opt] = w
+            layout.addWidget(w)
+        
+        layout.addWidget(btn)
+        
+    def replaceClicked(self):
+        opts = {l:w.isChecked() for l,w in self.optionsWidgets.items()}
+        self.onReplace.emit(self.searchWidget.text(), self.replaceWidget.text(), opts)
+        self.accept()
+
 class AttributesTabWidget(QTabWidget):
     def __init__(self, module=None, **kwargs):
         super(AttributesTabWidget, self).__init__(**kwargs)
 
         self.module = module
         self.tabsAttributes = {}
+
+        self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"])
+        self.searchAndReplaceDialog.onReplace.connect(self.onReplace)
 
         self.currentChanged.connect(self.tabChanged)
         self.updateTabs()
@@ -237,6 +277,12 @@ class AttributesTabWidget(QTabWidget):
             editAttrsAction.triggered.connect(lambda _=None: self.editAttributes())
             menu.addAction(editAttrsAction)
 
+            menu.addSeparator()
+
+            replaceInValuesAction = QAction("Replace in values", self)
+            replaceInValuesAction.triggered.connect(self.searchAndReplaceDialog.exec_)
+            menu.addAction(replaceInValuesAction)
+
         menu.popup(event.globalPos())
 
     def editAttributes(self):
@@ -245,6 +291,27 @@ class AttributesTabWidget(QTabWidget):
 
         rigBuilderWindow.codeEditorWidget.update()
         self.updateTabs()
+
+    def onReplace(self, old, new, opts):
+        def replaceStringInData(data, old, new):
+            try:
+                return json.loads(json.dumps(data).replace(old,new))
+            except ValueError:
+                return data
+
+        if opts.get("In all tabs"):
+            attributes = []
+            for attrs in self.tabsAttributes.values(): # merge all attributes
+                attributes.extend(attrs)
+        else:
+            attributes = self.tabsAttributes[self.tabText(self.currentIndex())]
+
+        for attr in attributes:
+            valueKey = attr.data.get("default")
+            if valueKey:
+                attr.data[valueKey] = replaceStringInData(attr.data[valueKey], old, new)
+
+        self.updateTabs() 
 
     def tabChanged(self, idx):
         if self.count() == 0:
@@ -602,7 +669,7 @@ class TreeWidget(QTreeWidget):
 
     def treeItemDoubleClicked(self, item, column):
         if column == 0: # name
-            newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, item.module.name)
+            newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, item.module.name)
             if ok and newName:
                 newName = replaceSpecialChars(newName).strip()
                 item.module.name = newName
@@ -671,6 +738,7 @@ class TreeWidget(QTreeWidget):
             menu.addAction(muteAction)
 
             menu.addSeparator()
+
             saveAction = QAction("Save\tCTRL-S", self)
             saveAction.triggered.connect(self.saveModule)
             menu.addAction(saveAction)
@@ -1013,7 +1081,7 @@ class EditTemplateWidget(QWidget):
 
     def nameMouseDoubleClickEvent(self, event):
         oldName = self.nameWidget.text()
-        newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, oldName)
+        newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
         if ok:
             newName = replaceSpecialChars(newName)
             self.nameWidget.setText(newName)
@@ -1169,7 +1237,7 @@ class EditAttributesTabWidget(QTabWidget):
         super(EditAttributesTabWidget, self).mouseDoubleClickEvent(event)
 
         idx = self.currentIndex()
-        newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, self.tabText(idx))
+        newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, self.tabText(idx))
         if ok:
             self.setTabText(idx, newName)
 
