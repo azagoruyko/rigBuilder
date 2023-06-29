@@ -103,7 +103,7 @@ For this class, you need to implement two functions:
   The function should set the widget to match data.
   By executing `setJsonData(getJsonData())` the widget must guarantee that the state will not change.
 
-Any changes in the state of the widget must be recorded by emitting `somethingChanged` slot of the base class. For example, `stateChanged`, `textChanged`, and other slots must emit `self.somethingChanged.emit()` directly or indirectly. Thus, working with the interface, the program receives all registered changes to the widget and saves the json state to the corresponding attribute of the module.
+Any changes in the state of the widget must be recorded by emitting `somethingChanged` signal of the base class. For example, `stateChanged`, `textChanged`, and other signals must call `self.somethingChanged.emit()`. Thus, working with the interface, the program receives all registered changes to the widget and saves the json state to the corresponding attribute of the module.
 
 In `widgets.py` you need to register the name of the created widget in the `TemplateWidgets` variable.
 
