@@ -208,6 +208,18 @@ class SwoopSearchDialog(QDialog):
 
         self.edit = edit
 
+        self.useWordBoundary = False
+        self.findInsideBrackets = False
+        self.caseSensitive = True
+        self.downOnly = False
+
+        self.replaceMode = False
+
+        self.replacePattern = None
+        self.previousLines = []
+
+        self.savedSettings = {}        
+
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setWindowTitle("Swoop")
 
@@ -234,94 +246,67 @@ class SwoopSearchDialog(QDialog):
         layout.addWidget(self.statusWidget)
         self.rejected.connect(self.whenRejected)
 
-        self.initialize()
-
-    def initialize(self):
-        self.useWordBoundary = False
-        self.findInsideBrackets = False
-        self.caseSensitive = True
-        self.downOnly = False
-
-        self.replaceMode = False
-        self.numberSeparator = "  "
-
-        self.previousPattern = None
-        self.previousLines = []
-
-        self.savedSettings = {}
-
-        self.text = unicode(self.edit.toPlainText())
-        lines = self.text.split("\n")
+        # save initial state
+        self.text = self.edit.toPlainText()
         cursor = self.edit.textCursor()
 
         self.updateSavedCursor()
 
-        self.savedSettings["lines"] = lines
+        self.savedSettings["lines"] = self.text.split("\n")
 
-        findText = unicode(cursor.selectedText())
+        findText = cursor.selectedText()
         if not findText:
             findText = wordAtCursor(cursor)[0]
 
         self.filterWidget.setText(findText)
-        self.filterWidget.setStyleSheet("")
-        self.hide()
 
     def updateSavedCursor(self):
         cursor = self.edit.textCursor()
-        brackets = findBracketSpans(self.text, cursor.position(), brackets="{")
+        brackets = findBracketSpans(self.text, cursor.position())
         self.savedSettings["cursor"] = cursor
         self.savedSettings["scroll"] = self.edit.verticalScrollBar().value()
         self.savedSettings["brackets"] = brackets
 
-        self.findInsideBrackets = brackets[0] and self.findInsideBrackets
+        self.findInsideBrackets = brackets[0]!=brackets[1] and self.findInsideBrackets
 
     def showEvent(self, event):
         self.updateSavedCursor()
         self.reposition()
         self.filterWidget.setFocus()
 
-    def update(self):
-        self.initialize()
-        self.updateStatus()
-        self.filterTextChanged()
-
     def resultsMousePressEvent(self, event):
         cursor = self.resultsWidget.cursorForPosition(event.pos())
-
         highlightLine(self.resultsWidget, clear=True)
         highlightLine(self.resultsWidget, cursor.block().blockNumber())
         self.resultsLineChanged()
 
     def reposition(self):
         c = self.edit.mapToGlobal(self.edit.cursorRect().topLeft())
-
         w = self.resultsWidget.document().idealWidth() + 30
         h = self.resultsWidget.document().blockCount()*self.resultsWidget.cursorRect().height() + 110
-
-        self.setGeometry(c.x(), c.y() + 22, clamp(0, 500, w), clamp(0, 400, h))
+        self.setGeometry(c.x(), c.y() + self.edit.currentFontPointSize+5, clamp(0, 500, w), clamp(0, 400, h))
 
     def resultsLineChanged(self):
         if self.replaceMode:
             return
 
-        cursor = self.resultsWidget.textCursor()
-        cursor.select(QTextCursor.LineUnderCursor)
-        line = unicode(cursor.selectedText())
-
-        if not line:
+        resultsLine = self.resultsWidget.textCursor().block().text()
+        if not resultsLine:
             return
 
-        lineNumber, text = re.search("^([0-9]+)\\s-*(.*)$", line).groups("")
+        lineNumber = re.search("^(\\d+)", resultsLine).group()
         self.edit.gotoLine(int(lineNumber))
 
         currentFilter = self.getFilterPattern()
 
-        r = re.search(currentFilter, text, re.IGNORECASE if not self.caseSensitive else 0)
+        currentLine = self.edit.textCursor().block().text()
+
+        r = re.search(currentFilter, currentLine, re.IGNORECASE if not self.caseSensitive else 0)
 
         if r:
             cursor = self.edit.textCursor()
-            pos = cursor.block().position() + r.start() - 1
-            if pos >- 0:
+            pos = cursor.block().position() + r.start()
+            if pos > 0:
                 cursor.setPosition(pos)
                 self.edit.setTextCursor(cursor)
 
@@ -347,7 +332,7 @@ class SwoopSearchDialog(QDialog):
             items.append("[down]")
 
         if self.replaceMode:
-            items.append("[REPLACE '%s']"%self.previousPattern)
+            items.append("[REPLACE '%s']"%self.replacePattern)
 
         if items:
             self.statusWidget.setText(" ".join(items))
@@ -356,9 +341,7 @@ class SwoopSearchDialog(QDialog):
             self.statusWidget.hide()
 
     def filterKeyPressEvent(self, event):
-        shift = event.modifiers() & Qt.ShiftModifier
         ctrl = event.modifiers() & Qt.ControlModifier
-        alt = event.modifiers() & Qt.AltModifier
 
         rw = self.resultsWidget
         line = rw.textCursor().block().blockNumber()
@@ -416,7 +399,7 @@ class SwoopSearchDialog(QDialog):
             self.replaceMode = not self.replaceMode
             if self.replaceMode:
                 self.filterWidget.setStyleSheet("background-color: #433567")
-                self.previousPattern = self.getFilterPattern()
+                self.replacePattern = self.getFilterPattern()
             else:
                 self.filterWidget.setStyleSheet("")
                 self.filterTextChanged()
@@ -435,20 +418,23 @@ class SwoopSearchDialog(QDialog):
 
                 doc = self.edit.document()
 
+                getIndent = lambda s: s[:len(s) - len(s.lstrip())]
+
                 cursor.beginEditBlock()
-                lines = unicode(self.resultsWidget.toPlainText()).split("\n")
+                lines = self.resultsWidget.toPlainText().split("\n")
                 for line in lines:
                     if not line.strip():
                         continue
 
-                    lineNumber, text = re.search("^([0-9]+)%s(.*)$"%self.numberSeparator, line).groups("")
+                    lineNumber, text = re.search("^(\\d+)\\s*(.*)$", line).groups()
                     lineNumber = int(lineNumber)
 
                     blockPos = doc.findBlockByLineNumber(lineNumber-1).position()
                     cursor.setPosition(blockPos)
                     cursor.select(QTextCursor.LineUnderCursor)
+                    indent = getIndent(cursor.selectedText())
                     cursor.removeSelectedText()
-                    cursor.insertText(text)
+                    cursor.insertText(indent+text)
 
                 cursor.endEditBlock()
 
@@ -468,7 +454,7 @@ class SwoopSearchDialog(QDialog):
         self.edit.setFocus()
 
     def getFilterPattern(self):
-        currentFilter = re.escape(unicode(self.filterWidget.text()))
+        currentFilter = re.escape(self.filterWidget.text())
         if not currentFilter:
             return ""
 
@@ -482,17 +468,15 @@ class SwoopSearchDialog(QDialog):
         self.resultsWidget.setCurrentCharFormat(QTextCharFormat())
 
         if self.replaceMode: # replace mode
-            subStr = unicode(self.filterWidget.text()).replace("\\", "\\\\")
-
+            replaceString = self.filterWidget.text()
             pattern = self.getFilterPattern()
 
             lines = []
             for line in self.previousLines:
-                n, text = re.search("^([0-9]+)%s(.*)$"%self.numberSeparator, line).groups("")
+                n, text = re.search("^(\\d+)\\s*(.*)$", line).groups()
 
-                text = re.sub(self.previousPattern, subStr, text, 0, re.IGNORECASE if not self.caseSensitive else 0)
-                newLine = "%s%s%s"%(n, self.numberSeparator, text)
-                lines.append(newLine)
+                text = re.sub(self.replacePattern, replaceString, text, 0, re.IGNORECASE if not self.caseSensitive else 0)
+                lines.append("{0:<5} {1}".format(n, text.strip()))
 
             self.resultsWidget.setText("\n".join(lines))
             self.resultsWidget.syntax.highlightingRules[-1] = (pattern, self.resultsWidget.syntax.highlightingRules[-1][1])
@@ -503,9 +487,9 @@ class SwoopSearchDialog(QDialog):
 
             if self.findInsideBrackets:
                 cursor = QTextCursor(self.savedSettings["cursor"])
-                cursor.setPosition(self.savedSettings["brackets"][1])
+                cursor.setPosition(self.savedSettings["brackets"][0])
                 startBlock = cursor.block().blockNumber()
-                cursor.setPosition(self.savedSettings["brackets"][2])
+                cursor.setPosition(self.savedSettings["brackets"][1])
                 endBlock = cursor.block().blockNumber()
 
             if self.downOnly:
@@ -513,12 +497,10 @@ class SwoopSearchDialog(QDialog):
                 startBlock = cursor.block().blockNumber()
 
             currentFilter = self.getFilterPattern()
-
             currentBlock = self.edit.textCursor().block().blockNumber()
 
             self.previousLines = []
 
-            currentFilterText = unicode(self.filterWidget.text()).replace("\\", "\\\\")
             counter = 0
             currentIndex = 0
 
@@ -537,8 +519,7 @@ class SwoopSearchDialog(QDialog):
 
                 r = re.search(currentFilter, line, re.IGNORECASE if not self.caseSensitive else 0)
                 if r:
-                    item = "%s%s%s"%(i+1, self.numberSeparator, line)
-                    self.previousLines.append(item)
+                    self.previousLines.append("{0:<5} {1}".format(i+1, line.strip()))
                     counter += 1
 
             self.resultsWidget.setText("\n".join(self.previousLines))
@@ -572,8 +553,6 @@ class CodeEditorWidget(QTextEdit):
 
         self.searchStartWord = ("", 0, 0)
         self.prevCursorPosition = 0
-
-        self.swoopSearchDialog = SwoopSearchDialog(self, parent=self)
 
         self.setContextMenuPolicy(Qt.DefaultContextMenu)
 
@@ -712,11 +691,11 @@ class CodeEditorWidget(QTextEdit):
 
         if callable(self.formatFunction):
             formatAction = QAction("Format\tALT-SHIFT-F", self)
-            formatAction.triggered.connect(lambda: self.setTextSafe((self.formatFunction(unicode(self.toPlainText())))))
+            formatAction.triggered.connect(lambda _=None: self.setTextSafe((self.formatFunction(self.toPlainText()))))
             menu.addAction(formatAction)
 
         swoopAction = QAction("Swoop search\tF3", self)
-        swoopAction.triggered.connect(lambda: self.swoopSearch(True))
+        swoopAction.triggered.connect(lambda _=None: self.swoopSearch())
         menu.addAction(swoopAction)
 
         gotoLineAction = QAction("Goto line\tCtrl-G", self)
@@ -779,7 +758,7 @@ class CodeEditorWidget(QTextEdit):
 
         if alt and shift and key == Qt.Key_F:
             if callable(self.formatFunction):
-                self.setTextSafe((self.formatFunction(unicode(self.toPlainText()))))
+                self.setTextSafe((self.formatFunction(self.toPlainText())))
 
         elif alt and key == Qt.Key_M: # back to indentation
             cursor = self.textCursor()
@@ -788,7 +767,7 @@ class CodeEditorWidget(QTextEdit):
             text = cursor.selectedText()
             cursor.clearSelection()
 
-            found = re.findall("^\\s*", unicode(text))
+            found = re.findall("^\\s*", text)
             offset = len(found[0]) if found else 0
 
             cursor.setPosition(linePos + offset)
@@ -801,7 +780,7 @@ class CodeEditorWidget(QTextEdit):
         elif ctrl and alt and key == Qt.Key_Space:
             cursor = self.textCursor()
             pos = cursor.position()
-            _, start, end = findBracketSpans(unicode(self.toPlainText()), pos)
+            start, end = findBracketSpans(self.toPlainText(), pos)
             if start != end:
                 cursor.setPosition(start+1)
                 cursor.setPosition(end, QTextCursor.KeepAnchor)
@@ -824,7 +803,7 @@ class CodeEditorWidget(QTextEdit):
                 self.gotoNextBookmark(0)
 
         elif key == Qt.Key_F3: # emacs swoop
-            self.swoopSearch(not ctrl)
+            self.swoopSearch()
 
         elif ctrl and key == Qt.Key_G: # goto line
             self.gotoLine()
@@ -839,7 +818,7 @@ class CodeEditorWidget(QTextEdit):
                 self.completionWidget.hide()
             else:
                 cursor = self.textCursor()
-                block = unicode(cursor.block().text())
+                block = cursor.block().text()
                 spc = re.search("^(\\s*)", block).groups("")[0]
 
                 QTextEdit.keyPressEvent(self, event)
@@ -906,14 +885,14 @@ class CodeEditorWidget(QTextEdit):
             cursor = self.textCursor()
 
             cursor.beginEditBlock()
-            if not unicode(cursor.block().text()).strip():
+            if not cursor.block().text().strip():
                 cursor.movePosition(QTextCursor.StartOfBlock)
                 cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor)
                 cursor.removeSelectedText()
                 cursor.movePosition(QTextCursor.Up)
 
-            while not unicode(cursor.block().text()).strip() and not cursor.atStart(): # remove empty lines but last one
-                if unicode(cursor.block().previous().text()):
+            while not cursor.block().text().strip() and not cursor.atStart(): # remove empty lines but last one
+                if cursor.block().previous().text():
                     break
 
                 cursor.movePosition(QTextCursor.StartOfBlock)
@@ -927,7 +906,7 @@ class CodeEditorWidget(QTextEdit):
         elif ctrl and key in [Qt.Key_BracketLeft, Qt.Key_BracketRight]:
             cursor = self.textCursor()
             pos = cursor.position()
-            _, start, end = findBracketSpans(unicode(self.toPlainText()), pos)
+            start, end = findBracketSpans(self.toPlainText(), pos)
             if start != end:
                 cursor.setPosition(start if key == Qt.Key_BracketLeft else end)
                 self.setTextCursor(cursor)
@@ -952,11 +931,9 @@ class CodeEditorWidget(QTextEdit):
         else:
             QTextEdit.keyPressEvent(self, event)
 
-    def swoopSearch(self, update=True):
-        if update:
-            self.swoopSearchDialog.update()
-
-        self.swoopSearchDialog.exec_()
+    def swoopSearch(self):
+        swoopSearchDialog = SwoopSearchDialog(self, parent=self)
+        swoopSearchDialog.exec_()
 
     def moveLineUp(self):
         cursor = self.textCursor()
@@ -1034,7 +1011,7 @@ class CodeEditorWidget(QTextEdit):
         lineText = cursor.selectedText()
         cursor.clearSelection()
 
-        found = re.findall("^\\s*", unicode(lineText))
+        found = re.findall("^\\s*", lineText)
         offset = len(found[0]) if found else 0
 
         cursor.setPosition(linePos + offset)
@@ -1079,9 +1056,9 @@ class CodeEditorWidget(QTextEdit):
         row = block.blockNumber() if block.isValid() else 0
 
         if ctrl:
-            word = unicode(block.text())
+            word = block.text()
         else:
-            word = re.split("\\s*", unicode(block.text()))[0]
+            word = re.split("\\s*", block.text())[0]
 
         cursor = self.textCursor()
         cursor.setPosition(self.currentWord[1])
@@ -1127,7 +1104,7 @@ class CodeEditorWidget(QTextEdit):
 
         self.prevCursorPosition = pos
 
-        text, start, end = findBracketSpans(unicode(self.toPlainText()), pos)
+        start, end = findBracketSpans(self.toPlainText(), pos)
 
         extra = []
 
@@ -1145,7 +1122,7 @@ class CodeEditorWidget(QTextEdit):
         self.setExtraSelections(extra)
 
     def editorTextChanged(self):
-        text = unicode(self.toPlainText())
+        text = self.toPlainText()
 
         cursor = self.textCursor()
         pos = cursor.position()
@@ -1182,84 +1159,47 @@ class CodeEditorWidget(QTextEdit):
 
         self.completionWidget.show()
 
-def findBracketSpans(text, pos, brackets="([{"):
-        if not text:
-            return ("", 0, 0)
+def findBracketSpans(text, offset, brackets="{(["):
+    openingBrackets = "{(["
+    closingBrackets = "})]"
+    stack = [0 for i in range(len(openingBrackets))] # for each bracket set 0 as default
+    
+    if offset >= len(text) or offset < 0:
+        return -1, -1
+    
+    start,end = -1, -1
+    bracketIdx = None
+    for i in range(offset, -1, -1): # find start
+        c = text[i]
+        
+        if c in brackets and c in openingBrackets and stack[openingBrackets.index(c)] == 0:
+            start = i
+            bracketIdx = openingBrackets.index(c)
+            break
 
-        textLen = len(text)
-
-        # when no spaces at the current line then do nothing
-        start = pos-1
-        while start > 0 and text[start] != "\n":
-            start -= 1
-
-        if not re.search("^\\s+|[{\\(\\[]+", text[start+1:pos]):
-            return ("", 0, 0)
-
-        start = pos-1
-        end = pos
-
-        bracketDict = {"(":0, "[": 0, "{": 0}
-
-        bracketChar = ""
-        ok = False
-        while True:
-            if (bracketDict["("] < 0 and "(" in brackets) or\
-               (bracketDict["["] < 0 and "[" in brackets) or\
-               (bracketDict["{"] < 0 and "{" in brackets):
-                ok = True
-                break
-
-            if start < 0:
-                break
-
-            ch = text[start]
-            if ch in ["(", ")", "{", "}", "[", "]"]:
-                bracketChar = str(ch)
-                if ch == ")": bracketDict["("] += 1
-                elif ch == "(": bracketDict["("] -= 1
-
-                elif ch == "]": bracketDict["["] += 1
-                elif ch == "[": bracketDict["["] -= 1
-
-                elif ch == "}": bracketDict["{"] += 1
-                elif ch == "{": bracketDict["{"] -= 1
-
-            start -= 1
-
-        start += 1
-
-        if ok:
-            bracketDict = {"(":0, "[": 0, "{": 0}
-            ok = False
-            while True:
-                if bracketDict[bracketChar] < 0:
-                    ok = True
-                    break
-
-                if end >= textLen:
-                    break
-
-                ch = text[end]
-
-                if ch in ["(", ")", "{", "}", "[", "]"]:
-                    if ch == "(": bracketDict["("] += 1
-                    elif ch == ")": bracketDict["("] -= 1
-
-                    if ch == "[": bracketDict["["] += 1
-                    elif ch == "]": bracketDict["["] -= 1
-
-                    if ch == "{": bracketDict["{"] += 1
-                    elif ch == "}": bracketDict["{"] -= 1
-
-                end += 1
-
-            end -= 1
-
-            if ok:
-                return (text[start:end], start, end)
-
-        return ("", 0, 0)
+        elif c in openingBrackets:
+            stack[openingBrackets.index(c)] += 1
+                    
+        elif c in closingBrackets:
+            stack[closingBrackets.index(c)] -= 1
+            
+    if bracketIdx is None:
+        return start, end
+        
+    for i in range(offset, len(text)): # find end
+        c = text[i]
+        
+        if c == closingBrackets[bracketIdx] and stack[bracketIdx] == 0:
+            end = i+1
+            break
+            
+        elif c in openingBrackets:
+            stack[openingBrackets.index(c)] += 1
+                    
+        elif c in closingBrackets:
+            stack[closingBrackets.index(c)] -= 1
+                    
+    return (start, end) if start>0 and end>0 else (-1, -1)
 
 def wordAtCursor(cursor):
     cursor = QTextCursor(cursor)
@@ -1267,7 +1207,7 @@ def wordAtCursor(cursor):
 
     lpart = ""
     start = pos-1
-    ch = unicode(cursor.document().characterAt(start))
+    ch = cursor.document().characterAt(start)
     while ch and re.match("[@\\w]", ch):
         lpart += ch
         start -= 1
@@ -1275,15 +1215,15 @@ def wordAtCursor(cursor):
         if ch == "@": # @ can be the first character only
             break
 
-        ch = unicode(cursor.document().characterAt(start))
+        ch = cursor.document().characterAt(start)
 
     rpart = ""
     end = pos
-    ch = unicode(cursor.document().characterAt(end))
+    ch = cursor.document().characterAt(end)
     while ch and re.match("[\\w]", ch):
         rpart += ch
         end += 1
-        ch = unicode(cursor.document().characterAt(end))
+        ch = cursor.document().characterAt(end)
 
     return (lpart[::-1]+rpart, start+1, end)
 

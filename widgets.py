@@ -603,13 +603,12 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.resizeList()
 
 class RadioButtonTemplateWidget(TemplateWidget):
-    NumberColumns = 3
+    Columns = [2,3,4,5]
 
     def __init__(self, **kwargs):
         super(RadioButtonTemplateWidget, self).__init__(**kwargs)
 
-        layout = QGridLayout()
-        layout.setDefaultPositioning(RadioButtonTemplateWidget.NumberColumns, Qt.Horizontal)
+        layout = QGridLayout()        
         self.setLayout(layout)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -623,7 +622,22 @@ class RadioButtonTemplateWidget(TemplateWidget):
         editAction.triggered.connect(self.editClicked)
         menu.addAction(editAction)
 
+        menu.addSeparator()
+
+        columnsMenu = QMenu("Columns", self)
+        for n in RadioButtonTemplateWidget.Columns:
+            action = QAction(str(n) + " columns", self)
+            action.triggered.connect(lambda _=None, n=n: self.setColumns(n))
+            columnsMenu.addAction(action)
+        menu.addMenu(columnsMenu)
+
         menu.popup(event.globalPos())
+
+    def setColumns(self, n):
+        data = self.getJsonData()
+        data["columns"] = n
+        self.setJsonData(data)
+        self.somethingChanged.emit()
 
     def colorizeButtons(self):
         for b in self.buttonsGroupWidget.buttons():
@@ -641,31 +655,35 @@ class RadioButtonTemplateWidget(TemplateWidget):
             self.buttonsGroupWidget.removeButton(b)
 
     def editClicked(self):
-        items = ";".join([unicode(b.text()) for b in self.buttonsGroupWidget.buttons()])
+        items = ";".join([b.text() for b in self.buttonsGroupWidget.buttons()])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
-            self.clearButtons()
             data = self.getJsonData()
             data["items"] = [x.strip() for x in newItems.split(";")]
             self.setJsonData(data)
             self.somethingChanged.emit()
 
     def getDefaultData(self):
-        return {"items": ["Helpers", "Run"], "current": 0, "default": "current"}
+        return {"items": ["Helpers", "Run"], "current": 0, "default": "current", "columns":3}
 
     def getJsonData(self):
-        return {"items": [unicode(b.text()) for b in self.buttonsGroupWidget.buttons()],
+        return {"items": [b.text() for b in self.buttonsGroupWidget.buttons()],
                 "current": self.buttonsGroupWidget.checkedId(),
+                "columns": self.layout().columnCount(),
                 "default": "current"}
 
     def setJsonData(self, value):
-        self.clearButtons()
         gridLayout = self.layout()
+
+        self.clearButtons()
+
+        columns = value.get("columns", 3)
+        gridLayout.setDefaultPositioning(columns, Qt.Horizontal)
 
         row = 0
         column = 0
         for i, item in enumerate(value["items"]):
-            if i % RadioButtonTemplateWidget.NumberColumns == 0 and i > 0:
+            if i % columns == 0 and i > 0:
                 row += 1
                 column = 0
 
