@@ -51,14 +51,10 @@ def copyJson(data):
     else:
         raise TypeError("Data of %s type is not JSON compatible: %s"%(type(data), str(data)))
 
-class AttributeResolverError(Exception):
-    pass
-
-class ModuleNotFoundError(Exception):
-    pass
-
-class CopyJsonError(Exception):
-    pass
+class ExitModuleException(Exception):pass
+class AttributeResolverError(Exception):pass
+class ModuleNotFoundError(Exception):pass
+class CopyJsonError(Exception):pass
 
 class Attribute(object):
     def __init__(self, name, data={}, category="", template="", connect=""):
@@ -431,8 +427,14 @@ class Module(object):
 
     def run(self, globalsEnv, uiCallback=None):
 
-        def printer(msg):
-            print(msg)
+        def printError(msg):
+            raise RuntimeError(msg)
+        
+        def printWarning(msg):
+            print("Warning: "+msg)
+
+        def exitModule():
+            raise ExitModuleException()
 
         def setter(attr, v):
             try:
@@ -469,8 +471,9 @@ class Module(object):
                      "Channel": lambda x: Channel(self.parent, x),
                      "Module": ModuleInScript,
                      "copyJson": copyJson,
-                     "error": lambda x: printer("Error: " + x),
-                     "warning": lambda x: printer("Warning: " + x)}
+                     "exit": exitModule,
+                     "error": printError,
+                     "warning": printWarning }
 
         for k in globalsEnv:
             localsEnv[k] = globalsEnv[k]
@@ -487,7 +490,10 @@ class Module(object):
         if callable(uiCallback):
             uiCallback(self)
 
-        exec(self.runCode.replace("@", Module.AttributePrefix), localsEnv)
+        try:
+            exec(self.runCode.replace("@", Module.AttributePrefix), localsEnv)
+        except ExitModuleException:
+            pass        
 
         if localsEnv["SHOULD_RUN_CHILDREN"]:
             for ch in self._children:

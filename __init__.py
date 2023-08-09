@@ -19,7 +19,7 @@ import maya.cmds as cmds
 import pymel.api as api
 
 from shiboken2 import wrapInstance
-mayaMainWindow = wrapInstance(long(api.MQtUtil.mainWindow()), QMainWindow)
+mayaMainWindow = wrapInstance(int(api.MQtUtil.mainWindow()), QMainWindow)
 
 def clamp(mn, mx, val):
     if val < mn:
@@ -1345,7 +1345,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "MODULE_TYPE", "Module", "Channel", "copyJson", 
+        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "Module", "Channel", "copyJson", 
                  "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
                  "beginProgress", "stepProgress", "endProgress", "currentTabIndex"]
 
@@ -1364,13 +1364,13 @@ class LogHighligher(QSyntaxHighlighter):
 
         warningFormat = QTextCharFormat()
         warningFormat.setForeground(QColor(250, 150, 90))
-        warningRegexp = QRegExp("\\bwarning\\b")
+        warningRegexp = QRegExp("\\b\\w*warning\\b")
         warningRegexp.setCaseSensitivity(Qt.CaseInsensitive)
         self.highlightingRules.append((warningRegexp, warningFormat))
 
         errorFormat = QTextCharFormat()
         errorFormat.setForeground(QColor(250, 90, 90))
-        errorRegexp = QRegExp("\\berror\\b")
+        errorRegexp = QRegExp("\\b\\w*error\\b")
         errorRegexp.setCaseSensitivity(Qt.CaseInsensitive)
         self.highlightingRules.append((errorRegexp, errorFormat))
 
@@ -1572,8 +1572,6 @@ class RigBuilderWindow(QFrame):
     def getModuleGlobalEnv(self):
         return {"evaluateBezierCurveFromX": widgets.evaluateBezierCurveFromX,
                 "evaluateBezierCurve": widgets.evaluateBezierCurve,
-                "getMultiData": lambda data, idx: data["items"][idx],
-                "getCompoundData": lambda data, idx: data["layout"]["items"][idx],
                 "beginProgress": self.progressBarWidget.beginProgress,
                 "stepProgress": self.progressBarWidget.stepProgress,
                 "endProgress": self.progressBarWidget.endProgress,
@@ -1592,8 +1590,6 @@ class RigBuilderWindow(QFrame):
         self.logWidget.clear()
         self.showLog()
 
-        cmds.undoInfo(ock=True) # open undo block
-
         with captureOutput(self.logWidget):
             startTime = time.time()
             timeStr = time.strftime("%H:%M", time.localtime(startTime))
@@ -1602,6 +1598,7 @@ class RigBuilderWindow(QFrame):
             self.progressBarWidget.initialize()
             self.progressCounter = 0
 
+            cmds.undoInfo(ock=True) # open undo block
             try:
                 for item in self.treeWidget.selectedItems():
                     count = getChildrenCount(item)
@@ -1618,7 +1615,6 @@ class RigBuilderWindow(QFrame):
 
             finally:
                 print("Done in %.2fs"%(time.time() - startTime))
-
                 cmds.undoInfo(cck=True) # close undo block
 
         self.progressBarWidget.endProgress()
@@ -1675,8 +1671,6 @@ class RigBuilderToolWindow(QFrame):
     def getModuleGlobalEnv(self):
         return {"evaluateBezierCurveFromX": widgets.evaluateBezierCurveFromX,
                 "evaluateBezierCurve": widgets.evaluateBezierCurve,
-                "getMultiData": lambda data, idx: data["items"][idx],
-                "getCompoundData": lambda data, idx: data["layout"]["items"][idx],
                 "beginProgress": self.progressBarWidget.beginProgress,
                 "stepProgress": self.progressBarWidget.stepProgress,
                 "endProgress": self.progressBarWidget.endProgress,
@@ -1692,8 +1686,6 @@ class RigBuilderToolWindow(QFrame):
         self.logWidget.clear()
         self.showLog()
 
-        cmds.undoInfo(ock=True) # open undo block
-
         with captureOutput(self.logWidget):
             startTime = time.time()
             timeStr = time.strftime("%H:%M", time.localtime(startTime))
@@ -1701,13 +1693,13 @@ class RigBuilderToolWindow(QFrame):
 
             self.progressBarWidget.initialize()
 
+            cmds.undoInfo(ock=True) # open undo block
             try:
                 self.module.run(self.getModuleGlobalEnv(), uiCallback)
             except Exception as ex:
                 printErrorStack()
             finally:
                 print("Done in %.2fs"%(time.time() - startTime))
-
                 cmds.undoInfo(cck=True) # close undo block
 
         self.attributesTabWidget.updateTabs()
