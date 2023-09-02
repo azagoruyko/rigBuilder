@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 import re
@@ -35,7 +33,7 @@ def smartConversion(x):
         try:
             v = float(x)
         except ValueError:
-            v = unicode(x)
+            v = str(x)
     return v
 
 def copyJson(data):
@@ -45,7 +43,10 @@ def copyJson(data):
     elif type(data) == dict:
         return {k:copyJson(data[k]) for k in data}
 
-    elif type(data) in [int, float, bool, str, unicode]:
+    elif type(data) in [int, float, bool, str]:
+        return data
+    
+    elif sys.version_info.major < 3 and type(data) is unicode: # compatibility with python 2.7
         return data
 
     else:
@@ -76,7 +77,7 @@ class Attribute(object):
                self.category == other.category and\
                self.template == other.template and\
                self.connect == other.connect
-
+    
     def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
                  ("template", self.template),
@@ -469,7 +470,7 @@ class Module(object):
         localsEnv = {"SHOULD_RUN_CHILDREN": True,
                      "MODULE_NAME": self.name,
                      "Channel": lambda x: Channel(self.parent, x),
-                     "Module": ModuleInScript,
+                     "Module": ModuleWrapper,
                      "copyJson": copyJson,
                      "exit": exitModule,
                      "error": printError,
@@ -527,7 +528,7 @@ class Module(object):
         return uids
 
 # used inside modules in scripts  
-class AttributeInScript(object):
+class AttributeWrapper(object):
     def __init__(self, attr):
         self._attribute = attr
 
@@ -535,30 +536,39 @@ class AttributeInScript(object):
         k = self._attribute.data["default"]
         self._attribute.data[k] = v
 
+    def setData(self, data):
+        self._attribute = copyJson(data)
+
     def get(self):
         k = self._attribute.data["default"]
         return self._attribute.data[k]
+    
+    def getData(self):
+        return self._attribute.data
 
-class ModuleInScript(object):
-    def __init__(self, spec):
-        self._module = Module.loadModule(spec)
+class ModuleWrapper(object):
+    def __init__(self, specOrModule): # spec is path or module
+        if isinstance(specOrModule, str):
+            self._module = Module.loadModule(specOrModule)
+        elif isinstance(specOrModule, Module):
+            self._module = specOrModule
 
     def setAttr(self, attrName, value):
         attr = self._module.findAttribute(attrName)
         if attr:
-            AttributeInScript(attr).set(value)
+            AttributeWrapper(attr).set(value)
 
     def getAttr(self, attrName):
         attr = self._module.findAttribute(attrName)
         if attr:
-            return AttributeInScript(attr).get()
+            return AttributeWrapper(attr).get()
 
     def __getattr__(self, name):
         module = object.__getattribute__(self, "_module")
 
         attr = module.findAttribute(name)
         if attr:
-            return AttributeInScript(attr)    
+            return AttributeWrapper(attr)    
     
     def run(self):
         self._module.run(globals())    

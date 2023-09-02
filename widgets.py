@@ -8,7 +8,10 @@ import json
 import math
 import time
 
-RootPath = os.path.dirname(os.path.dirname(__file__.decode(sys.getfilesystemencoding()))) # Rig Builder root folder
+if sys.version_info.major > 2:
+    RootPath = os.path.dirname(__file__) # Rig Builder root folder
+else:
+    RootPath = os.path.dirname(__file__.decode(sys.getfilesystemencoding())) # legacy
 
 def clearLayout(layout):
      if layout is not None:
@@ -32,10 +35,13 @@ def smartConversion(x):
     try:
         return json.loads(x)
     except ValueError:
-        return unicode(x)
+        return str(x)
 
 def fromSmartConversion(x):
-    return json.dumps(x) if type(x) not in [str, unicode] else x
+    if sys.version_info.major > 2:
+        return json.dumps(x) if not isinstance(x, str) else x
+    else:
+        return json.dumps(x) if type(x) not in [str, unicode] else x
 
 class TemplateWidget(QWidget):
     somethingChanged = Signal()
@@ -77,7 +83,7 @@ class EditTextDialog(QDialog):
         layout.addWidget(okBtn)
 
     def okBtnClicked(self):
-        self.outputText = unicode(self.textWidget.toPlainText())
+        self.outputText = self.textWidget.toPlainText()
         self.accept()
 
 class LabelTemplateWidget(TemplateWidget):
@@ -178,16 +184,16 @@ class ButtonTemplateWidget(TemplateWidget):
             exec(self.buttonCommand, localEnv)
 
             if mainWindow: # update UI
-                mainWindow.attributesWidget.update()
+                mainWindow.attributesTabWidget.updateTabs()
 
     def getDefaultData(self):
-        return {"command": "a = module.findAttribute('attr')\nprint(a.data)",
+        return {"command": "a = module.someAttr.get()\nprint(a)",
                 "label": "Press me",
                 "default": "label"}
 
     def getJsonData(self):
         return {"command": self.buttonCommand,
-                "label": unicode(self.buttonWidget.text()),
+                "label": self.buttonWidget.text(),
                 "default": "label"}
 
     def setJsonData(self, data):
@@ -249,7 +255,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
         menu.popup(event.globalPos())
 
     def editItems(self):
-        items = ";".join([unicode(self.comboBox.itemText(i)) for i in range(self.comboBox.count())])
+        items = ";".join([self.comboBox.itemText(i) for i in range(self.comboBox.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.comboBox.clear()
@@ -276,8 +282,8 @@ class ComboBoxTemplateWidget(TemplateWidget):
         return {"items": ["a", "b"], "current": "a", "default": "current"}
 
     def getJsonData(self):
-        return {"items": [unicode(self.comboBox.itemText(i)) for i in range(self.comboBox.count())],
-                "current": unicode(self.comboBox.currentText()),
+        return {"items": [self.comboBox.itemText(i) for i in range(self.comboBox.count())],
+                "current": self.comboBox.currentText(),
                 "default": "current"}
 
     def setJsonData(self, value):
@@ -468,7 +474,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def getJsonData(self):
         return {"value": smartConversion(self.textWidget.text().strip()),
                 "buttonCommand": self.buttonCommand,
-                "buttonLabel": unicode(self.buttonWidget.text()),
+                "buttonLabel": self.buttonWidget.text(),
                 "default": "value"}
 
     def setCustomText(self, value):
@@ -543,7 +549,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.listWidget.setMaximumHeight(height)
 
     def editClicked(self):
-        items = ";".join([unicode(self.listWidget.item(i).text()) for i in range(self.listWidget.count())])
+        items = ";".join([self.listWidget.item(i).text() for i in range(self.listWidget.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.listWidget.clear()
@@ -553,7 +559,7 @@ class ListBoxTemplateWidget(TemplateWidget):
     def selectInMayaClicked(self):
         import pymel.core as pm
 
-        items = [unicode(self.listWidget.item(i).text()) for i in range(self.listWidget.count())]
+        items = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
         pm.select(items)
 
     def getFromMayaClicked(self, add=False):
@@ -591,7 +597,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         return {"items": ["a", "b"], "default": "items"}#, "current": self.listWidget.currentRow()}
 
     def getJsonData(self):
-        return {"items": [unicode(self.listWidget.item(i).text()) for i in range(self.listWidget.count())],
+        return {"items": [self.listWidget.item(i).text() for i in range(self.listWidget.count())],
                 #"current": self.listWidget.currentRow(),
                 "default": "items"}
 

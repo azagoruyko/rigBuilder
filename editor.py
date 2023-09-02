@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from PySide2.QtGui import *
 from PySide2.QtCore import *
 from PySide2.QtWidgets import *
@@ -543,6 +541,8 @@ class CodeEditorWidget(QTextEdit):
         self.lastSearch = ""
         self.lastReplace = ""
 
+        self.editorState = {}
+
         self.thread = None
         self.canShowCompletions = True
 
@@ -1047,18 +1047,8 @@ class CodeEditorWidget(QTextEdit):
         if self.completionWidget.lineCount() == 0:
             return
 
-        modifiers = QApplication.queryKeyboardModifiers()
-        shift = modifiers & Qt.ShiftModifier
-        ctrl = modifiers & Qt.ControlModifier
-        alt = modifiers & Qt.AltModifier
-
         block = self.completionWidget.textCursor().block()
-        row = block.blockNumber() if block.isValid() else 0
-
-        if ctrl:
-            word = block.text()
-        else:
-            word = re.split("\\s*", block.text())[0]
+        word = block.text().split()[0]
 
         cursor = self.textCursor()
         cursor.setPosition(self.currentWord[1])
@@ -1125,7 +1115,6 @@ class CodeEditorWidget(QTextEdit):
         text = self.toPlainText()
 
         cursor = self.textCursor()
-        pos = cursor.position()
 
         self.currentWord = wordAtCursor(cursor)
         currentWord, start, end = self.currentWord
@@ -1345,7 +1334,7 @@ class NumberBarWidget(QWidget):
             painter.drawText(self.width() - font_metrics.width(str(line_count)) - 3, round(position.y()) - contents_y + font_metrics.ascent(), str(line_count))
             data = block.userData()
             if data and data.hasBookmark:
-                painter.drawText(3, round(position.y()) - contents_y + font_metrics.ascent(), u"►")
+                painter.drawText(3, round(position.y()) - contents_y + font_metrics.ascent(), "*")
 
             block = block.next()
 

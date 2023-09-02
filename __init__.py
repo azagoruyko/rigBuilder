@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import time
 import json
 import re
@@ -13,7 +11,7 @@ from PySide2.QtWidgets import *
 
 from .classes import *
 from .editor import *
-import widgets
+from . import widgets
 
 import maya.cmds as cmds
 import pymel.api as api
@@ -115,7 +113,7 @@ class TabAttributesWidget(QWidget):
                     rigBuilderWindow.logWidget.ensureCursorVisible()
 
         for i, a in enumerate(attributes):
-            templateWidget = widgets.TemplateWidgets[a.template](env={"mainWindow":rigBuilderWindow, "module": self.module})
+            templateWidget = widgets.TemplateWidgets[a.template](env={"mainWindow":rigBuilderWindow, "module": ModuleWrapper(self.module)})
             templateWidget.setJsonData(a.data)
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
 
@@ -436,7 +434,6 @@ class ModuleListDialog(QDialog):
 
     def treeItemActivated(self, item, _):
         if item.childCount() == 0:
-            fileName = unicode(item.text(0))
             self.selectedFileName = item.filePath
             self.done(0)
 
@@ -470,7 +467,7 @@ class ModuleListDialog(QDialog):
         UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
         Module.updateUidsCache(UpdateSourceFromInt[updateSource])
 
-        mask = re.escape(unicode(self.maskWidget.text()))
+        mask = re.escape(self.maskWidget.text())
 
         tw = self.treeWidget
         tw.clear()
@@ -539,7 +536,7 @@ class TreeWidget(QTreeWidget):
             parent = parent.parent()
 
         painter.setPen(QPen(QColor(60, 60, 60), 1, Qt.SolidLine))
-        numberBranch = rect.x() / indent
+        numberBranch = int(rect.x() / indent)
         if numberBranch > 1:
             for i in range(1, numberBranch):
                 plusInt = i * indent + 10
@@ -562,7 +559,7 @@ class TreeWidget(QTreeWidget):
         sourceRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 2))
         uidRect = self.visualRect(modelIdx.sibling(modelIdx.row(), 3))
 
-        if not re.match("\\w*", unicode(item.module.name)):
+        if not re.match("\\w*", item.module.name):
             painter.fillRect(nameRect, QBrush(QColor(170, 50, 50)))
 
         itemParent = item.parent()
@@ -1000,7 +997,7 @@ class TemplateSelectorDialog(QDialog):
     def updateTemplates(self):
         clearLayout(self.gridLayout)
 
-        filterText = unicode(self.filterWidget.text())
+        filterText = self.filterWidget.text()
 
         for t in sorted(widgets.TemplateWidgets.keys()):
             if not filterText or re.search(filterText, t, re.IGNORECASE):
@@ -1010,7 +1007,7 @@ class TemplateSelectorDialog(QDialog):
                 self.gridLayout.addWidget(w)
 
                 selectBtn = QPushButton("Select")
-                selectBtn.clicked.connect(lambda t=t: self.selectTemplate(t))
+                selectBtn.clicked.connect(lambda _=None,t=t: self.selectTemplate(t))
                 self.gridLayout.addWidget(selectBtn)
 
 class EditTemplateWidget(QWidget):
@@ -1038,16 +1035,16 @@ class EditTemplateWidget(QWidget):
 
         buttonsLayout = QHBoxLayout()
         buttonsLayout.setContentsMargins(0,0,0,0)
-        upBtn = QPushButton(u"▲")
-        upBtn.setFixedSize(25, 25)
+        upBtn = QPushButton("up")
+        upBtn.setFixedSize(35, 25)
         upBtn.clicked.connect(self.upBtnClicked)
 
-        downBtn = QPushButton(u"▼")
-        downBtn.setFixedSize(25, 25)
+        downBtn = QPushButton("down")
+        downBtn.setFixedSize(35, 25)
         downBtn.clicked.connect(self.downBtnClicked)
 
-        removeBtn = QPushButton(u"▬")
-        removeBtn.setFixedSize(25, 25)
+        removeBtn = QPushButton("x")
+        removeBtn.setFixedSize(35, 25)
         removeBtn.clicked.connect(self.removeBtnClicked)
 
         buttonsLayout.addWidget(upBtn)
@@ -1338,7 +1335,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.editorWidget.document().clearUndoRedoStacks()
         self.generateCompletionWords()
 
-        self.editorWidget.preset = self.module
+        self.editorWidget.preset = id(self.module)
         self.editorWidget.loadState()
 
     def generateCompletionWords(self):
@@ -1717,7 +1714,7 @@ def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relativ
             return
 
     w = RigBuilderToolWindow(module)
-    w.setWindowTitle(u"Rig Builder Tool - {}".format(module.getPath()))
+    w.setWindowTitle("Rig Builder Tool - {}".format(module.getPath()))
     w.adjustSize()
     centerWindow(w)
     return w
