@@ -45,10 +45,11 @@ def fromSmartConversion(x):
 
 class TemplateWidget(QWidget):
     somethingChanged = Signal()
+    needUpdateUI = Signal()
 
-    def __init__(self, env=None, **kwargs):
+    def __init__(self, env={}, **kwargs):
         super(TemplateWidget, self).__init__(**kwargs)
-        self.env = env # has some data from UI for widgets
+        self.env = env # used to pass data to widgets
 
     def getDefaultData(self):
         return self.getJsonData()
@@ -129,7 +130,7 @@ class ButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(ButtonTemplateWidget, self).__init__(**kwargs)
 
-        self.buttonCommand = "print('Hello world')"
+        self.buttonCommand = ""
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -170,21 +171,11 @@ class ButtonTemplateWidget(TemplateWidget):
         if self.buttonCommand:
             localEnv = {}
 
-            mainWindow = None
-            if self.env:
-                mainWindow = self.env.get("mainWindow")
-
-                for k in self.env: # copy default env
-                    localEnv[k] = self.env[k]
-
-                if mainWindow:
-                    for k, v in mainWindow.getModuleGlobalEnv().items():
-                        localEnv[k] = v
+            for k in self.env: # copy default env
+                localEnv[k] = self.env[k]
 
             exec(self.buttonCommand, localEnv)
-
-            if mainWindow: # update UI
-                mainWindow.attributesTabWidget.updateTabs()
+            self.needUpdateUI.emit() # update UI
 
     def getDefaultData(self):
         return {"command": "a = module.someAttr.get()\nprint(a)",

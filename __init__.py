@@ -70,15 +70,11 @@ def printErrorStack():
     print("Error: {}".format(exc_value))
 
 def centerWindow(window):
-    # get the dimensions of the screen
     screen = QDesktopWidget().screenGeometry()
-    # calculate the center point of the screen
-    center_point = screen.center()
-    # get the dimensions of the window
-    window_geometry = window.frameGeometry()
-    # move the window to the center of the screen
-    window_geometry.moveCenter(center_point)
-    window.move(window_geometry.topLeft())
+    cp = screen.center()
+    geom = window.frameGeometry()
+    geom.moveCenter(cp)
+    window.move(geom.topLeft())
 
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
@@ -93,6 +89,8 @@ def widgetOnChange(widget, module, attr):
     #print attr.name, "=", attr.data
 
 class TabAttributesWidget(QWidget):
+    needUpdateUI = Signal()
+
     def __init__(self, module, attributes, **kwargs):
         super(TabAttributesWidget, self).__init__(**kwargs)
 
@@ -113,9 +111,10 @@ class TabAttributesWidget(QWidget):
                     rigBuilderWindow.logWidget.ensureCursorVisible()
 
         for i, a in enumerate(attributes):
-            templateWidget = widgets.TemplateWidgets[a.template](env={"mainWindow":rigBuilderWindow, "module": ModuleWrapper(self.module)})
+            templateWidget = widgets.TemplateWidgets[a.template](env={"module": ModuleWrapper(self.module)})
             templateWidget.setJsonData(a.data)
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
+            templateWidget.needUpdateUI.connect(self.needUpdateUI.emit)
 
             nameWidget = QLabel(a.name)
             nameWidget.setAlignment(Qt.AlignRight)
@@ -319,7 +318,9 @@ class AttributesTabWidget(QTabWidget):
 
         title = self.tabText(idx)
         scrollArea = self.widget(idx)
-        scrollArea.setWidget(TabAttributesWidget(self.module, self.tabsAttributes[title]))
+        w = TabAttributesWidget(self.module, self.tabsAttributes[title])
+        w.needUpdateUI.connect(self.updateTabs)
+        scrollArea.setWidget(w)
         self.setCurrentIndex(idx)
 
     def updateTabs(self):
