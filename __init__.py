@@ -966,7 +966,7 @@ class TemplateSelectorDialog(QDialog):
         self.selectedTemplate = None
 
         self.setWindowTitle("Template Selector")
-        self.setGeometry(600, 300, 550, 500)
+        self.setGeometry(0, 0, 550, 500)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -990,6 +990,7 @@ class TemplateSelectorDialog(QDialog):
         self.filterWidget.setFocus()
 
         self.updateTemplates()
+        centerWindow(self)
 
     def selectTemplate(self, t):
         self.selectedTemplate = t
@@ -1036,16 +1037,16 @@ class EditTemplateWidget(QWidget):
 
         buttonsLayout = QHBoxLayout()
         buttonsLayout.setContentsMargins(0,0,0,0)
-        upBtn = QPushButton("up")
-        upBtn.setFixedSize(35, 25)
+        upBtn = QPushButton("<")
+        upBtn.setFixedSize(25, 25)
         upBtn.clicked.connect(self.upBtnClicked)
 
-        downBtn = QPushButton("down")
-        downBtn.setFixedSize(35, 25)
+        downBtn = QPushButton(">")
+        downBtn.setFixedSize(25, 25)
         downBtn.clicked.connect(self.downBtnClicked)
 
         removeBtn = QPushButton("x")
-        removeBtn.setFixedSize(35, 25)
+        removeBtn.setFixedSize(25, 25)
         removeBtn.clicked.connect(self.removeBtnClicked)
 
         buttonsLayout.addWidget(upBtn)
@@ -1271,7 +1272,7 @@ class EditAttributesDialog(QDialog):
         self.module = module
 
         self.setWindowTitle("Edit Attributes - " + self.module.name)
-        self.setGeometry(600, 300, 600, 600)
+        self.setGeometry(0, 0, 600, 600)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -1289,6 +1290,8 @@ class EditAttributesDialog(QDialog):
 
         layout.addWidget(self.tabWidget)
         layout.addLayout(hlayout)
+
+        centerWindow(self)
 
     def saveAttributes(self):
         self.module.clearAttributes()
@@ -1482,7 +1485,7 @@ class RigBuilderWindow(QFrame):
         super(RigBuilderWindow, self).__init__(parent=mayaMainWindow)
 
         self.setWindowTitle("Rig Builder")
-        self.setGeometry(400, 200, 1300, 700)
+        self.setGeometry(0, 0, 1300, 700)
 
         self.setWindowFlags(self.windowFlags() | Qt.Window)
 
@@ -1524,6 +1527,8 @@ class RigBuilderWindow(QFrame):
 
         layout.addWidget(self.vsplitter)
         layout.addWidget(self.progressBarWidget)
+
+        centerWindow(self)
 
     def treeItemSelectionChanged(self):
         selected = self.treeWidget.selectedItems()
