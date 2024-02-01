@@ -766,12 +766,13 @@ class TableTemplateWidget(TemplateWidget):
         return {"items": [("a", "1")], "header": ["name", "value"], "default": "items"}
 
     def getJsonData(self):
-        header = [self.tableWidget.horizontalHeaderItem(self.tableWidget.visualColumn(c)).text() for c in range(self.tableWidget.columnCount())]
-        items = []
+        sortedColumns = sorted([c for c in range(self.tableWidget.columnCount())], key=lambda c: self.tableWidget.visualColumn(c))
+        header = [self.tableWidget.horizontalHeaderItem(c).text() for c in sortedColumns]
 
         vheader = self.tableWidget.verticalHeader()
         hheader = self.tableWidget.horizontalHeader()
 
+        items = []
         for r in range(self.tableWidget.rowCount()):
             row = []
             for c in range(self.tableWidget.columnCount()):
