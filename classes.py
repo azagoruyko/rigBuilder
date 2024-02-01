@@ -10,7 +10,7 @@ from xml.sax.saxutils import escape, unescape
 if sys.version_info.major > 2:
     RigBuilderPath = os.path.dirname(__file__)
     RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder")
-else:    
+else:
     RigBuilderPath = os.path.dirname(__file__.decode(sys.getfilesystemencoding()))
     RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder").decode(sys.getfilesystemencoding())
 
@@ -45,7 +45,7 @@ def copyJson(data):
 
     elif type(data) in [int, float, bool, str]:
         return data
-    
+
     elif sys.version_info.major < 3 and type(data) is unicode: # compatibility with python 2.7
         return data
 
@@ -77,7 +77,7 @@ class Attribute(object):
                self.category == other.category and\
                self.template == other.template and\
                self.connect == other.connect
-    
+
     def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
                  ("template", self.template),
@@ -104,13 +104,13 @@ class Channel(object):
         assert module, "Channel: module is None"
         self.module, self.attr = module.findModuleAndAttributeByPath(path)
         assert self.module and self.attr, "Channel: cannot resolve '{}' path".format(path)
-    
+
     def get(self):
         return self.attr.data[self.attr.data["default"]]
 
     def set(self, value):
         self.attr.data[self.attr.data["default"]] = value
-   
+
 class Module(object):
     AttributePrefix = "attr_"
 
@@ -332,7 +332,7 @@ class Module(object):
         m = Module.fromXml(ET.parse(fileName).getroot())
         m.loadedFrom = os.path.realpath(fileName)
         return m
-    
+
     @staticmethod
     def loadModule(spec): # spec can be full path, relative path or uid
         modulePath = None
@@ -348,15 +348,15 @@ class Module(object):
 
             for path in [specPath,
                          specPath+".xml",
-                         RigBuilderLocalPath+"/modules/"+spec, 
+                         RigBuilderLocalPath+"/modules/"+spec,
                          RigBuilderLocalPath+"/modules/"+spec+".xml",
-                         RigBuilderPath+"/modules/"+spec, 
+                         RigBuilderPath+"/modules/"+spec,
                          RigBuilderPath+"/modules/"+spec+".xml"]:
-                
+
                 if os.path.exists(path):
                     modulePath = path
-                    break      
-            
+                    break
+
             if not modulePath:
                 raise ModuleNotFoundError("Module '{}' not found".format(spec))
 
@@ -427,16 +427,6 @@ class Module(object):
                 raise AttributeResolverError(self.name + ": cannot resolve connection for '%s' which is '%s'"%(attr.name, attr.connect))
 
     def run(self, globalsEnv, uiCallback=None):
-
-        def printError(msg):
-            raise RuntimeError(msg)
-        
-        def printWarning(msg):
-            print("Warning: "+msg)
-
-        def exitModule():
-            raise ExitModuleException()
-
         def setter(attr, v):
             try:
                 vcopy = copyJson(v)
@@ -467,14 +457,11 @@ class Module(object):
 
         self.resolveConnections()
 
-        localsEnv = {"SHOULD_RUN_CHILDREN": True,
-                     "MODULE_NAME": self.name,
-                     "Channel": lambda x: Channel(self.parent, x),
-                     "Module": ModuleWrapper,
-                     "copyJson": copyJson,
-                     "exit": exitModule,
-                     "error": printError,
-                     "warning": printWarning }
+        localsEnv = {
+            "SHOULD_RUN_CHILDREN": True,
+            "MODULE_NAME": self.name,
+            "Channel": lambda x: Channel(self.parent, x),
+        }
 
         for k in globalsEnv:
             localsEnv[k] = globalsEnv[k]
@@ -494,7 +481,7 @@ class Module(object):
         try:
             exec(self.runCode.replace("@", Module.AttributePrefix), localsEnv)
         except ExitModuleException:
-            pass        
+            pass
 
         if localsEnv["SHOULD_RUN_CHILDREN"]:
             for ch in self._children:
@@ -527,7 +514,7 @@ class Module(object):
 
         return uids
 
-# used inside modules in scripts  
+# used inside modules in scripts
 class AttributeWrapper(object):
     def __init__(self, attr):
         self._attribute = attr
@@ -542,7 +529,7 @@ class AttributeWrapper(object):
     def get(self):
         k = self._attribute.data["default"]
         return self._attribute.data[k]
-    
+
     def getData(self):
         return self._attribute.data
 
@@ -568,9 +555,9 @@ class ModuleWrapper(object):
 
         attr = module.findAttribute(name)
         if attr:
-            return AttributeWrapper(attr)    
-    
+            return AttributeWrapper(attr)
+
     def run(self):
-        self._module.run(globals())    
+        self._module.run(globals())
 
 Module.updateUidsCache()

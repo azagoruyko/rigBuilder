@@ -13,11 +13,14 @@ from .classes import *
 from .editor import *
 from . import widgets
 
+import pymel.core as pm
 import maya.cmds as cmds
-import pymel.api as api
 
 from shiboken2 import wrapInstance
-mayaMainWindow = wrapInstance(int(api.MQtUtil.mainWindow()), QMainWindow)
+mayaMainWindow = wrapInstance(int(pm.api.MQtUtil.mainWindow()), QMainWindow)
+
+def Callback(f, *args, **kwargs):
+   return lambda: f(*args, **kwargs)
 
 def clamp(mn, mx, val):
     if val < mn:
@@ -51,10 +54,10 @@ def captureOutput(stream):
 
 def printErrorStack():
     exc_type, exc_value, exc_traceback = sys.exc_info()
-    
+
     tbs = []
     tb = exc_traceback
-    while tb:            
+    while tb:
         tbs.append(tb)
         tb = tb.tb_next
 
@@ -64,7 +67,7 @@ def printErrorStack():
         if tb.tb_frame.f_code.co_filename == "<string>":
             skip = False
 
-        if not skip: 
+        if not skip:
             print("{}{}, {}, in line {},".format(indent, tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name, tb.tb_lineno))
             indent += "  "
     print("Error: {}".format(exc_value))
@@ -118,7 +121,7 @@ class TabAttributesWidget(QWidget):
 
             nameWidget = QLabel(a.name)
             nameWidget.setAlignment(Qt.AlignRight)
-            nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")            
+            nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
 
             if a.connect:
                 templateWidget.setToolTip("Connect: %s"%a.connect)
@@ -133,17 +136,12 @@ class TabAttributesWidget(QWidget):
         layout.addWidget(QLabel())
         layout.setRowStretch(layout.rowCount(), 1)
 
-    def connectionMenuAction(self, label, attr, connect):
-        action = QAction(label, self)
-        action.triggered.connect(lambda connect=connect, attr=attr: self.connectAttr(connect, attr))
-        return action
-
     def connectionMenu(self, menu, module, attr, path="/"):
         subMenu = QMenu(module.name)
 
         for a in module.getAttributes():
             if a.template == attr.template:
-                subMenu.addAction(self.connectionMenuAction(a.name, attr, path+module.name+"/"+a.name))
+                subMenu.addAction(a.name, Callback(self.connectAttr, path+module.name+"/"+a.name, attr))
 
         for ch in module.getChildren():
             self.connectionMenu(subMenu, ch, attr, path+module.name+"/")
@@ -158,7 +156,7 @@ class TabAttributesWidget(QWidget):
             makeConnectionMenu = QMenu("Make connection")
             for a in self.module.parent.getAttributes():
                 if a.template == attr.template:
-                    makeConnectionMenu.addAction(self.connectionMenuAction(a.name, attr, "/"+a.name))
+                    makeConnectionMenu.addAction(a.name, Callback(self.connectAttr, "/"+a.name, attr))
 
             for ch in self.module.parent.getChildren():
                 if ch is self.module:
@@ -168,23 +166,15 @@ class TabAttributesWidget(QWidget):
 
             menu.addMenu(makeConnectionMenu)
 
-        breakAction = QAction("Break connection", self)
-        breakAction.triggered.connect(lambda attr=attr: self.disconnectAttr(attr))
-        menu.addAction(breakAction)
-
-        setDataAction = QAction("Set data", self)
-        setDataAction.triggered.connect(lambda attr=attr: self.setData(attr))
-        menu.addAction(setDataAction)
-
-        resetAction = QAction("Reset", self)
-        resetAction.triggered.connect(lambda attr=attr: self.resetAttr(attr))
-        menu.addAction(resetAction)
+        menu.addAction("Break connection", Callback(self.disconnectAttr, attr))
+        menu.addAction("Set data", Callback(self.setData, attr))
+        menu.addAction("Reset", Callback(self.resetAttr, attr))
 
         menu.popup(event.globalPos())
 
     def setData(self, attr):
         text = json.dumps(attr.data, indent=4).replace("'", "\"")
-        editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=QApplication.activeWindow())
+        editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=rigBuilderWindow)
         editText.exec_()
         if editText.result():
             with captureOutput(rigBuilderWindow.logWidget):
@@ -218,36 +208,36 @@ class TabAttributesWidget(QWidget):
 
 class SearchReplaceDialog(QDialog):
     onReplace = Signal(str, str, dict) # old, new, options
-    
+
     def __init__(self, options=[], **kwargs):
         super(SearchReplaceDialog, self).__init__(**kwargs)
-        
+
         self.optionsWidgets = {}
-        
+
         self.setWindowTitle("Search/Replace")
         layout = QVBoxLayout()
         self.setLayout(layout)
-        
+
         self.searchWidget = QLineEdit("L_")
         self.replaceWidget = QLineEdit("R_")
-        
+
         btn = QPushButton("Replace")
         btn.clicked.connect(self.replaceClicked)
-        
+
         gridLayout = QGridLayout()
         gridLayout.addWidget(QLabel("Search"),0,0)
         gridLayout.addWidget(self.searchWidget,0,1)
         gridLayout.addWidget(QLabel("Replace"),1,0)
         gridLayout.addWidget(self.replaceWidget,1,1)
         layout.addLayout(gridLayout)
-        
+
         for opt in options:
             w = QCheckBox(opt)
             self.optionsWidgets[opt] = w
             layout.addWidget(w)
-        
+
         layout.addWidget(btn)
-        
+
     def replaceClicked(self):
         opts = {l:w.isChecked() for l,w in self.optionsWidgets.items()}
         self.onReplace.emit(self.searchWidget.text(), self.replaceWidget.text(), opts)
@@ -270,20 +260,14 @@ class AttributesTabWidget(QTabWidget):
         menu = QMenu(self)
 
         if self.module:
-            editAttrsAction = QAction("Edit attributes", self)
-            editAttrsAction.triggered.connect(lambda _=None: self.editAttributes())
-            menu.addAction(editAttrsAction)
-
+            menu.addAction("Edit attributes", self.editAttributes)
             menu.addSeparator()
-
-            replaceInValuesAction = QAction("Replace in values", self)
-            replaceInValuesAction.triggered.connect(self.searchAndReplaceDialog.exec_)
-            menu.addAction(replaceInValuesAction)
+            menu.addAction("Replace in values", self.searchAndReplaceDialog.exec_)
 
         menu.popup(event.globalPos())
 
     def editAttributes(self):
-        dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=QApplication.activeWindow())
+        dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=rigBuilderWindow)
         dialog.exec_()
 
         rigBuilderWindow.codeEditorWidget.update()
@@ -308,7 +292,7 @@ class AttributesTabWidget(QTabWidget):
             if valueKey:
                 attr.data[valueKey] = replaceStringInData(attr.data[valueKey], old, new)
 
-        self.updateTabs() 
+        self.updateTabs()
 
     def tabChanged(self, idx):
         if self.count() == 0:
@@ -423,11 +407,7 @@ class ModuleListDialog(QDialog):
 
     def treeContextMenuEvent(self, event):
         menu = QMenu(self)
-
-        locateAction = QAction("Open explorer", self)
-        locateAction.triggered.connect(self.browseModuleDirectory)
-        menu.addAction(locateAction)
-
+        menu.addAction("Open explorer", self.browseModuleDirectory)
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
@@ -585,7 +565,7 @@ class TreeWidget(QTreeWidget):
         painter.drawText(nameRect, Qt.AlignLeft | Qt.AlignVCenter, item.module.name+modifiedSuffix)
 
         painter.setPen(QColor(120, 120, 120))
-        painter.drawText(pathRect, Qt.AlignLeft | Qt.AlignVCenter, item.text(1))        
+        painter.drawText(pathRect, Qt.AlignLeft | Qt.AlignVCenter, item.text(1))
 
         if item.module.isLoadedFromLocal():
             painter.setPen(QColor(120, 220, 120))
@@ -595,7 +575,7 @@ class TreeWidget(QTreeWidget):
             painter.setPen(QColor(120, 120, 120))
             painter.drawText(sourceRect, "server")
 
-        painter.setPen(QColor(120, 120, 120))        
+        painter.setPen(QColor(120, 120, 120))
         painter.drawText(uidRect, item.module.uid[:8])
         painter.restore()
 
@@ -671,7 +651,7 @@ class TreeWidget(QTreeWidget):
             if ok and newName:
                 newName = replaceSpecialChars(newName).strip()
                 item.module.name = newName
-                item.setText(0, item.module.name + " ")        
+                item.setText(0, item.module.name + " ")
             item.setExpanded(not item.isExpanded()) # revert expand on double click
 
     def makeItemFromModule(self, module):
@@ -718,54 +698,24 @@ class TreeWidget(QTreeWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        newAction = QAction("New\tINSERT", self)
-        newAction.triggered.connect(self.insertModule)
-        menu.addAction(newAction)
-
-        importAction = QAction("Import\tCTRL-I", self)
-        importAction.triggered.connect(self.importModule)
-        menu.addAction(importAction)
+        menu.addAction("New", self.insertModule, "Insert")
+        menu.addAction("Import", self.importModule, "Ctrl+I")
 
         if self.selectedItems():
-            dupAction = QAction("Duplicate\tCTRL-D", self)
-            dupAction.triggered.connect(self.duplicateModule)
-            menu.addAction(dupAction)
-
-            muteAction = QAction("Mute\tM", self)
-            muteAction.triggered.connect(self.muteModule)
-            menu.addAction(muteAction)
+            menu.addAction("Duplicate", self.duplicateModule, "Ctrl+D")
+            menu.addAction("Mute", self.muteModule, "M")
 
             menu.addSeparator()
 
-            saveAction = QAction("Save\tCTRL-S", self)
-            saveAction.triggered.connect(self.saveModule)
-            menu.addAction(saveAction)
-
-            saveAsAction = QAction("Save as", self)
-            saveAsAction.triggered.connect(self.saveAsModule)
-            menu.addAction(saveAsAction)
-
-            updateAction = QAction("Update\tCTRL-U", self)
-            updateAction.triggered.connect(self.updateModule)
-            menu.addAction(updateAction)
-
-            embedAction = QAction("Embed", self)
-            embedAction.triggered.connect(self.embedModule)
-            menu.addAction(embedAction)
-
+            menu.addAction("Save", self.saveModule, "Ctrl+S")
+            menu.addAction("Save as", self.saveAsModule)
+            menu.addAction("Update", self.updateModule, "Ctrl+U")
+            menu.addAction("Embed", self.embedModule)
             menu.addSeparator()
+            menu.addAction("Remove", self.removeModule, "Delete")
 
-            removeAction = QAction("Remove\tDELETE", self)
-            removeAction.triggered.connect(self.removeModule)
-            menu.addAction(removeAction)
-
-        locateAction = QAction("Locate file", self)
-        locateAction.triggered.connect(self.locateModuleFile)
-        menu.addAction(locateAction)
-
-        clearAction = QAction("Clear all", self)
-        clearAction.triggered.connect(self.clearAll)
-        menu.addAction(clearAction)
+        menu.addAction("Locate file", self.locateModuleFile)
+        menu.addAction("Clear all", self.clearAll)
 
         menu.popup(event.globalPos())
 
@@ -782,7 +732,7 @@ class TreeWidget(QTreeWidget):
     def importModule(self):
         defaultPath = RigBuilderLocalPath+"/modules/"
 
-        sceneDir = os.path.dirname(api.MFileIO.currentFile())
+        sceneDir = os.path.dirname(pm.api.MFileIO.currentFile())
         if sceneDir:
             defaultPath = sceneDir + "/"
 
@@ -807,7 +757,7 @@ class TreeWidget(QTreeWidget):
 
     def saveModule(self):
         def clearModifiedFlag(module): # clear modified flag on embeded modules
-            module.modified = False      
+            module.modified = False
             for ch in module.getChildren():
                 if not ch.uid:
                     clearModifiedFlag(ch)
@@ -833,7 +783,7 @@ class TreeWidget(QTreeWidget):
 
     def saveAsModule(self):
         for item in self.selectedItems():
-            outputDir = os.path.dirname(api.MFileIO.currentFile())
+            outputDir = os.path.dirname(pm.api.MFileIO.currentFile())
             outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save as "+item.module.name, outputDir + "/" +item.module.name, "*.xml")
 
             if outputPath:
@@ -846,7 +796,7 @@ class TreeWidget(QTreeWidget):
             for item in self.selectedItems():
                 item.module.uid = ""
                 item.module.loadedFrom = ""
-                
+
                 for i in range(1,4): # clear path, source and uid
                     item.setText(i, "") # update path string
 
@@ -984,7 +934,7 @@ class TemplateSelectorDialog(QDialog):
 
         self.gridLayout.setDefaultPositioning(3, Qt.Horizontal)
         self.gridLayout.setColumnStretch(1, 1)
- 
+
         layout.addWidget(self.filterWidget)
         layout.addWidget(scrollArea)
         self.filterWidget.setFocus()
@@ -1060,14 +1010,10 @@ class EditTemplateWidget(QWidget):
     def nameContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        copyAction = QAction("Copy", self)
-        copyAction.triggered.connect(self.copyTemplate)
-        menu.addAction(copyAction)
+        menu.addAction("Copy", self.copyTemplate)
 
         if EditTemplateWidget.Clipboard and EditTemplateWidget.Clipboard[0]["template"] == self.template:
-            pasteAction = QAction("Paste", self)
-            pasteAction.triggered.connect(lambda data=EditTemplateWidget.Clipboard[0]["data"]: self.templateWidget.setJsonData(data))
-            menu.addAction(pasteAction)
+            menu.addAction("Paste", Callback(self.templateWidget.setJsonData, EditTemplateWidget.Clipboard[0]["data"]))
 
         menu.popup(event.globalPos())
 
@@ -1140,18 +1086,11 @@ class EditAttributesWidget(QWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        addAction = QAction("Add", self)
-        addAction.triggered.connect(self.addTemplateAttribute)
-        menu.addAction(addAction)
-
-        addAction = QAction("Copy visible", self)
-        addAction.triggered.connect(self.copyVisibleAttributes)
-        menu.addAction(addAction)
+        menu.addAction("Add", self.addTemplateAttribute)
+        menu.addAction("Copy visible", self.copyVisibleAttributes)
 
         if EditTemplateWidget.Clipboard:
-            addAction = QAction("Paste", self)
-            addAction.triggered.connect(self.pasteAttribute)
-            menu.addAction(addAction)
+            menu.addAction("Paste", self.pasteAttribute)
 
         menu.popup(event.globalPos())
 
@@ -1172,7 +1111,7 @@ class EditAttributesWidget(QWidget):
             w.nameWidget.setText(module["name"])
 
     def addTemplateAttribute(self):
-        selector = TemplateSelectorDialog(parent=QApplication.activeWindow())
+        selector = TemplateSelectorDialog(parent=rigBuilderWindow)
         selector.exec_()
         if selector.selectedTemplate:
             self.insertCustomWidget(selector.selectedTemplate)
@@ -1249,11 +1188,7 @@ class EditAttributesTabWidget(QTabWidget):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-
-        addAction = QAction("New tab", self)
-        addAction.triggered.connect(lambda: self.addTabCategory("Untitled"))
-        menu.addAction(addAction)
-
+        menu.addAction("New tab", Callback(self.addTabCategory, "Untitled"))
         menu.popup(event.globalPos())
 
     def clearTab(self, i):
@@ -1346,9 +1281,8 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = ["SHOULD_RUN_CHILDREN", "MODULE_NAME", "Module", "Channel", "copyJson", 
-                 "error", "warning", "evaluateBezierCurve", "evaluateBezierCurveFromX",
-                 "beginProgress", "stepProgress", "endProgress", "currentTabIndex"]
+        words = list(rigBuilderWindow.getModuleGlobalEnv().keys())
+        words.extend(list(widgets.WidgetsAPI.keys()))
 
         prefix = "@"
         for a in self.module.getAttributes():
@@ -1358,7 +1292,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.editorWidget.words = set(words)
 
 class LogHighligher(QSyntaxHighlighter):
-    def __init__(self, parent=None):
+    def __init__(self, parent):
         super(LogHighligher, self).__init__(parent)
 
         self.highlightingRules = []
@@ -1573,12 +1507,31 @@ class RigBuilderWindow(QFrame):
             self.vsplitter.setSizes(sizes)
 
     def getModuleGlobalEnv(self):
-        return {"evaluateBezierCurveFromX": widgets.evaluateBezierCurveFromX,
-                "evaluateBezierCurve": widgets.evaluateBezierCurve,
-                "beginProgress": self.progressBarWidget.beginProgress,
-                "stepProgress": self.progressBarWidget.stepProgress,
-                "endProgress": self.progressBarWidget.endProgress,
-                "currentTabIndex": self.attributesTabWidget.currentIndex()}
+        def printError(msg):
+            raise RuntimeError(msg)
+
+        def printWarning(msg):
+            print("Warning: "+msg)
+
+        def exitModule():
+            raise ExitModuleException()
+
+        env = {"beginProgress": self.progressBarWidget.beginProgress,
+               "stepProgress": self.progressBarWidget.stepProgress,
+               "endProgress": self.progressBarWidget.endProgress,
+               "currentTabIndex": self.attributesTabWidget.currentIndex(),
+               "SHOULD_RUN_CHILDREN": True,
+               "Module": ModuleWrapper,
+               "Channel": Channel,
+               "copyJson": copyJson,
+               "exit": exitModule,
+               "error": printError,
+               "warning": printWarning}
+
+        for k, f in widgets.WidgetsAPI.items():
+            env[k] = f
+
+        return env
 
     def runBtnClicked(self):
         def uiCallback(mod):
@@ -1633,7 +1586,7 @@ class RigBuilderToolWindow(QFrame):
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint)
 
         layout = QVBoxLayout()
-        self.setLayout(layout)        
+        self.setLayout(layout)
 
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)

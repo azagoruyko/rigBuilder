@@ -12,32 +12,8 @@ def clamp(mn, mx, val):
     else:
         return val
 
-def highlightLine(widget, line=-1, clear=False):
-    if line == -1:
-        block = widget.textCursor().block()
-    else:
-        block = widget.document().findBlockByLineNumber(line)
-
-        if not block.isValid():
-            return
-
-    fmt = QTextCharFormat()
-    if not clear:
-        fmt.setBackground(QColor(50, 80, 100))
-
-    blockPos = block.position()
-
-    cursor = widget.textCursor()
-    cursor.setPosition(blockPos)
-    cursor.select(QTextCursor.LineUnderCursor)
-    cursor.setCharFormat(fmt)
-    cursor.clearSelection()
-    cursor.movePosition(QTextCursor.StartOfLine)
-
-    widget.setTextCursor(cursor)
-
 class PythonHighlighter(QSyntaxHighlighter):
-    def __init__(self, parent=None):
+    def __init__(self, parent):
         super(PythonHighlighter, self).__init__(parent)
 
         self.highlightingRules = []
@@ -110,7 +86,7 @@ class PythonHighlighter(QSyntaxHighlighter):
         # Do multi-line strings
         in_multiline = self.match_multiline(text, QRegExp("'''"), 1, self.multiLineCommentFormat)
         if not in_multiline:
-            in_multiline = self.match_multiline(text, QRegExp('"""'), 2, self.multiLineCommentFormat)        
+            in_multiline = self.match_multiline(text, QRegExp('"""'), 2, self.multiLineCommentFormat)
 
         if self.highlightedWordRegexp:
             expression = QRegExp(self.highlightedWordRegexp)
@@ -156,10 +132,31 @@ class PythonHighlighter(QSyntaxHighlighter):
         if self.currentBlockState() == in_state:
             return True
         else:
-           return False                
+           return False
+
+def highlightLine(widget, line=None, *, clear=False):
+    if line is None:
+        block = widget.textCursor().block()
+    else:
+        block = widget.document().findBlockByLineNumber(line)
+
+        if not block.isValid():
+            return
+
+    fmt = QTextCharFormat()
+    if not clear:
+        fmt.setBackground(QColor(50, 80, 100))
+
+    cursor = widget.textCursor()
+    cursor.setPosition(block.position())
+    cursor.select(QTextCursor.LineUnderCursor)
+    cursor.setCharFormat(fmt)
+    cursor.clearSelection()
+    cursor.movePosition(QTextCursor.StartOfLine)
+    widget.setTextCursor(cursor)
 
 class SwoopHighligher(QSyntaxHighlighter):
-    def __init__(self, parent=None):
+    def __init__(self, parent):
         super(SwoopHighligher, self).__init__(parent)
 
         self.highlightingRules = []
@@ -216,7 +213,7 @@ class SwoopSearchDialog(QDialog):
         self.replacePattern = None
         self.previousLines = []
 
-        self.savedSettings = {}        
+        self.savedSettings = {}
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setWindowTitle("Swoop")
@@ -346,18 +343,16 @@ class SwoopSearchDialog(QDialog):
         lineCount = rw.document().blockCount()-1
 
         if event.key() in [Qt.Key_Down, Qt.Key_Up, Qt.Key_PageDown, Qt.Key_PageUp]:
+            highlightLine(rw, clamp(0, lineCount, line), clear=True)
             if event.key() == Qt.Key_Down:
-                highlightLine(rw, clamp(0, lineCount, line), clear=True)
                 highlightLine(rw, clamp(0, lineCount, line+1))
             elif event.key() == Qt.Key_Up:
-                highlightLine(rw, clamp(0, lineCount, line), clear=True)
                 highlightLine(rw, clamp(0, lineCount, line-1))
 
             elif event.key() == Qt.Key_PageDown:
-                highlightLine(rw, clamp(0, lineCount, line), clear=True)
                 highlightLine(rw, clamp(0, lineCount, line+5))
+
             elif event.key() == Qt.Key_PageUp:
-                highlightLine(rw, clamp(0, lineCount, line), clear=True)
                 highlightLine(rw, clamp(0, lineCount, line-5))
 
             self.resultsLineChanged()
@@ -594,7 +589,7 @@ class CodeEditorWidget(QTextEdit):
                 event.accept()
                 return True
 
-        return super(CodeEditorWidget, self).event(event)           
+        return super(CodeEditorWidget, self).event(event)
 
     def setBookmark(self, line=-1):
         if line == -1:
@@ -781,7 +776,7 @@ class CodeEditorWidget(QTextEdit):
             cursor = self.textCursor()
             pos = cursor.position()
             start, end = findBracketSpans(self.toPlainText(), pos)
-            if start != end:
+            if start is not None and end is not None:
                 cursor.setPosition(start+1)
                 cursor.setPosition(end, QTextCursor.KeepAnchor)
                 self.setTextCursor(cursor)
@@ -831,7 +826,7 @@ class CodeEditorWidget(QTextEdit):
             cursor = self.textCursor()
             tabSpaces = " "*CodeEditorWidget.TabSpaces
             start, end = cursor.selectionStart(), cursor.selectionEnd()
-            cursor.clearSelection()            
+            cursor.clearSelection()
 
             cursor.setPosition(start)
 
@@ -860,20 +855,12 @@ class CodeEditorWidget(QTextEdit):
 
         elif key in [Qt.Key_Up, Qt.Key_Down, Qt.Key_PageDown, Qt.Key_PageUp]:
             if self.completionWidget.isVisible():
-                if key == Qt.Key_Down:
-                    d = 1
-                elif key == Qt.Key_Up:
-                    d = -1
-                elif key == Qt.Key_PageDown:
-                    d = 10
-                elif key == Qt.Key_PageUp:
-                    d = -10
+                keyMove = {Qt.Key_Up: -1, Qt.Key_Down: 1, Qt.Key_PageDown: 10, Qt.Key_PageUp: -10}
+                d = keyMove.get(key, 0)
 
-                line = self.completionWidget.currentLine()
-                highlightLine(self.completionWidget, line, clear=True)
-                highlightLine(self.completionWidget, clamp(0, self.completionWidget.lineCount()-1, line+d))
+                self.completionWidget.gotoLine(self.completionWidget.currentLine()+d)
             else:
-                QTextEdit.keyPressEvent(self, event)
+                super().keyPressEvent(event)
 
         elif ctrl and key == Qt.Key_L: # center line
             self.centerLine()
@@ -902,14 +889,6 @@ class CodeEditorWidget(QTextEdit):
 
             cursor.endEditBlock()
             self.setTextCursor(cursor)
-
-        elif ctrl and key in [Qt.Key_BracketLeft, Qt.Key_BracketRight]:
-            cursor = self.textCursor()
-            pos = cursor.position()
-            start, end = findBracketSpans(self.toPlainText(), pos)
-            if start != end:
-                cursor.setPosition(start if key == Qt.Key_BracketLeft else end)
-                self.setTextCursor(cursor)
 
         elif ctrl and key == Qt.Key_D: # duplicate line
             cursor = self.textCursor()
@@ -1097,17 +1076,17 @@ class CodeEditorWidget(QTextEdit):
         start, end = findBracketSpans(self.toPlainText(), pos)
 
         extra = []
-
-        if start != end:
-            for pos in [start, end]:
-                cursor = self.textCursor()
-                cursor.setPosition(pos)
-                cursor.setPosition(pos+1, QTextCursor.KeepAnchor)
-                es = QTextEdit.ExtraSelection()
-                es.cursor = cursor
-                es.format.setForeground(QColor(0, 0, 0))
-                es.format.setBackground(QBrush(QColor(70, 130, 140)))
-                extra.append(es)
+        for pos in [start, end]:
+            if pos is None:
+                continue
+            cursor = self.textCursor()
+            cursor.setPosition(pos)
+            cursor.setPosition(pos+1, QTextCursor.KeepAnchor)
+            es = QTextEdit.ExtraSelection()
+            es.cursor = cursor
+            es.format.setForeground(QColor(0, 0, 0))
+            es.format.setBackground(QColor(200, 140, 140) if start is None or end is None else QColor(70, 130, 140))
+            extra.append(es)
 
         self.setExtraSelections(extra)
 
@@ -1148,47 +1127,60 @@ class CodeEditorWidget(QTextEdit):
 
         self.completionWidget.show()
 
-def findBracketSpans(text, offset, brackets="{(["):
+def findOpeningBracketPosition(text, offset, brackets="{(["):
     openingBrackets = "{(["
     closingBrackets = "})]"
     stack = [0 for i in range(len(openingBrackets))] # for each bracket set 0 as default
-    
-    if offset >= len(text) or offset < 0:
-        return -1, -1
-    
-    start,end = -1, -1
-    bracketIdx = None
-    for i in range(offset, -1, -1): # find start
+
+    if offset < 0 or offset >= len(text):
+        return None
+
+    if text[offset] in closingBrackets:
+        offset -= 1
+
+    for i in range(offset, -1, -1):
         c = text[i]
-        
+
         if c in brackets and c in openingBrackets and stack[openingBrackets.index(c)] == 0:
-            start = i
-            bracketIdx = openingBrackets.index(c)
-            break
+            return i
 
         elif c in openingBrackets:
             stack[openingBrackets.index(c)] += 1
-                    
+
         elif c in closingBrackets:
             stack[closingBrackets.index(c)] -= 1
-            
-    if bracketIdx is None:
-        return start, end
-        
-    for i in range(offset, len(text)): # find end
+
+def findClosingBracketPosition(text, offset, brackets="})]"):
+    openingBrackets = "{(["
+    closingBrackets = "})]"
+    stack = [0 for i in range(len(openingBrackets))] # for each bracket set 0 as default
+
+    if offset < 0 or offset >= len(text):
+        return None
+
+    if text[offset] in openingBrackets:
+        offset += 1
+
+    for i in range(offset, len(text)):
         c = text[i]
-        
-        if c == closingBrackets[bracketIdx] and stack[bracketIdx] == 0:
-            end = i+1
-            break
-            
+
+        if c in brackets and c in closingBrackets and stack[closingBrackets.index(c)] == 0:
+            return i
+
         elif c in openingBrackets:
             stack[openingBrackets.index(c)] += 1
-                    
+
         elif c in closingBrackets:
             stack[closingBrackets.index(c)] -= 1
-                    
-    return (start, end) if start>0 and end>0 else (-1, -1)
+
+def findBracketSpans(text, offset):
+    s = findOpeningBracketPosition(text, offset, "{([")
+    if s is not None:
+        matchingClosingBracket = {"{":"}", "(":")", "[":"]"}[text[s]]
+        e = findClosingBracketPosition(text, offset, matchingClosingBracket)
+    else:
+        e = findClosingBracketPosition(text, offset, "})]")
+    return (s,e)
 
 def wordAtCursor(cursor):
     cursor = QTextCursor(cursor)
@@ -1220,6 +1212,8 @@ class CompletionWidget(QTextEdit):
     def __init__(self, items, **kwargs):
         super(CompletionWidget, self).__init__(**kwargs)
 
+        self._prevLine = 0
+
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
 
@@ -1228,43 +1222,31 @@ class CompletionWidget(QTextEdit):
 
         self.update([])
 
-    def lineCount(self):
-        return self.document().blockCount()
-
     def currentLine(self):
         return self.textCursor().block().blockNumber()
 
+    def lineCount(self):
+        return self.document().blockCount()
+
+    def gotoLine(self, line):
+        highlightLine(self, self._prevLine, clear=True)
+        self._prevLine = line
+        highlightLine(self, self._prevLine)
+
     def mousePressEvent(self, event):
-        self.parent().setFocus()
-        event.accept()
+        super().mousePressEvent(event)
+        self.gotoLine(self.currentLine())
 
     def keyPressEvent(self, event):
-        shift = event.modifiers() & Qt.ShiftModifier
-        ctrl = event.modifiers() & Qt.ControlModifier
-        alt = event.modifiers() & Qt.AltModifier
-
-        line = self.textCursor().block().blockNumber()
-        lineCount = self.document().blockCount()-1
-
-        if event.key() == Qt.Key_Down:
-            highlightLine(self, clamp(0, lineCount, line), clear=True)
-            highlightLine(self, clamp(0, lineCount, line+1))
-        elif event.key() == Qt.Key_Up:
-            highlightLine(self, clamp(0, lineCount, line), clear=True)
-            highlightLine(self, clamp(0, lineCount, line-1))
-
-        elif event.key() == Qt.Key_PageDown:
-            highlightLine(self, clamp(0, lineCount, line), clear=True)
-            highlightLine(self, clamp(0, lineCount, line+5))
-        elif event.key() == Qt.Key_PageUp:
-            highlightLine(self, clamp(0, lineCount, line), clear=True)
-            highlightLine(self, clamp(0, lineCount, line-5))
-
-        elif event.key() == Qt.Key_Return: # accept
-            pass
-
+        if event.key() == Qt.Key_Return:
+            super().keyPressEvent(event)
         else:
-            QTextEdit.keyPressEvent(self, event)
+            lineCount = self.lineCount()
+
+            keyMove = {Qt.Key_Down: 1, Qt.Key_Up: -1, Qt.Key_PageDown: 10, Qt.Key_PageUp: -10}
+            offset = keyMove.get(event.key(), 0)
+            if offset != 0:
+                self.gotoLine(clamp(0, lineCount, self._prevLine+offset))
 
     def update(self, items):
         if not items:
@@ -1278,7 +1260,9 @@ class CompletionWidget(QTextEdit):
             lines.append(line)
 
         self.setText("\n".join(lines))
+
         highlightLine(self, 0)
+        self._prevLine = 0
 
         self.autoResize()
 
@@ -1286,9 +1270,10 @@ class CompletionWidget(QTextEdit):
         w = self.document().idealWidth() + 10
         h = self.document().blockCount()*self.cursorRect().height() + 30
 
-        maxHeight = clamp(0, 400, self.parent().height() - self.parent().cursorRect().top() - 30)
+        maxWidth = self.parent().width() - self.parent().cursorRect().left() - 30
+        maxHeight = self.parent().height() - self.parent().cursorRect().top() - 30
 
-        self.setFixedSize(clamp(0, 500, w), clamp(0, maxHeight, h))
+        self.setFixedSize(clamp(0,maxWidth,w), clamp(0, maxHeight, h))
 
     def showEvent(self, event):
         self.autoResize()

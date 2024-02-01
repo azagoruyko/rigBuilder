@@ -6,12 +6,14 @@ import sys
 import os
 import json
 import math
-import time
 
 if sys.version_info.major > 2:
     RootPath = os.path.dirname(__file__) # Rig Builder root folder
 else:
     RootPath = os.path.dirname(__file__.decode(sys.getfilesystemencoding())) # legacy
+
+def Callback(f, *args, **kwargs):
+   return lambda: f(*args, **kwargs)
 
 def clearLayout(layout):
      if layout is not None:
@@ -23,11 +25,11 @@ def clearLayout(layout):
              else:
                  clearLayout(item.layout())
 
-def clamp(mn, mx, val):
-    if val < mn:
-        return mn
-    elif val > mx:
-        return mx
+def clamp(val, low, high):
+    if low is not None and val < low:
+        return low
+    elif high is not None and val > high:
+        return high
     else:
         return val
 
@@ -145,13 +147,8 @@ class ButtonTemplateWidget(TemplateWidget):
     def buttonContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        editLabelAction = QAction("Edit label", self)
-        editLabelAction.triggered.connect(self.editLabelActionClicked)
-        menu.addAction(editLabelAction)
-
-        editAction = QAction("Edit command", self)
-        editAction.triggered.connect(self.editActionClicked)
-        menu.addAction(editAction)
+        menu.addAction("Edit label", self.editLabelActionClicked)
+        menu.addAction("Edit command", self.editActionClicked)
 
         menu.popup(event.globalPos())
 
@@ -225,23 +222,11 @@ class ComboBoxTemplateWidget(TemplateWidget):
     def comboBoxContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        appendAction = QAction("Append", self)
-        appendAction.triggered.connect(self.appendItem)
-        menu.addAction(appendAction)
-
-        removeAction = QAction("Remove", self)
-        removeAction.triggered.connect(self.removeItem)
-        menu.addAction(removeAction)
-
-        editAction = QAction("Edit", self)
-        editAction.triggered.connect(self.editItems)
-        menu.addAction(editAction)
-
+        menu.addAction("Append", self.appendItem)
+        menu.addAction("Remove", self.removeItem)
+        menu.addAction("Edit", self.editItems)
         menu.addSeparator()
-
-        clearAction = QAction("Clear", self)
-        clearAction.triggered.connect(self.clearItems)
-        menu.addAction(clearAction)
+        menu.addAction("Clear", self.clearItems)
 
         menu.popup(event.globalPos())
 
@@ -360,8 +345,10 @@ class LineEditTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
 
     def sliderValueChanged(self, v):
-        div = 100 if self.validator == 1 else 100.0
-        self.textWidget.setText(str(v/div))
+        v /= 100.0
+        if self.validator == 1: # int
+            v = round(v)
+        self.textWidget.setText(str(v))
         self.somethingChanged.emit()
 
     def textContextMenuEvent(self, event):
@@ -390,15 +377,15 @@ class LineEditTemplateWidget(TemplateWidget):
         self.textWidget.setText(fromSmartConversion(data["value"]))
 
         self.validator = data.get("validator", 0)
-        self.minValue = data.get("min", "")
-        self.maxValue = data.get("max", "")
+        self.minValue = data.get("min")
+        self.maxValue = data.get("max")
 
         if self.validator == 1:
             self.textWidget.setValidator(QIntValidator())
         elif self.validator == 2:
             self.textWidget.setValidator(QDoubleValidator())
 
-        if self.minValue and self.maxValue:
+        if self.validator and self.minValue and self.maxValue:
             self.sliderWidget.show()
 
             self.sliderWidget.setMinimum(int(self.minValue)*100) # slider values are int, so mult by 100
@@ -432,13 +419,8 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def buttonContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        editLabelAction = QAction("Edit label", self)
-        editLabelAction.triggered.connect(self.editLabelActionClicked)
-        menu.addAction(editLabelAction)
-
-        editAction = QAction("Edit command", self)
-        editAction.triggered.connect(self.editActionClicked)
-        menu.addAction(editAction)
+        menu.addAction("Edit label", self.editLabelActionClicked)
+        menu.addAction("Edit command", self.editActionClicked)
 
         menu.popup(event.globalPos())
 
@@ -497,45 +479,21 @@ class ListBoxTemplateWidget(TemplateWidget):
     def listContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        appendAction = QAction("Append", self)
-        appendAction.triggered.connect(self.appendClicked)
-        menu.addAction(appendAction)
-
-        removeAction = QAction("Remove", self)
-        removeAction.triggered.connect(self.removeClicked)
-        menu.addAction(removeAction)
-
-        editAction = QAction("Edit", self)
-        editAction.triggered.connect(self.editClicked)
-        menu.addAction(editAction)
-
-        sortAction = QAction("Sort", self)
-        sortAction.triggered.connect(self.listWidget.sortItems)
-        menu.addAction(sortAction)
-
+        menu.addAction("Append", self.appendClicked)
+        menu.addAction("Remove", self.removeClicked)
+        menu.addAction("Edit", self.editClicked)
+        menu.addAction("Sort", self.listWidget.sortItems)
         menu.addSeparator()
-
-        getAction = QAction("Get selected from Maya", self)
-        getAction.triggered.connect(lambda: self.getFromMayaClicked(False))
-        menu.addAction(getAction)
-
-        addSelectedAction = QAction("Add selected from Maya", self)
-        addSelectedAction.triggered.connect(lambda: self.getFromMayaClicked(True))
-        menu.addAction(addSelectedAction)
-
-        selectAction = QAction("Select in Maya", self)
-        selectAction.triggered.connect(self.selectInMayaClicked)
-        menu.addAction(selectAction)
-
-        clearAction = QAction("Clear", self)
-        clearAction.triggered.connect(self.clearClicked)
-        menu.addAction(clearAction)
+        menu.addAction("Get selected from Maya", Callback(self.getFromMayaClicked, False))
+        menu.addAction("Add selected from Maya", Callback(self.getFromMayaClicked, True))
+        menu.addAction("Select in Maya", self.selectInMayaClicked)
+        menu.addAction("Clear", self.clearClicked)
 
         menu.popup(event.globalPos())
 
     def resizeList(self):
         h = self.listWidget.sizeHintForRow(0) * self.listWidget.count() + 2 * self.listWidget.frameWidth() + 25
-        height = clamp(50, 250, h)
+        height = clamp(h, 50, 250)
         self.listWidget.setMinimumHeight(height)
         self.listWidget.setMaximumHeight(height)
 
@@ -605,7 +563,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(RadioButtonTemplateWidget, self).__init__(**kwargs)
 
-        layout = QGridLayout()        
+        layout = QGridLayout()
         self.setLayout(layout)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -615,17 +573,13 @@ class RadioButtonTemplateWidget(TemplateWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        editAction = QAction("Edit", self)
-        editAction.triggered.connect(self.editClicked)
-        menu.addAction(editAction)
+        menu.addAction("Edit", self.editClicked)
 
         menu.addSeparator()
 
         columnsMenu = QMenu("Columns", self)
         for n in RadioButtonTemplateWidget.Columns:
-            action = QAction(str(n) + " columns", self)
-            action.triggered.connect(lambda _=None, n=n: self.setColumns(n))
-            columnsMenu.addAction(action)
+            columnsMenu.addAction(str(n) + " columns", Callback(self.setColumns, n))
         menu.addMenu(columnsMenu)
 
         menu.popup(event.globalPos())
@@ -733,58 +687,42 @@ class TableTemplateWidget(TemplateWidget):
     def sectionDoubleClicked(self, column):
         newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, self.tableWidget.horizontalHeaderItem(column).text())
         if ok:
-            self.tableWidget.horizontalHeaderItem(column).setText(newName.replace(" ", "_"))
+            self.tableWidget.horizontalHeaderItem(column).setText(newName)
             self.somethingChanged.emit()
 
     def tableContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        duplicateRowAction = QAction("Duplicate", self)
-        duplicateRowAction.triggered.connect(lambda _=None: self.duplicateRow())
-        menu.addAction(duplicateRowAction)
+        menu.addAction("Duplicate", self.duplicateRow)
 
         menu.addSeparator()
 
         rowMenu = QMenu("Row", self)
-        insertRowAction = QAction("Insert", self)
-        insertRowAction.triggered.connect(lambda _=None: self.tableWidget.insertRow(self.tableWidget.currentRow()))
-        rowMenu.addAction(insertRowAction)
-
-        appendRowAction = QAction("Append", self)
-        appendRowAction.triggered.connect(lambda _=None: self.tableWidget.insertRow(self.tableWidget.currentRow()+1))
-        rowMenu.addAction(appendRowAction)
+        rowMenu.addAction("Insert", Callback(self.tableWidget.insertRow, self.tableWidget.currentRow()))
+        rowMenu.addAction("Append", Callback(self.tableWidget.insertRow, self.tableWidget.currentRow()+1))
 
         rowMenu.addSeparator()
-        removeRowAction = QAction("Remove", self)
-        removeRowAction.triggered.connect(lambda _=None: (self.tableWidget.removeRow(self.tableWidget.currentRow()), self.somethingChanged.emit()))
-        rowMenu.addAction(removeRowAction)
+
+        f = lambda: (self.tableWidget.removeRow(self.tableWidget.currentRow()), self.somethingChanged.emit())
+        rowMenu.addAction("Remove", f)
 
         menu.addMenu(rowMenu)
 
-        columnMenu = QMenu("Column", self)
-        insertColumnAction = QAction("Insert", self)
-        insertColumnAction.triggered.connect(lambda _=None: self.insertColumn(self.tableWidget.currentColumn()))
-        columnMenu.addAction(insertColumnAction)
-
-        appendColumnAction = QAction("Append", self)
-        appendColumnAction.triggered.connect(lambda _=None: self.insertColumn(self.tableWidget.currentColumn()+1))
-        columnMenu.addAction(appendColumnAction)
+        columnMenu = QMenu("Column", self)        
+        columnMenu.addAction("Insert", Callback(self.insertColumn, self.tableWidget.currentColumn()))
+        columnMenu.addAction("Append", Callback(self.insertColumn, self.tableWidget.currentColumn()+1))
 
         columnMenu.addSeparator()
 
-        removeColumnAction = QAction("Remove", self)
-        removeColumnAction.triggered.connect(lambda _=None: (self.tableWidget.removeColumn(self.tableWidget.currentColumn()), self.somethingChanged.emit()))
-        columnMenu.addAction(removeColumnAction)
+        f = lambda: (self.tableWidget.removeColumn(self.tableWidget.currentColumn()), self.somethingChanged.emit())
+        columnMenu.addAction("Remove", f)
 
         menu.addMenu(columnMenu)
 
-        resizeAction = QAction("Resize", self)
-        resizeAction.triggered.connect(lambda _=None: self.updateSize())
-        menu.addAction(resizeAction)
+        menu.addSeparator()
 
-        clearAction = QAction("Clear", self)
-        clearAction.triggered.connect(self.clearAll)
-        menu.addAction(clearAction)
+        menu.addAction("Resize", self.updateSize)
+        menu.addAction("Clear", self.clearAll)
 
         menu.popup(event.globalPos())
 
@@ -798,7 +736,7 @@ class TableTemplateWidget(TemplateWidget):
             height += self.tableWidget.verticalHeader().sectionSize(i)
 
         height += self.tableWidget.horizontalHeader().height() + 25
-        self.tableWidget.setMaximumHeight(clamp(50, height, height))
+        self.tableWidget.setMaximumHeight(clamp(height, 50, height))
 
     def clearAll(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really remove all elements?",
@@ -828,7 +766,7 @@ class TableTemplateWidget(TemplateWidget):
         return {"items": [("a", "1")], "header": ["name", "value"], "default": "items"}
 
     def getJsonData(self):
-        header = [self.tableWidget.horizontalHeaderItem(c).text() for c in range(self.tableWidget.columnCount())]
+        header = [self.tableWidget.horizontalHeaderItem(self.tableWidget.visualColumn(c)).text() for c in range(self.tableWidget.columnCount())]
         items = []
 
         vheader = self.tableWidget.verticalHeader()
@@ -1269,3 +1207,12 @@ TemplateWidgets = {
     "table": TableTemplateWidget,
     "text": TextTemplateWidget,
     "vector": VectorTemplateWidget}
+
+WidgetsAPI = {
+    "evaluateBezierCurve": evaluateBezierCurve,
+    "evaluateBezierCurveFromX": evaluateBezierCurveFromX,
+    "listLerp": listLerp,
+    "clamp": clamp,
+    "smartConversion": smartConversion,
+    "fromSmartConversion": fromSmartConversion,
+}
