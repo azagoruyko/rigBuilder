@@ -19,12 +19,12 @@ Modules can be hierarchically linked. Data is stored in attributes. Attribute is
 
 The attributes store all the information about the corresponding widget. By transmitting such information, connections are implemented.
 
-Modules are launched sequentially from top to bottom in the hierarchy, starting from the current module. In the module code, its own attributes are available as variables with the `@` prefix.
+Modules are launched sequentially from top to bottom in the hierarchy, starting from the current module. In the module code, its own attributes are available as variables with `@` prefix.
 
 There are three kinds of variables for each attribute:
 * Default value (`@`).<br>
   Attribute name prefixed with `@`: `@input`, `@curve`.<br> 
-  This is the value that the widget represents.
+  This is the value the widget represents.
 * Full attribute data (`@_data`).<br>
   `@input_data`, `@curve_data`.<br>
   By changing this data, you can edit the behavior of the widget. 
@@ -54,28 +54,36 @@ Only attributes with the same widget type can be connected. Connections are bidi
 ![module representation](https://user-images.githubusercontent.com/9614751/187194450-2c509e82-cb81-444d-b449-ed976985c654.png)
 
 ## Writing code
-In general, the code is written in the usual way, except that you can use attribute variables using @ like `@set_output(@input * 2)`
+In general, the code is written in a usual way, except that you can use attribute variables with `@` notation like `@set_output(@input * 2)`
 In addition, several predefined variables and functions are available:
 
 | Variable | Description |
 | -- | -- |
-|`MODULE_NAME` |	Current module name |
-|`SHOULD_RUN_CHILDREN` |	If False then don’t run children |
-| `Module` | Runtime module creator like `m = Module("biped/leg");m.run()` |
-|`Channel` | Attributes accessor. See below |
+| `module` | Current module accessor |
+| `Module` | Runtime module creator |
+|`Channel` | Attributes accessor |
 |`copyJson` (function) |	Fast copy json-compatible data |
 |`error`/`warning` (function) |	Error/warning in log |
 |`evaluateBezierCurve` (function) |	For curve widget. Evaluate point on bezier f(@curve, param) => [x, y] |
 |`evaluateBezierCurveFromX` (function) |	For curve widget. Find such point P(x, y), that P.x = param, f(@curve, param) => [x, y] |
 
+Use `widgets.py/WidgetsAPI` variable to add custom widgets functions.
+
 ## Modules
 Modules can be created in scripts during their evaluation with `Module` class.
 ```python
 mleg = Module("biped/leg") # can be absolute/relative path or uid
-mleg.name.set("l_leg")
-mleg.joint1.set("l_leg_1_joint")
+mleg.attr.name.set("l_leg")
+mleg.attr.joint1.set("l_leg_1_joint")
 mleg.run()
 ```
+You can also access the current executing module with `module` variable.
+```python
+p = module.parent()
+p.attr.input.set(5)
+p.child("someChild").attr.name.set("arm")
+```
+So `@` notation is actually a shortcut for `module.attr.your_attr` set and get functions.
 
 ## Channels
 Modules can access parent and neibour attributes using Channel approach. Channels have `get` and `set` methods.
