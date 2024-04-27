@@ -105,13 +105,13 @@ class TabAttributesWidget(QWidget):
         self.setLayout(layout)
 
         if self.module:
-            with captureOutput(rigBuilderWindow.logWidget):
+            with captureOutput(mainWindow.logWidget):
                 try:
                     self.module.resolveConnections()
                 except AttributeResolverError as err:
                     print("Error: " + str(err))
-                    rigBuilderWindow.showLog()
-                    rigBuilderWindow.logWidget.ensureCursorVisible()
+                    mainWindow.showLog()
+                    mainWindow.logWidget.ensureCursorVisible()
 
         for i, a in enumerate(attributes):
             templateWidget = widgets.TemplateWidgets[a.template](env={"module": ModuleWrapper(self.module)})
@@ -174,10 +174,10 @@ class TabAttributesWidget(QWidget):
 
     def setData(self, attr):
         text = json.dumps(attr.data, indent=4).replace("'", "\"")
-        editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=rigBuilderWindow)
+        editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=mainWindow)
         editText.exec_()
         if editText.result():
-            with captureOutput(rigBuilderWindow.logWidget):
+            with captureOutput(mainWindow.logWidget):
                 try:
                     data = json.loads(editText.outputText)
                     tmp = widgets.TemplateWidgets[attr.template]() # also we need check for widget compatibility
@@ -185,26 +185,26 @@ class TabAttributesWidget(QWidget):
 
                 except:
                     print("Error: invalid or incompatible json data")
-                    rigBuilderWindow.showLog()
-                    rigBuilderWindow.logWidget.ensureCursorVisible()
+                    mainWindow.showLog()
+                    mainWindow.logWidget.ensureCursorVisible()
 
                 else:
                     attr.data = data
-                    rigBuilderWindow.attributesTabWidget.updateTabs()
+                    mainWindow.attributesTabWidget.updateTabs()
 
     def resetAttr(self, attr):
         tmp = widgets.TemplateWidgets[attr.template]()
         attr.data = tmp.getDefaultData()
         attr.connect = ""
-        rigBuilderWindow.attributesTabWidget.updateTabs()
+        mainWindow.attributesTabWidget.updateTabs()
 
     def disconnectAttr(self, attr):
         attr.connect = ""
-        rigBuilderWindow.attributesTabWidget.updateTabs()
+        mainWindow.attributesTabWidget.updateTabs()
 
     def connectAttr(self, connect, destAttr):
         destAttr.connect = connect
-        rigBuilderWindow.attributesTabWidget.updateTabs()
+        mainWindow.attributesTabWidget.updateTabs()
 
 class SearchReplaceDialog(QDialog):
     onReplace = Signal(str, str, dict) # old, new, options
@@ -267,10 +267,10 @@ class AttributesTabWidget(QTabWidget):
         menu.popup(event.globalPos())
 
     def editAttributes(self):
-        dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=rigBuilderWindow)
+        dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=mainWindow)
         dialog.exec_()
 
-        rigBuilderWindow.codeEditorWidget.update()
+        mainWindow.codeEditorWidget.update()
         self.updateTabs()
 
     def onReplace(self, old, new, opts):
@@ -617,7 +617,7 @@ class TreeWidget(QTreeWidget):
             for url in event.mimeData().urls():
                 path = url.toLocalFile()
 
-                with captureOutput(rigBuilderWindow.logWidget):
+                with captureOutput(mainWindow.logWidget):
                     try:
                         m = Module.loadFromFile(path)
                         m.update()
@@ -626,8 +626,8 @@ class TreeWidget(QTreeWidget):
                     except ET.ParseError as e:
                         print(e)
                         print("Error '%s': invalid module"%path)
-                        rigBuilderWindow.showLog()
-                        rigBuilderWindow.logWidget.ensureCursorVisible()
+                        mainWindow.showLog()
+                        mainWindow.logWidget.ensureCursorVisible()
 
         if self.dragItems:
             for oldParent, item in zip(self.dragParents, self.dragItems):
@@ -736,7 +736,7 @@ class TreeWidget(QTreeWidget):
         if sceneDir:
             defaultPath = sceneDir + "/"
 
-        path, _ = QFileDialog.getOpenFileName(rigBuilderWindow, "Import", defaultPath, "*.xml")
+        path, _ = QFileDialog.getOpenFileName(mainWindow, "Import", defaultPath, "*.xml")
 
         if not path:
             return
@@ -752,8 +752,8 @@ class TreeWidget(QTreeWidget):
 
         except ET.ParseError:
             print("Error '%s': invalid module"%path)
-            rigBuilderWindow.showLog()
-            rigBuilderWindow.logWidget.ensureCursorVisible()
+            mainWindow.showLog()
+            mainWindow.logWidget.ensureCursorVisible()
 
     def saveModule(self):
         def clearModifiedFlag(module): # clear modified flag on embeded modules
@@ -769,7 +769,7 @@ class TreeWidget(QTreeWidget):
                 outputPath = item.module.getSavePath()
 
                 if not outputPath:
-                    outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+item.module.name, "*.xml")
+                    outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+item.module.name, "*.xml")
 
                 if outputPath:
                     dirname = os.path.dirname(outputPath)
@@ -784,7 +784,7 @@ class TreeWidget(QTreeWidget):
     def saveAsModule(self):
         for item in self.selectedItems():
             outputDir = os.path.dirname(pm.api.MFileIO.currentFile())
-            outputPath, _ = QFileDialog.getSaveFileName(rigBuilderWindow, "Save as "+item.module.name, outputDir + "/" +item.module.name, "*.xml")
+            outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name, outputDir + "/" +item.module.name, "*.xml")
 
             if outputPath:
                 item.module.uid = generateUid()
@@ -1111,7 +1111,7 @@ class EditAttributesWidget(QWidget):
             w.nameWidget.setText(module["name"])
 
     def addTemplateAttribute(self):
-        selector = TemplateSelectorDialog(parent=rigBuilderWindow)
+        selector = TemplateSelectorDialog(parent=mainWindow)
         selector.exec_()
         if selector.selectedTemplate:
             self.insertCustomWidget(selector.selectedTemplate)
@@ -1281,7 +1281,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = list(rigBuilderWindow.getModuleGlobalEnv().keys())
+        words = list(mainWindow.getModuleGlobalEnv().keys())
         words.extend(list(widgets.WidgetsAPI.keys()))
 
         for a in self.module.getAttributes():
@@ -1673,4 +1673,4 @@ def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relativ
 if not os.path.exists(RigBuilderLocalPath):
     os.makedirs(RigBuilderLocalPath+"/modules")
 
-rigBuilderWindow = RigBuilderWindow()
+mainWindow = RigBuilderWindow()
