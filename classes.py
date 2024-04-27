@@ -37,7 +37,10 @@ def smartConversion(x):
     return v
 
 def copyJson(data):
-    if type(data) in [list, tuple]:
+    if data is None:
+        return None
+    
+    elif type(data) in [list, tuple]:
         return [copyJson(x) for x in data]
 
     elif type(data) == dict:
@@ -427,51 +430,25 @@ class Module(object):
                 raise AttributeResolverError(self.name + ": cannot resolve connection for '%s' which is '%s'"%(attr.name, attr.connect))
 
     def run(self, globalsEnv, uiCallback=None):
-        def setter(attr, v):
-            try:
-                vcopy = copyJson(v)
-            except TypeError:
-                raise CopyJsonError("Cannot set non-JSON data using set_%s(%s)"%(attr.name, v))
-            else:
-                if attr.connect and self.parent:
-                    srcAttr = self.findConnectionSourceForAttribute(attr)
-                    default = srcAttr.data.get("default")
-
-                    if default:
-                        srcAttr.data[default] = vcopy
-                    else:
-                        srcAttr.data = vcopy
-
-                else:
-                    default = attr.data.get("default")
-
-                    if default:
-                        attr.data[default] = vcopy
-                    else:
-                        attr.data = vcopy
-
-                return vcopy
-
         if self.muted:
             return
 
         self.resolveConnections()
 
         localsEnv = {
-            "SHOULD_RUN_CHILDREN": True,
-            "MODULE_NAME": self.name,
+            "module": ModuleWrapper(self),
             "Channel": lambda x: Channel(self.parent, x),
         }
 
         for k in globalsEnv:
-            localsEnv[k] = globalsEnv[k]
+            if k not in localsEnv: # don't overwrite locals
+                localsEnv[k] = globalsEnv[k]
 
         for attr in self._attributes:
-            default = attr.data.get("default")
-
-            localsEnv[Module.AttributePrefix + attr.name] = copyJson(attr.data[default] if default else attr.data)
-            localsEnv[Module.AttributePrefix + attr.name + "_data"] = attr.data
-            localsEnv[Module.AttributePrefix + "set_" + attr.name] = lambda v, attr=attr: setter(attr, v)
+            attrWrapper = AttributeWrapper(attr)
+            localsEnv[Module.AttributePrefix + attr.name] = attrWrapper.get()
+            localsEnv[Module.AttributePrefix + attr.name + "_data"] = attrWrapper.data()
+            localsEnv[Module.AttributePrefix + "set_" + attr.name] = attrWrapper.set
 
         print("%s is running..."%self.getPath())
 
@@ -483,9 +460,8 @@ class Module(object):
         except ExitModuleException:
             pass
 
-        if localsEnv["SHOULD_RUN_CHILDREN"]:
-            for ch in self._children:
-                ch.run(globalsEnv, uiCallback)
+        for ch in self._children:
+            ch.run(globalsEnv, uiCallback)
 
         return localsEnv
 
@@ -523,41 +499,81 @@ class AttributeWrapper(object):
         k = self._attribute.data["default"]
         self._attribute.data[k] = v
 
-    def setData(self, data):
-        self._attribute = copyJson(data)
-
     def get(self):
         k = self._attribute.data["default"]
-        return self._attribute.data[k]
+        return copyJson(self._attribute.data[k])
 
-    def getData(self):
+    def data(self):
         return self._attribute.data
 
-class ModuleWrapper(object):
-    def __init__(self, specOrModule): # spec is path or module
-        if isinstance(specOrModule, str):
-            self._module = Module.loadModule(specOrModule)
-        elif isinstance(specOrModule, Module):
-            self._module = specOrModule
-
-    def setAttr(self, attrName, value):
-        attr = self._module.findAttribute(attrName)
-        if attr:
-            AttributeWrapper(attr).set(value)
-
-    def getAttr(self, attrName):
-        attr = self._module.findAttribute(attrName)
-        if attr:
-            return AttributeWrapper(attr).get()
+class AttrsWrapper(object): # attributes getter/setter
+    def __init__(self, module):
+        self._module = module
 
     def __getattr__(self, name):
         module = object.__getattribute__(self, "_module")
-
         attr = module.findAttribute(name)
         if attr:
             return AttributeWrapper(attr)
+'''
+How to use wrappers inside scripts.
+module.attr.someAttr.set(10)
+module.parent().attr.someAttr.set(20)
+print(@attr) # module.attr.attr.get()
+@set_attr(30) # module.attr.attr.set(30)
+'''
+class ModuleWrapper(object):
+    def __init__(self, specOrModule): # spec is path or module        
+        if isinstance(specOrModule, str):
+            self._module = Module.loadModule(specOrModule)
+
+        elif isinstance(specOrModule, Module):
+            self._module = specOrModule
+
+        self.attr = AttrsWrapper(self._module)
+
+    def child(self, name):
+        m = self._module.findChild(name)
+        if not m:
+            raise ModuleNotFoundError("Child module '%s' not found"%name)
+        return ModuleWrapper(m)
+    
+    def children(self):
+        return [ModuleWrapper(ch) for ch in self._module.getChildren()]
+
+    def parent(self):
+        return ModuleWrapper(self._module.parent) if self._module.parent else None
+
+    def mute(self):
+        self._module.muted = True
+
+    def unmute(self):
+        self._module.muted = False
+
+    def path(self):
+        return self._module.getPath()
 
     def run(self):
         self._module.run(globals())
+
+def getModuleDefaultEnv():
+    def printError(msg):
+        raise RuntimeError(msg)
+
+    def printWarning(msg):
+        print("Warning: "+msg)
+
+    def exitModule():
+        raise ExitModuleException()
+
+    env = {"module":None, # setup in Module.run
+           "Module": ModuleWrapper,
+           "Channel": Channel,
+           "copyJson": copyJson,
+           "exit": exitModule,
+           "error": printError,
+           "warning": printWarning}
+
+    return env
 
 Module.updateUidsCache()

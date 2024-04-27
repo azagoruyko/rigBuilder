@@ -1284,10 +1284,9 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         words = list(rigBuilderWindow.getModuleGlobalEnv().keys())
         words.extend(list(widgets.WidgetsAPI.keys()))
 
-        prefix = "@"
         for a in self.module.getAttributes():
-            words.append(prefix + a.name)
-            words.append(prefix + "set_"+a.name)
+            words.append("@" + a.name)
+            words.append("@set_" + a.name)
 
         self.editorWidget.words = set(words)
 
@@ -1507,27 +1506,14 @@ class RigBuilderWindow(QFrame):
             self.vsplitter.setSizes(sizes)
 
     def getModuleGlobalEnv(self):
-        def printError(msg):
-            raise RuntimeError(msg)
-
-        def printWarning(msg):
-            print("Warning: "+msg)
-
-        def exitModule():
-            raise ExitModuleException()
-
         env = {"beginProgress": self.progressBarWidget.beginProgress,
                "stepProgress": self.progressBarWidget.stepProgress,
                "endProgress": self.progressBarWidget.endProgress,
-               "currentTabIndex": self.attributesTabWidget.currentIndex(),
-               "SHOULD_RUN_CHILDREN": True,
-               "Module": ModuleWrapper,
-               "Channel": Channel,
-               "copyJson": copyJson,
-               "exit": exitModule,
-               "error": printError,
-               "warning": printWarning}
-
+               "currentTabIndex": self.attributesTabWidget.currentIndex()}
+        
+        for k,v in getModuleDefaultEnv().items():
+            env[k] = v
+        
         for k, f in widgets.WidgetsAPI.items():
             env[k] = f
 
@@ -1625,12 +1611,18 @@ class RigBuilderToolWindow(QFrame):
             self.vsplitter.setSizes(sizes)
 
     def getModuleGlobalEnv(self):
-        return {"evaluateBezierCurveFromX": widgets.evaluateBezierCurveFromX,
-                "evaluateBezierCurve": widgets.evaluateBezierCurve,
-                "beginProgress": self.progressBarWidget.beginProgress,
-                "stepProgress": self.progressBarWidget.stepProgress,
-                "endProgress": self.progressBarWidget.endProgress,
-                "currentTabIndex": self.attributesTabWidget.currentIndex()}
+        env = {"beginProgress": self.progressBarWidget.beginProgress,
+               "stepProgress": self.progressBarWidget.stepProgress,
+               "endProgress": self.progressBarWidget.endProgress,
+               "currentTabIndex": self.attributesTabWidget.currentIndex()}
+        
+        for k,v in getModuleDefaultEnv().items():
+            env[k] = v
+        
+        for k, f in widgets.WidgetsAPI.items():
+            env[k] = f
+
+        return env
 
     def runBtnClicked(self):
         def uiCallback(mod):
