@@ -61,7 +61,6 @@ In addition, several predefined variables and functions are available:
 | -- | -- |
 | `module` | Current module accessor |
 | `Module` | Runtime module creator |
-|`Channel` | Attributes accessor |
 |`copyJson` (function) |	Fast copy json-compatible data |
 |`error`/`warning` (function) |	Error/warning in log |
 |`evaluateBezierCurve` (function) |	For curve widget. Evaluate point on bezier f(@curve, param) => [x, y] |
@@ -84,17 +83,6 @@ p.attr.input.set(5)
 p.child("someChild").attr.name.set("arm")
 ```
 So `@` notation is actually a shortcut for `module.attr.your_attr` set and get functions.
-
-## Channels
-Modules can access parent and neibour attributes using Channel approach. Channels have `get` and `set` methods.
-```python
-input = Channel("/input") # access 'input' attribute of the parent module
-input.set("hello world")
-```
-Actually channels can be used to find and obtain any attribute handle for reading/writing.
-```python
-someAttr = Channel("/someChild/someAttr").get() # get parent module's 'someChild' child module and its 'someAttr' attribute
-```
 
 ## Custom widget
 Currently a lot of widgets available for your attributes.

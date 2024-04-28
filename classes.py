@@ -39,7 +39,7 @@ def smartConversion(x):
 def copyJson(data):
     if data is None:
         return None
-    
+
     elif type(data) in [list, tuple]:
         return [copyJson(x) for x in data]
 
@@ -102,18 +102,6 @@ class Attribute(object):
         attr.data = json.loads(root.text.replace("__default__", "default")) # backward compatibility
         return attr
 
-class Channel(object):
-    def __init__(self, module, path):
-        assert module, "Channel: module is None"
-        self.module, self.attr = module.findModuleAndAttributeByPath(path)
-        assert self.module and self.attr, "Channel: cannot resolve '{}' path".format(path)
-
-    def get(self):
-        return self.attr.data[self.attr.data["default"]]
-
-    def set(self, value):
-        self.attr.data[self.attr.data["default"]] = value
-
 class Module(object):
     AttributePrefix = "attr_"
 
@@ -165,7 +153,7 @@ class Module(object):
         self._children = []
 
     def getChildren(self):
-        return self._children
+        return list(self._children)
 
     def addChild(self, child):
         self.insertChild(len(self._children), child)
@@ -394,6 +382,9 @@ class Module(object):
         return attr
 
     def findModuleAndAttributeByPath(self, path):
+        '''
+        Returns (module, attribute) by path, where path is /a/b/c, where c is attr, a/b is a parent relative path
+        '''
         def parsePath(path):
             items = path.split("/")[1:] # /a/b/c => ["", a, b, c], skip ""
             return ([], items[0]) if len(items) == 1 else (items[:-1], items[-1])
@@ -523,7 +514,7 @@ print(@attr) # module.attr.attr.get()
 @set_attr(30) # module.attr.attr.set(30)
 '''
 class ModuleWrapper(object):
-    def __init__(self, specOrModule): # spec is path or module        
+    def __init__(self, specOrModule): # spec is path or module
         if isinstance(specOrModule, str):
             self._module = Module.loadModule(specOrModule)
 
@@ -532,12 +523,17 @@ class ModuleWrapper(object):
 
         self.attr = AttrsWrapper(self._module)
 
-    def child(self, name):
-        m = self._module.findChild(name)
-        if not m:
-            raise ModuleNotFoundError("Child module '%s' not found"%name)
-        return ModuleWrapper(m)
-    
+    def child(self, nameOrIndex):
+        if type(nameOrIndex) == int:
+            m = self._module.getChildren()[nameOrIndex]
+            if m:
+                return ModuleWrapper(m)
+
+        elif type(nameOrIndex) == str:
+            m = self._module.findChild(nameOrIndex)
+            if m:
+                return ModuleWrapper(m)
+
     def children(self):
         return [ModuleWrapper(ch) for ch in self._module.getChildren()]
 
@@ -568,7 +564,6 @@ def getModuleDefaultEnv():
 
     env = {"module":None, # setup in Module.run
            "Module": ModuleWrapper,
-           "Channel": Channel,
            "copyJson": copyJson,
            "exit": exitModule,
            "error": printError,
