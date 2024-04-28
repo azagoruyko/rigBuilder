@@ -506,6 +506,8 @@ class AttrsWrapper(object): # attributes getter/setter
         attr = module.findAttribute(name)
         if attr:
             return AttributeWrapper(attr)
+        else:
+            raise AttributeError("Attribute '%s' not found"%name)
 '''
 How to use wrappers inside scripts.
 module.attr.someAttr.set(10)
@@ -525,14 +527,14 @@ class ModuleWrapper(object):
 
     def child(self, nameOrIndex):
         if type(nameOrIndex) == int:
-            m = self._module.getChildren()[nameOrIndex]
-            if m:
-                return ModuleWrapper(m)
+            return ModuleWrapper(self._module.getChildren()[nameOrIndex])
 
         elif type(nameOrIndex) == str:
             m = self._module.findChild(nameOrIndex)
             if m:
                 return ModuleWrapper(m)
+            else:
+                raise ModuleNotFoundError("Child module '%s' not found"%nameOrIndex)
 
     def children(self):
         return [ModuleWrapper(ch) for ch in self._module.getChildren()]
