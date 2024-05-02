@@ -7,7 +7,7 @@ Rig Builder is a flexible UI maker for python scripts. Mostly used in Maya riggi
 Add *rigBuilder* folder to your script path and run the following:
 ```python
 import rigBuilder
-rigBuilder.rigBuilderWindow.show() 
+rigBuilder.mainWindow.show() 
 ```
 ## The Basics
 The main working element is a module. The module is a container with attributes and executable Python code.
