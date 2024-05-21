@@ -103,8 +103,6 @@ class Attribute(object):
         return attr
 
 class Module(object):
-    AttributePrefix = "attr_"
-
     UpdateSource = "all" # all, server, local, (empty)
 
     LocalUids = {}
@@ -435,11 +433,12 @@ class Module(object):
             if k not in localsEnv: # don't overwrite locals
                 localsEnv[k] = globalsEnv[k]
 
+        attrPrefix = "attr_"
         for attr in self._attributes:
-            attrWrapper = AttributeWrapper(attr)
-            localsEnv[Module.AttributePrefix + attr.name] = attrWrapper.get()
-            localsEnv[Module.AttributePrefix + attr.name + "_data"] = attrWrapper.data()
-            localsEnv[Module.AttributePrefix + "set_" + attr.name] = attrWrapper.set
+            attrWrapper = AttributeWrapper(self, attr)
+            localsEnv[attrPrefix + attr.name] = attrWrapper.get()
+            localsEnv[attrPrefix + attr.name + "_data"] = attrWrapper.data()
+            localsEnv[attrPrefix + "set_" + attr.name] = attrWrapper.set
 
         print("%s is running..."%self.getPath())
 
@@ -447,7 +446,7 @@ class Module(object):
             uiCallback(self)
 
         try:
-            exec(self.runCode.replace("@", Module.AttributePrefix), localsEnv)
+            exec(self.runCode.replace("@", attrPrefix), localsEnv)
         except ExitModuleException:
             pass
 
@@ -483,19 +482,32 @@ class Module(object):
 
 # used inside modules in scripts
 class AttributeWrapper(object):
-    def __init__(self, attr):
-        self._attribute = attr
+    def __init__(self, module, attr):
+        self._attr = attr
+        self._module = module
 
     def set(self, v):
-        k = self._attribute.data["default"]
-        self._attribute.data[k] = v
+        try:
+            vcopy = copyJson(v)
+        except TypeError:
+            raise CopyJsonError("Cannot set non-JSON data for '{}' attribute (got {})".format(self._attr.name, v))
+
+        srcAttr = self._attr
+        if self._attr.connect and self._module.parent:
+            srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
+            
+        default = srcAttr.data.get("default")
+        if default:
+            srcAttr.data[default] = vcopy
+        else:
+            srcAttr.data = vcopy
 
     def get(self):
-        k = self._attribute.data["default"]
-        return copyJson(self._attribute.data[k])
+        default = self._attr.data.get("default")
+        return copyJson(self._attr.data[default] if default else self._attr.data)
 
     def data(self):
-        return self._attribute.data
+        return self._attr.data        
 
 class AttrsWrapper(object): # attributes getter/setter
     def __init__(self, module):
@@ -505,12 +517,25 @@ class AttrsWrapper(object): # attributes getter/setter
         module = object.__getattribute__(self, "_module")
         attr = module.findAttribute(name)
         if attr:
-            return AttributeWrapper(attr)
+            return AttributeWrapper(self._module, attr)
         else:
             raise AttributeError("Attribute '%s' not found"%name)
+
+    def __setattr__(self, name, value):
+        if name == "_module":
+            object.__setattr__(self, "_module", value)
+        else:
+            module = object.__getattribute__(self, "_module")
+            attr = module.findAttribute(name)
+            if attr:
+                AttributeWrapper(self._module, attr).set(value)
+            else:
+                raise AttributeError("Attribute '%s' not found"%name)
+
 '''
 How to use wrappers inside scripts.
 module.attr.someAttr.set(10)
+module.attr.someAttr = 5
 module.parent().attr.someAttr.set(20)
 print(@attr) # module.attr.attr.get()
 @set_attr(30) # module.attr.attr.set(30)
