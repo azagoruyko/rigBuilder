@@ -425,8 +425,7 @@ class Module(object):
         self.resolveConnections()
 
         localsEnv = {
-            "module": ModuleWrapper(self),
-            "Channel": lambda x: Channel(self.parent, x),
+            "module": ModuleWrapper(self)
         }
 
         for k in globalsEnv:

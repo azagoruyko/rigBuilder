@@ -7,6 +7,8 @@ import os
 import json
 import math
 
+DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
+
 if sys.version_info.major > 2:
     RootPath = os.path.dirname(__file__) # Rig Builder root folder
 else:
@@ -132,7 +134,7 @@ class ButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(ButtonTemplateWidget, self).__init__(**kwargs)
 
-        self.buttonCommand = ""
+        self.buttonCommand = "module.attr.someAttr.set(1)"
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -171,11 +173,15 @@ class ButtonTemplateWidget(TemplateWidget):
             for k in self.env: # copy default env
                 localEnv[k] = self.env[k]
 
-            exec(self.buttonCommand, localEnv)
-            self.needUpdateUI.emit() # update UI
+            def f():
+                exec(self.buttonCommand, localEnv)
+                self.needUpdateUI.emit() # update UI
+
+            if DCC == "maya":
+                f()
 
     def getDefaultData(self):
-        return {"command": "a = module.someAttr.get()\nprint(a)",
+        return {"command": "module.attr.someAttr.set(1)",
                 "label": "Press me",
                 "default": "label"}
 
@@ -400,7 +406,8 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(LineEditAndButtonTemplateWidget, self).__init__(**kwargs)
 
-        self.buttonCommand = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
+        #self.buttonCommand = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
+        self.buttonCommand = "import bpy;value = bpy.context.active_object.name"
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -439,10 +446,14 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def buttonClicked(self):
         if self.buttonCommand:
             env = {"value": self.textWidget.text()}
-            exec(self.buttonCommand, env)
-            self.setCustomText(env["value"])
 
-            self.somethingChanged.emit()
+            def f():
+                exec(self.buttonCommand, env)
+                self.setCustomText(env["value"])
+                self.somethingChanged.emit()
+
+            if DCC == "maya":
+                f()
 
     def getJsonData(self):
         return {"value": smartConversion(self.textWidget.text().strip()),
@@ -467,95 +478,97 @@ class ListBoxTemplateWidget(TemplateWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.listWidget = QListWidget()
-        self.listWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.listWidget.itemDoubleClicked.connect(self.itemDoubleClicked)
-        #self.listWidget.itemChanged.connect(self.changeCallback)
-        #self.listWidget.itemClicked.connect(self.changeCallback)
         self.listWidget.contextMenuEvent = self.listContextMenuEvent
 
         layout.addWidget(self.listWidget, alignment=Qt.AlignLeft|Qt.AlignTop)
-        self.resizeList()
 
     def listContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        menu.addAction("Append", self.appendClicked)
-        menu.addAction("Remove", self.removeClicked)
-        menu.addAction("Edit", self.editClicked)
+        menu.addAction("Append", self.appendItem)
+        menu.addAction("Remove", self.removeItem)
+        menu.addAction("Edit", self.editItem)
         menu.addAction("Sort", self.listWidget.sortItems)
         menu.addSeparator()
-        menu.addAction("Get selected from Maya", Callback(self.getFromMayaClicked, False))
-        menu.addAction("Add selected from Maya", Callback(self.getFromMayaClicked, True))
-        menu.addAction("Select in Maya", self.selectInMayaClicked)
-        menu.addAction("Clear", self.clearClicked)
+        menu.addAction("Get selected from "+DCC, Callback(self.getFromDCC, False))
+        menu.addAction("Add selected from "+DCC, Callback(self.getFromDCC, True))
+        menu.addAction("Select in "+DCC, self.selectInDCC)
+        menu.addAction("Clear", self.clearItems)
 
         menu.popup(event.globalPos())
 
-    def resizeList(self):
-        h = self.listWidget.sizeHintForRow(0) * self.listWidget.count() + 2 * self.listWidget.frameWidth() + 25
-        height = clamp(h, 50, 250)
-        self.listWidget.setMinimumHeight(height)
-        self.listWidget.setMaximumHeight(height)
+    def resizeWidget(self):
+        width = self.listWidget.sizeHintForColumn(0) + 25
+        height = 0
+        for i in range(self.listWidget.count()):
+            height += self.listWidget.sizeHintForRow(i)
+        height += 2*self.listWidget.frameWidth() + 25
+        self.listWidget.setFixedSize(clamp(width, 50, 500), clamp(height, 50, 500))
 
-    def editClicked(self):
+    def editItem(self):
         items = ";".join([self.listWidget.item(i).text() for i in range(self.listWidget.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.listWidget.clear()
             self.listWidget.addItems([x.strip() for x in newItems.split(";")])
             self.somethingChanged.emit()
+            self.resizeWidget()
 
-    def selectInMayaClicked(self):
-        import pymel.core as pm
-
+    def selectInDCC(self):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
-        pm.select(items)
 
-    def getFromMayaClicked(self, add=False):
-        import pymel.core as pm
+        if DCC == "maya":
+            import pymel.core as pm            
+            pm.select(items)
 
+    def getFromDCC(self, add=False):
         if not add:
             self.listWidget.clear()
 
-        self.listWidget.addItems([n.name() for n in pm.ls(sl=True)])
-        self.resizeList()
-        self.somethingChanged.emit()
+        def updateUI(nodes):
+            self.listWidget.addItems(nodes)
+            self.resizeWidget()
+            self.somethingChanged.emit()
 
-    def clearClicked(self):
+        if DCC == "maya":
+            import pymel.core as pm
+            nodes = [n.name() for n in pm.ls(sl=True)]
+            updateUI(nodes)
+
+    def clearItems(self):
         self.listWidget.clear()
-        self.resizeList()
+        self.resizeWidget()
         self.somethingChanged.emit()
 
-    def appendClicked(self):
+    def appendItem(self):
         self.listWidget.addItem("newItem%d"%(self.listWidget.count()+1))
-        self.resizeList()
+        self.resizeWidget()
         self.somethingChanged.emit()
 
-    def removeClicked(self):
+    def removeItem(self):
         self.listWidget.takeItem(self.listWidget.currentRow())
-        self.resizeList()
+        self.resizeWidget()
         self.somethingChanged.emit()
 
     def itemDoubleClicked(self, item):
         newText, ok = QInputDialog.getText(self, "Rig Builder", "New text", QLineEdit.Normal, item.text())
         if ok:
             item.setText(newText)
+            self.resizeWidget()
             self.somethingChanged.emit()
 
     def getDefaultData(self):
-        return {"items": ["a", "b"], "default": "items"}#, "current": self.listWidget.currentRow()}
+        return {"items": ["a", "b"], "default": "items"}
 
     def getJsonData(self):
         return {"items": [self.listWidget.item(i).text() for i in range(self.listWidget.count())],
-                #"current": self.listWidget.currentRow(),
                 "default": "items"}
 
     def setJsonData(self, value):
         self.listWidget.clear()
         self.listWidget.addItems([str(v) for v in value["items"]])
-        #self.listWidget.setCurrentRow(value.get("current", 0))
-
-        self.resizeList()
+        self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):
     Columns = [2,3,4,5]
@@ -676,7 +689,6 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.horizontalHeader().sectionDoubleClicked.connect(self.sectionDoubleClicked)
 
         layout.addWidget(self.tableWidget)
-        self.resizeTable()
 
     def sectionMoved(self, idx, oldIndex, newIndex):
         self.somethingChanged.emit()
@@ -698,12 +710,16 @@ class TableTemplateWidget(TemplateWidget):
         menu.addSeparator()
 
         rowMenu = QMenu("Row", self)
-        rowMenu.addAction("Insert", Callback(self.tableWidget.insertRow, self.tableWidget.currentRow()))
-        rowMenu.addAction("Append", Callback(self.tableWidget.insertRow, self.tableWidget.currentRow()+1))
+        rowMenu.addAction("Insert", Callback(self.insertRow, self.tableWidget.currentRow()))
+        rowMenu.addAction("Append", Callback(self.insertRow, self.tableWidget.currentRow()+1))
 
         rowMenu.addSeparator()
 
-        f = lambda: (self.tableWidget.removeRow(self.tableWidget.currentRow()), self.somethingChanged.emit())
+        def f():
+            for item in self.tableWidget.selectedItems():
+                self.tableWidget.removeRow(self.tableWidget.row(item))
+            self.resizeWidget()
+            self.somethingChanged.emit()
         rowMenu.addAction("Remove", f)
 
         menu.addMenu(rowMenu)
@@ -714,7 +730,12 @@ class TableTemplateWidget(TemplateWidget):
 
         columnMenu.addSeparator()
 
-        f = lambda: (self.tableWidget.removeColumn(self.tableWidget.currentColumn()), self.somethingChanged.emit())
+        def f():
+            for item in self.tableWidget.selectedItems():
+                self.tableWidget.removeColumn(self.tableWidget.column(item))
+            self.resizeWidget()
+            self.somethingChanged.emit()
+
         columnMenu.addAction("Remove", f)
 
         menu.addMenu(columnMenu)
@@ -728,15 +749,14 @@ class TableTemplateWidget(TemplateWidget):
 
     def updateSize(self):
         self.tableWidget.resizeRowsToContents()
-        self.resizeTable()
+        self.resizeWidget()
 
-    def resizeTable(self):
+    def resizeWidget(self):
         height = 0
         for i in range(self.tableWidget.rowCount()):
-            height += self.tableWidget.verticalHeader().sectionSize(i)
-
-        height += self.tableWidget.horizontalHeader().height() + 25
-        self.tableWidget.setMaximumHeight(clamp(height, 50, height))
+            height += self.tableWidget.rowHeight(i)
+        height += self.tableWidget.verticalHeader().sizeHint().height() + 25
+        self.tableWidget.setFixedHeight(clamp(height, 0, 500))
 
     def clearAll(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really remove all elements?",
@@ -744,12 +764,17 @@ class TableTemplateWidget(TemplateWidget):
         if ok:
             self.tableWidget.clearContents()
             self.tableWidget.setRowCount(1)
-            self.resizeTable()
+            self.resizeWidget()
             self.somethingChanged.emit()
 
     def insertColumn(self, current):
         self.tableWidget.insertColumn(current)
         self.tableWidget.setHorizontalHeaderItem(current, QTableWidgetItem("Untitled"))
+        self.resizeWidget()
+
+    def insertRow(self, current):
+        self.tableWidget.insertRow(current)
+        self.resizeWidget()        
 
     def duplicateRow(self):
         newRow = self.tableWidget.currentRow()+1
@@ -760,7 +785,7 @@ class TableTemplateWidget(TemplateWidget):
             prevItem = self.tableWidget.item(prevRow, c)
             self.tableWidget.setItem(newRow, c, prevItem.clone() if prevItem else QTableWidgetItem())
 
-        self.resizeTable()
+        self.resizeWidget()
 
     def getDefaultData(self):
         return {"items": [("a", "1")], "header": ["name", "value"], "default": "items"}
