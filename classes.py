@@ -168,6 +168,9 @@ class Module(object):
         for ch in self._children:
             if ch.name == name:
                 return ch
+            
+    def getRoot(self):
+        return self.parent.getRoot() if self.parent else self
 
     def clearAttributes(self):
         self._attributes = []
@@ -365,11 +368,28 @@ class Module(object):
 
         return files
 
-    def getPath(self):
+    def getPath(self, inclusive=True):
         if self.parent:
-            return self.parent.getPath() + "/" + self.name
-
+            return self.parent.getPath() + ("/" + self.name if inclusive else "")
         return self.name
+    
+    def listConnections(self, srcAttr):
+        def _listConnections(currentModule):
+            connections = []
+            for ch in currentModule._children:
+                if ch is self:
+                    continue
+
+                for attr in ch._attributes:
+                    if attr.connect:
+                        _, a = currentModule.findModuleAndAttributeByPath(attr.connect)
+                        if a is srcAttr:
+                            connections.append((ch, attr))
+
+                connections += _listConnections(ch)                    
+            return connections
+
+        return _listConnections(self.getRoot())
 
     def findConnectionSourceForAttribute(self, attr):
         if self.parent and attr.connect:
@@ -418,26 +438,28 @@ class Module(object):
             else:
                 raise AttributeResolverError(self.name + ": cannot resolve connection for '%s' which is '%s'"%(attr.name, attr.connect))
 
-    def run(self, globalsEnv, uiCallback=None):
+    def run(self, env, *, uiCallback=None):
         if self.muted:
             return
 
         self.resolveConnections()
 
-        localsEnv = {
+        localEnv = {
             "module": ModuleWrapper(self)
         }
 
-        for k in globalsEnv:
-            if k not in localsEnv: # don't overwrite locals
-                localsEnv[k] = globalsEnv[k]
+        for k in env:
+            if k not in localEnv: # don't overwrite locals
+                localEnv[k] = env[k]
+
+        ModuleWrapper.env = dict(env) # update environment for runtime modules
 
         attrPrefix = "attr_"
         for attr in self._attributes:
             attrWrapper = AttributeWrapper(self, attr)
-            localsEnv[attrPrefix + attr.name] = attrWrapper.get()
-            localsEnv[attrPrefix + attr.name + "_data"] = attrWrapper.data()
-            localsEnv[attrPrefix + "set_" + attr.name] = attrWrapper.set
+            localEnv[attrPrefix+attr.name] = attrWrapper.get()
+            localEnv[attrPrefix+"set_"+attr.name] = attrWrapper.set
+            localEnv[attrPrefix+attr.name+"_data"] = attrWrapper.data()
 
         print("%s is running..."%self.getPath())
 
@@ -445,14 +467,14 @@ class Module(object):
             uiCallback(self)
 
         try:
-            exec(self.runCode.replace("@", attrPrefix), localsEnv)
+            exec(self.runCode.replace("@", attrPrefix), localEnv)
         except ExitModuleException:
             pass
 
         for ch in self._children:
-            ch.run(globalsEnv, uiCallback)
+            ch.run(env, uiCallback=uiCallback)
 
-        return localsEnv
+        return localEnv
 
     @staticmethod
     def updateUidsCache(updateSource=None):
@@ -480,6 +502,16 @@ class Module(object):
         return uids
 
 # used inside modules in scripts
+class Dict(dict): 
+    def __init__(self):
+        pass
+
+    def __getattr__(self, name):
+        return self.get(name)
+    
+    def __setattr__(self, name, value):
+        self[name] = value
+
 class AttributeWrapper(object):
     def __init__(self, module, attr):
         self._attr = attr
@@ -506,7 +538,7 @@ class AttributeWrapper(object):
         return copyJson(self._attr.data[default] if default else self._attr.data)
 
     def data(self):
-        return self._attr.data        
+        return self._attr.data
 
 class AttrsWrapper(object): # attributes getter/setter
     def __init__(self, module):
@@ -539,8 +571,11 @@ module.parent().attr.someAttr.set(20)
 print(@attr) # module.attr.attr.get()
 @set_attr(30) # module.attr.attr.set(30)
 '''
-class ModuleWrapper(object):
-    def __init__(self, specOrModule): # spec is path or module
+class ModuleWrapper(object):    
+    glob = Dict() # global memory
+    env = {} # default environment for module scripts
+
+    def __init__(self, specOrModule): # spec is path or module       
         if isinstance(specOrModule, str):
             self._module = Module.loadModule(specOrModule)
 
@@ -576,7 +611,7 @@ class ModuleWrapper(object):
         return self._module.getPath()
 
     def run(self):
-        self._module.run(globals())
+        self._module.run(ModuleWrapper.env)
 
 def getModuleDefaultEnv():
     def printError(msg):

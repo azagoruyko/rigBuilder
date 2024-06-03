@@ -2,6 +2,7 @@ import time
 import json
 import re
 import os
+import subprocess
 import sys
 from contextlib import contextmanager
 
@@ -13,11 +14,15 @@ from .classes import *
 from .editor import *
 from . import widgets
 
-import pymel.core as pm
-import maya.cmds as cmds
+DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
+ParentWindow = None
 
-from shiboken2 import wrapInstance
-mayaMainWindow = wrapInstance(int(pm.api.MQtUtil.mainWindow()), QMainWindow)
+if DCC == "maya":
+    import pymel.core as pm
+    import maya.cmds as cmds
+
+    from shiboken2 import wrapInstance
+    ParentWindow = wrapInstance(int(pm.api.MQtUtil.mainWindow()), QMainWindow)
 
 def Callback(f, *args, **kwargs):
    return lambda: f(*args, **kwargs)
@@ -79,6 +84,14 @@ def centerWindow(window):
     geom.moveCenter(cp)
     window.move(geom.topLeft())
 
+def getChildrenCount(item):
+    count = 0
+    for i in range(item.childCount()):
+        count += 1
+        count += getChildrenCount(item.child(i))
+
+    return count
+
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
 
@@ -113,7 +126,7 @@ class TabAttributesWidget(QWidget):
                     mainWindow.showLog()
                     mainWindow.logWidget.ensureCursorVisible()
 
-        for i, a in enumerate(attributes):
+        for a in attributes:
             templateWidget = widgets.TemplateWidgets[a.template](env={"module": ModuleWrapper(self.module)})
             templateWidget.setJsonData(a.data)
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
@@ -122,12 +135,9 @@ class TabAttributesWidget(QWidget):
             nameWidget = QLabel(a.name)
             nameWidget.setAlignment(Qt.AlignRight)
             nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
+            self.setWidgetStyle(templateWidget, a)
 
-            if a.connect:
-                templateWidget.setToolTip("Connect: %s"%a.connect)
-                templateWidget.setStyleSheet("background-color: #6e6e39")
-
-            nameWidget.contextMenuEvent = lambda event, a=a: self.nameContextMenuEvent(event, a)
+            nameWidget.contextMenuEvent = lambda event, a=a, w=templateWidget: self.nameContextMenuEvent(event, a, w)
             nameWidget.attribute = a
 
             layout.addWidget(nameWidget)
@@ -136,43 +146,69 @@ class TabAttributesWidget(QWidget):
         layout.addWidget(QLabel())
         layout.setRowStretch(layout.rowCount(), 1)
 
-    def connectionMenu(self, menu, module, attr, path="/"):
+    def setWidgetStyle(self, widget, attr):
+        if attr.connect:
+            widget.setToolTip("Connect: "+attr.connect)
+            widget.setStyleSheet("background-color: #6e6e39")
+        else:
+            widget.setToolTip("")
+            widget.setStyleSheet("")
+
+    def connectionMenu(self, menu, module, attr, widget, path="/"):
         subMenu = QMenu(module.name)
 
         for a in module.getAttributes():
             if a.template == attr.template:
-                subMenu.addAction(a.name, Callback(self.connectAttr, path+module.name+"/"+a.name, attr))
+                subMenu.addAction(a.name, Callback(self.connectAttr, path+module.name+"/"+a.name, attr, widget))
 
         for ch in module.getChildren():
-            self.connectionMenu(subMenu, ch, attr, path+module.name+"/")
+            self.connectionMenu(subMenu, ch, attr, widget, path+module.name+"/")
 
         if subMenu.actions():
             menu.addMenu(subMenu)
 
-    def nameContextMenuEvent(self, event, attr):
+    def nameContextMenuEvent(self, event, attr, widget):
         menu = QMenu(self)
 
         if self.module and self.module.parent:
             makeConnectionMenu = QMenu("Make connection")
             for a in self.module.parent.getAttributes():
                 if a.template == attr.template:
-                    makeConnectionMenu.addAction(a.name, Callback(self.connectAttr, "/"+a.name, attr))
+                    makeConnectionMenu.addAction(a.name, Callback(self.connectAttr, "/"+a.name, attr, widget))
 
             for ch in self.module.parent.getChildren():
                 if ch is self.module:
                     continue
 
-                self.connectionMenu(makeConnectionMenu, ch, attr)
+                self.connectionMenu(makeConnectionMenu, ch, attr, widget)
 
             menu.addMenu(makeConnectionMenu)
 
-        menu.addAction("Break connection", Callback(self.disconnectAttr, attr))
-        menu.addAction("Set data", Callback(self.setData, attr))
-        menu.addAction("Reset", Callback(self.resetAttr, attr))
+        menu.addAction("Break connection", Callback(self.disconnectAttr, attr, widget))
+        menu.addAction("Set data", Callback(self.setData, attr, widget))
+        menu.addAction("Reset", Callback(self.resetAttr, attr, widget))
+        menu.addSeparator()
+        menu.addAction("Expose", Callback(self.exposeAttr, attr, widget))
 
         menu.popup(event.globalPos())
 
-    def setData(self, attr):
+    def exposeAttr(self, attr, widget):
+        if not self.module.parent:
+            QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: no parent module")
+            return
+
+        if self.module.parent.findAttribute(attr.name):
+            QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: attribute already exists")
+            return
+
+        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes)
+        prefix = self.module.name + "_" if doUsePrefix == QMessageBox.Yes else ""
+        expAttr = attr.copy()
+        expAttr.name = prefix + expAttr.name
+        self.module.parent.addAttribute(expAttr)
+        self.connectAttr("/"+expAttr.name, attr, widget)
+
+    def setData(self, attr, widget):
         text = json.dumps(attr.data, indent=4).replace("'", "\"")
         editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=mainWindow)
         editText.exec_()
@@ -190,21 +226,24 @@ class TabAttributesWidget(QWidget):
 
                 else:
                     attr.data = data
-                    mainWindow.attributesTabWidget.updateTabs()
+                    widget.setJsonData(data)
 
-    def resetAttr(self, attr):
+    def resetAttr(self, attr, widget):
         tmp = widgets.TemplateWidgets[attr.template]()
         attr.data = tmp.getDefaultData()
         attr.connect = ""
-        mainWindow.attributesTabWidget.updateTabs()
+        self.setWidgetStyle(widget, attr)
 
-    def disconnectAttr(self, attr):
+    def disconnectAttr(self, attr, widget):
         attr.connect = ""
-        mainWindow.attributesTabWidget.updateTabs()
+        self.setWidgetStyle(widget, attr)
 
-    def connectAttr(self, connect, destAttr):
+    def connectAttr(self, connect, destAttr, widget):
         destAttr.connect = connect
-        mainWindow.attributesTabWidget.updateTabs()
+        srcAttr = self.module.findConnectionSourceForAttribute(destAttr)
+        if srcAttr:
+            widget.setJsonData(srcAttr.data)
+        self.setWidgetStyle(widget, destAttr)
 
 class SearchReplaceDialog(QDialog):
     onReplace = Signal(str, str, dict) # old, new, options
@@ -646,12 +685,33 @@ class TreeWidget(QTreeWidget):
             self.dragParents = []
 
     def treeItemDoubleClicked(self, item, column):
+        def _keepConnections(currentModule):
+            connections = []
+            for a in currentModule.getAttributes():
+                connections.append({"attr":a, "module": currentModule, "connections":currentModule.listConnections(a)})
+
+            for ch in currentModule.getChildren():
+                connections += _keepConnections(ch)
+            return connections
+
         if column == 0: # name
             newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, item.module.name)
             if ok and newName:
                 newName = replaceSpecialChars(newName).strip()
+
+                # rename in connections                
+                connections = _keepConnections(item.module)
+
                 item.module.name = newName
                 item.setText(0, item.module.name + " ")
+
+                # update connections
+                for data in connections:
+                    srcAttr = data["attr"]
+                    module = data["module"]
+                    for m, a in data["connections"]:
+                        a.connect = module.getPath().replace(m.getPath(inclusive=False), "") + "/" + srcAttr.name # update connection path
+
             item.setExpanded(not item.isExpanded()) # revert expand on double click
 
     def makeItemFromModule(self, module):
@@ -732,7 +792,7 @@ class TreeWidget(QTreeWidget):
     def importModule(self):
         defaultPath = RigBuilderLocalPath+"/modules/"
 
-        sceneDir = os.path.dirname(pm.api.MFileIO.currentFile())
+        sceneDir = ""#os.path.dirname(pm.api.MFileIO.currentFile())
         if sceneDir:
             defaultPath = sceneDir + "/"
 
@@ -783,7 +843,7 @@ class TreeWidget(QTreeWidget):
 
     def saveAsModule(self):
         for item in self.selectedItems():
-            outputDir = os.path.dirname(pm.api.MFileIO.currentFile())
+            outputDir = ""#os.path.dirname(pm.api.MFileIO.currentFile())
             outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name, outputDir + "/" +item.module.name, "*.xml")
 
             if outputPath:
@@ -803,11 +863,10 @@ class TreeWidget(QTreeWidget):
     def locateModuleFile(self):
         for item in self.selectedItems():
             if item and os.path.exists(item.module.loadedFrom):
-                os.system("explorer /select,%s"%os.path.realpath(item.module.loadedFrom).encode(sys.getfilesystemencoding()))
+                subprocess.call("explorer /select,\"{}\"".format(os.path.realpath(item.module.loadedFrom)))
 
     def clearAll(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Remove all modules?",
-                                  QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        ok = QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
             self.clear()
 
@@ -916,7 +975,7 @@ class TemplateSelectorDialog(QDialog):
         self.selectedTemplate = None
 
         self.setWindowTitle("Template Selector")
-        self.setGeometry(0, 0, 550, 500)
+        self.setGeometry(0, 0, 700, 500)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -977,8 +1036,8 @@ class EditTemplateWidget(QWidget):
         self.setLayout(layout)
 
         self.nameWidget = QLabel(name)
-        self.nameWidget.setFixedWidth(150)
         self.nameWidget.setAlignment(Qt.AlignRight)
+        self.nameWidget.setFixedWidth(self.fontMetrics().averageCharWidth()*20)
         self.nameWidget.mouseDoubleClickEvent = self.nameMouseDoubleClickEvent
         self.nameWidget.contextMenuEvent = self.nameContextMenuEvent
         self.nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
@@ -1027,7 +1086,7 @@ class EditTemplateWidget(QWidget):
     def nameMouseDoubleClickEvent(self, event):
         oldName = self.nameWidget.text()
         newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
-        if ok:
+        if ok:            
             newName = replaceSpecialChars(newName)
             self.nameWidget.setText(newName)
             self.nameChanged.emit(oldName, newName)
@@ -1126,6 +1185,13 @@ class EditAttributesWidget(QWidget):
         w.nameChanged.connect(self.nameChanged.emit)
         self.attributesLayout.insertWidget(row, w)
         return w
+    
+    def resizeNameFields(self):
+        fontMetrics = self.fontMetrics()
+        maxWidth = max([fontMetrics.width(self.attributesLayout.itemAt(k).widget().nameWidget.text()) for k in range(self.attributesLayout.count())])
+        for k in range(self.attributesLayout.count()):
+            w = self.attributesLayout.itemAt(k).widget()
+            w.nameWidget.setFixedWidth(maxWidth)
 
 class EditAttributesTabWidget(QTabWidget):
     def __init__(self, module, currentIndex=0, **kwargs):
@@ -1171,6 +1237,10 @@ class EditAttributesTabWidget(QTabWidget):
 
             self.tempRunCode = replacePairs(pairs, self.tempRunCode)
 
+            # rename in connections
+            for m, a in self.module.listConnections(self.module.findAttribute(oldName)):
+                a.connect = self.module.getPath().replace(m.getPath(inclusive=False), "") + "/" + newName # update connection path
+
     def tabBarMouseDoubleClickEvent(self, event):
         super(EditAttributesTabWidget, self).mouseDoubleClickEvent(event)
 
@@ -1196,7 +1266,7 @@ class EditAttributesTabWidget(QTabWidget):
         self.removeTab(i)
 
     def clearTabs(self):
-        for i in range(self.count()):
+        for _ in range(self.count()):
             self.clearTab(0)
         self.clear()
 
@@ -1207,7 +1277,7 @@ class EditAttributesDialog(QDialog):
         self.module = module
 
         self.setWindowTitle("Edit Attributes - " + self.module.name)
-        self.setGeometry(0, 0, 600, 600)
+        self.setGeometry(0, 0, 800, 600)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -1269,7 +1339,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
     def update(self):
         if not self.module:
             return
-
+        
         self.editorWidget.setTextSafe(self.module.runCode)
         self.editorWidget.document().clearUndoRedoStacks()
         self.generateCompletionWords()
@@ -1327,6 +1397,7 @@ class LogWidget(QTextEdit):
         super(LogWidget, self).__init__(**kwargs)
 
         self.syntax = LogHighligher(self.document())
+        self.setPlaceholderText("Output and errors or warnings...")
 
     def write(self, txt):
         self.insertPlainText(txt)
@@ -1347,7 +1418,7 @@ class WideSplitterHandle(QSplitterHandle):
 class WideSplitter(QSplitter):
     def __init__(self, orientation, **kwargs):
         super(WideSplitter, self).__init__(orientation, **kwargs)
-        self.setHandleWidth(7)
+        self.setHandleWidth(16)
 
     def createHandle(self):
         return WideSplitterHandle(self.orientation(), self)
@@ -1405,17 +1476,9 @@ class MyProgressBar(QWidget):
             q = self.queue[-1] # get latest state
             self.updateWithState(q)
 
-def getChildrenCount(item):
-    count = 0
-    for i in range(item.childCount()):
-        count += 1
-        count += getChildrenCount(item.child(i))
-
-    return count
-
 class RigBuilderWindow(QFrame):
     def __init__(self):
-        super(RigBuilderWindow, self).__init__(parent=mayaMainWindow)
+        super(RigBuilderWindow, self).__init__(parent=ParentWindow)
 
         self.setWindowTitle("Rig Builder")
         self.setGeometry(0, 0, 1300, 700)
@@ -1431,10 +1494,11 @@ class RigBuilderWindow(QFrame):
         self.treeWidget.itemSelectionChanged.connect(self.treeItemSelectionChanged)
 
         self.codeEditorWidget = CodeEditorWidget()
+        self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
 
         runBtn = QPushButton("Run!")
         runBtn.setStyleSheet("background-color: #3e4f89")
-        runBtn.clicked.connect(self.runBtnClicked)
+        runBtn.clicked.connect(self.runModulesBtnClicked)
 
         attrsToolsWidget = QWidget()
         attrsToolsWidget.setLayout(QVBoxLayout())
@@ -1510,16 +1574,20 @@ class RigBuilderWindow(QFrame):
                "stepProgress": self.progressBarWidget.stepProgress,
                "endProgress": self.progressBarWidget.endProgress,
                "currentTabIndex": self.attributesTabWidget.currentIndex()}
-        
+
         for k,v in getModuleDefaultEnv().items():
             env[k] = v
-        
+
         for k, f in widgets.WidgetsAPI.items():
             env[k] = f
 
         return env
 
-    def runBtnClicked(self):
+    def runModulesBtnClicked(self):
+        if DCC == "maya":
+            self.runModules()
+
+    def runModules(self):
         def uiCallback(mod):
             self.progressBarWidget.stepProgress(self.progressCounter, mod.getPath())
             self.progressCounter += 1
@@ -1540,7 +1608,9 @@ class RigBuilderWindow(QFrame):
             self.progressBarWidget.initialize()
             self.progressCounter = 0
 
-            cmds.undoInfo(ock=True) # open undo block
+            if DCC == "maya":
+                cmds.undoInfo(ock=True) # open undo block
+
             try:
                 for item in self.treeWidget.selectedItems():
                     count = getChildrenCount(item)
@@ -1549,7 +1619,7 @@ class RigBuilderWindow(QFrame):
                     muted = item.module.muted
 
                     item.module.muted = False
-                    item.module.run(self.getModuleGlobalEnv(), uiCallback)
+                    item.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
                     item.module.muted = muted
 
             except Exception:
@@ -1557,14 +1627,16 @@ class RigBuilderWindow(QFrame):
 
             finally:
                 print("Done in %.2fs"%(time.time() - startTime))
-                cmds.undoInfo(cck=True) # close undo block
+
+                if DCC == "maya":
+                    cmds.undoInfo(cck=True) # close undo block
 
         self.progressBarWidget.endProgress()
         self.attributesTabWidget.updateTabs()
 
 class RigBuilderToolWindow(QFrame):
     def __init__(self, module):
-        super(RigBuilderToolWindow, self).__init__(parent=mayaMainWindow)
+        super(RigBuilderToolWindow, self).__init__(parent=ParentWindow)
 
         self.module = module
 
@@ -1584,7 +1656,7 @@ class RigBuilderToolWindow(QFrame):
 
         runBtn = QPushButton("Run!")
         runBtn.setStyleSheet("background-color: #3e4f89")
-        runBtn.clicked.connect(self.runBtnClicked)
+        runBtn.clicked.connect(self.runModulesBtnClicked)
 
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
@@ -1615,16 +1687,20 @@ class RigBuilderToolWindow(QFrame):
                "stepProgress": self.progressBarWidget.stepProgress,
                "endProgress": self.progressBarWidget.endProgress,
                "currentTabIndex": self.attributesTabWidget.currentIndex()}
-        
+
         for k,v in getModuleDefaultEnv().items():
             env[k] = v
-        
+
         for k, f in widgets.WidgetsAPI.items():
             env[k] = f
 
         return env
 
-    def runBtnClicked(self):
+    def runModulesBtnClicked(self):
+        if DCC == "maya":
+            self.runModules()
+
+    def runModules(self):
         def uiCallback(mod):
             pass
 
@@ -1641,27 +1717,31 @@ class RigBuilderToolWindow(QFrame):
 
             self.progressBarWidget.initialize()
 
-            cmds.undoInfo(ock=True) # open undo block
+            if DCC == "maya":
+                cmds.undoInfo(ock=True) # open undo block
+
             try:
-                self.module.run(self.getModuleGlobalEnv(), uiCallback)
+                self.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
             except Exception as ex:
                 printErrorStack()
             finally:
                 print("Done in %.2fs"%(time.time() - startTime))
-                cmds.undoInfo(cck=True) # close undo block
+
+                if DCC == "maya":
+                    cmds.undoInfo(cck=True) # close undo block
 
         self.attributesTabWidget.updateTabs()
 
 def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relative path, uid
     module = Module.loadModule(spec)
     if not module:
-        cmds.warning("Cannot load '{}' module".format(spec))
+        print("Cannot load '{}' module".format(spec))
         return
 
     if child:
         module = module.findChild(child)
         if not module:
-            cmds.warning("Cannot find '{}' child".format(child))
+            print("Cannot find '{}' child".format(child))
             return
 
     w = RigBuilderToolWindow(module)
