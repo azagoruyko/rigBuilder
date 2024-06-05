@@ -406,8 +406,8 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(LineEditAndButtonTemplateWidget, self).__init__(**kwargs)
 
-        #self.buttonCommand = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
-        self.buttonCommand = "import bpy;value = bpy.context.active_object.name"
+        if DCC == "maya":
+            self.buttonCommand = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
 
         layout = QHBoxLayout()
         self.setLayout(layout)
