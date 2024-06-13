@@ -450,7 +450,7 @@ class ModuleListDialog(QDialog):
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
-        os.system("explorer /select,%s"%os.path.realpath(self.getRootDirectory() + "/modules"))
+        os.system("explorer /select,%s"%os.path.normpath(self.getRootDirectory() + "/modules"))
 
     def treeItemActivated(self, item, _):
         if item.childCount() == 0:
@@ -863,7 +863,7 @@ class TreeWidget(QTreeWidget):
     def locateModuleFile(self):
         for item in self.selectedItems():
             if item and os.path.exists(item.module.loadedFrom):
-                subprocess.call("explorer /select,\"{}\"".format(os.path.realpath(item.module.loadedFrom)))
+                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.module.loadedFrom)))
 
     def clearAll(self):
         ok = QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes

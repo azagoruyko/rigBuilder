@@ -230,10 +230,10 @@ class Module(object):
         return module
 
     def isLoadedFromServer(self):
-        return self.loadedFrom.startswith(os.path.realpath(RigBuilderPath+"/modules/"))
+        return self.loadedFrom.startswith(os.path.normpath(RigBuilderPath+"/modules/"))
 
     def isLoadedFromLocal(self):
-        return self.loadedFrom.startswith(os.path.realpath(RigBuilderLocalPath+"/modules/"))
+        return self.loadedFrom.startswith(os.path.normpath(RigBuilderLocalPath+"/modules/"))
 
     def isReference(self):
         return True if self.getReferenceFile() else False
@@ -271,7 +271,7 @@ class Module(object):
     def getSavePath(self):
         if self.isLoadedFromServer():
             relativePath = os.path.relpath(self.loadedFrom, RigBuilderPath+"/modules")
-            return os.path.realpath(RigBuilderLocalPath+"/modules/"+relativePath)
+            return os.path.normpath(RigBuilderLocalPath+"/modules/"+relativePath)
 
         else: # local or somewhere else
             return self.loadedFrom
@@ -317,12 +317,12 @@ class Module(object):
         with open(fileName, "w") as f:
             f.write(self.toXml(False)) # don't keep outter connections
 
-        self.loadedFrom = os.path.realpath(fileName)
+        self.loadedFrom = os.path.normpath(fileName)
 
     @staticmethod
     def loadFromFile(fileName):
         m = Module.fromXml(ET.parse(fileName).getroot())
-        m.loadedFrom = os.path.realpath(fileName)
+        m.loadedFrom = os.path.normpath(fileName)
         return m
 
     @staticmethod
