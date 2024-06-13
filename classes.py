@@ -246,8 +246,8 @@ class Module(object):
     def getRelativeLoadedPath(self): # biped/limb.xml, biped.xml, tools/saveSkin.xml, etc
         norm = lambda p: p.replace("\\", "/")
         path = norm(self.loadedFrom)
-        path = path.replace(norm(RigBuilderLocalPath+"\\modules\\"), "")
-        path = path.replace(norm(RigBuilderPath+"\\modules\\"), "")
+        path = path.replace(norm(RigBuilderLocalPath+"\\modules\\")+"\\", "")
+        path = path.replace(norm(RigBuilderPath+"\\modules")+"\\", "")
         return path
 
     def getRelativeLoadedPathString(self): # relative loaded path or ../folder/child/module.xml
