@@ -55,6 +55,32 @@ def copyJson(data):
     else:
         raise TypeError("Data of %s type is not JSON compatible: %s"%(type(data), str(data)))
 
+def categorizeFilesByModTime(files):
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    
+    categories = {
+        "Today": [],
+        "This week": [],
+        "Others": []
+    }
+    
+    count = 0
+    for file in files:
+        mod_time = datetime.fromtimestamp(os.path.getmtime(file))
+        time_diff = now - mod_time
+
+        count += 1
+        if time_diff <= timedelta(days=1):
+            categories["Today"].append(file)
+        elif time_diff <= timedelta(weeks=1):
+            categories["This week"].append(file)
+        else:
+            categories["Others"].append(file)
+            count -= 1
+    
+    return categories, count
+    
 class ExitModuleException(Exception):pass
 class AttributeResolverError(Exception):pass
 class ModuleNotFoundError(Exception):pass
@@ -237,17 +263,18 @@ class Module(object):
 
     def isReference(self):
         return True if self.getReferenceFile() else False
-
+    
     def getReferenceFile(self):
         path = Module.LocalUids.get(self.uid) or Module.ServerUids.get(self.uid)
         if path and os.path.exists(path):
             return path
-
-    def getRelativeLoadedPath(self): # biped/limb.xml, biped.xml, tools/saveSkin.xml, etc
-        norm = lambda p: p.replace("\\", "/")
-        path = norm(self.loadedFrom)
-        path = path.replace(norm(RigBuilderLocalPath+"\\modules\\")+"\\", "")
-        path = path.replace(norm(RigBuilderPath+"\\modules")+"\\", "")
+    
+    @staticmethod
+    def calculateRelativePath(path, *, relativeTo="modules"):
+        norm = os.path.normpath
+        path = norm(path)
+        path = path.replace(norm(RigBuilderLocalPath+"\\"+relativeTo)+"\\", "")
+        path = path.replace(norm(RigBuilderPath+"\\"+relativeTo)+"\\", "")
         return path
 
     def getRelativeLoadedPathString(self): # relative loaded path or ../folder/child/module.xml
@@ -256,7 +283,7 @@ class Module(object):
 
         path = ""
         if self.isLoadedFromServer() or self.isLoadedFromLocal():
-            path = self.getRelativeLoadedPath()
+            path = Module.calculateRelativePath(self.loadedFrom)
         else:
             normLoadedPath = self.loadedFrom.replace("\\", "/")
             items = normLoadedPath.split("/")

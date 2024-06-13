@@ -107,9 +107,10 @@ def widgetOnChange(widget, module, attr):
 class TabAttributesWidget(QWidget):
     needUpdateUI = Signal()
 
-    def __init__(self, module, attributes, **kwargs):
+    def __init__(self, module, attributes, *, mainWindow=None, **kwargs):
         super(TabAttributesWidget, self).__init__(**kwargs)
 
+        self.mainWindow = mainWindow
         self.module = module
 
         layout = QGridLayout()
@@ -118,16 +119,16 @@ class TabAttributesWidget(QWidget):
         self.setLayout(layout)
 
         if self.module:
-            with captureOutput(mainWindow.logWidget):
+            with captureOutput(self.mainWindow.logWidget):
                 try:
                     self.module.resolveConnections()
                 except AttributeResolverError as err:
                     print("Error: " + str(err))
-                    mainWindow.showLog()
-                    mainWindow.logWidget.ensureCursorVisible()
+                    self.mainWindow.showLog()
+                    self.mainWindow.logWidget.ensureCursorVisible()
 
         for a in attributes:
-            templateWidget = widgets.TemplateWidgets[a.template](env={"module": ModuleWrapper(self.module)})
+            templateWidget = widgets.TemplateWidgets[a.template](env=self.mainWindow.getModuleGlobalEnv())
             templateWidget.setJsonData(a.data)
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
             templateWidget.needUpdateUI.connect(self.needUpdateUI.emit)
@@ -213,7 +214,7 @@ class TabAttributesWidget(QWidget):
         editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=mainWindow)
         editText.exec_()
         if editText.result():
-            with captureOutput(mainWindow.logWidget):
+            with captureOutput(self.mainWindow.logWidget):
                 try:
                     data = json.loads(editText.outputText)
                     tmp = widgets.TemplateWidgets[attr.template]() # also we need check for widget compatibility
@@ -221,8 +222,8 @@ class TabAttributesWidget(QWidget):
 
                 except:
                     print("Error: invalid or incompatible json data")
-                    mainWindow.showLog()
-                    mainWindow.logWidget.ensureCursorVisible()
+                    self.mainWindow.showLog()
+                    self.mainWindow.logWidget.ensureCursorVisible()
 
                 else:
                     attr.data = data
@@ -283,9 +284,10 @@ class SearchReplaceDialog(QDialog):
         self.accept()
 
 class AttributesTabWidget(QTabWidget):
-    def __init__(self, module=None, **kwargs):
+    def __init__(self, module=None, *, mainWindow=None, **kwargs):
         super(AttributesTabWidget, self).__init__(**kwargs)
 
+        self.mainWindow = mainWindow
         self.module = module
         self.tabsAttributes = {}
 
@@ -309,7 +311,7 @@ class AttributesTabWidget(QTabWidget):
         dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=mainWindow)
         dialog.exec_()
 
-        mainWindow.codeEditorWidget.update()
+        self.mainWindow.codeEditorWidget.update()
         self.updateTabs()
 
     def onReplace(self, old, new, opts):
@@ -341,7 +343,7 @@ class AttributesTabWidget(QTabWidget):
 
         title = self.tabText(idx)
         scrollArea = self.widget(idx)
-        w = TabAttributesWidget(self.module, self.tabsAttributes[title])
+        w = TabAttributesWidget(self.module, self.tabsAttributes[title], mainWindow=self.mainWindow)
         w.needUpdateUI.connect(self.updateTabs)
         scrollArea.setWidget(w)
         self.setCurrentIndex(idx)
@@ -436,9 +438,7 @@ class ModuleListDialog(QDialog):
 
     def showEvent(self, event):
         pos = self.mapToParent(self.mapFromGlobal(QCursor.pos()))
-        self.setGeometry(pos.x(), pos.y(), 600, 400)
-
-        Module.updateUidsCache()
+        self.setGeometry(pos.x(), pos.y(), 600, 400)        
 
         self.selectedFileName = ""
         self.updateModules()
@@ -513,9 +513,10 @@ class ModuleListDialog(QDialog):
                 parentItem.addChild(item)
 
 class TreeWidget(QTreeWidget):
-    def __init__(self, **kwargs):
+    def __init__(self, *, mainWindow=None, **kwargs):
         super(TreeWidget, self).__init__(**kwargs)
 
+        self.mainWindow = mainWindow
         self.dragItems = [] # using in drag & drop
 
         self.moduleListDialog = ModuleListDialog()
@@ -652,11 +653,10 @@ class TreeWidget(QTreeWidget):
 
         if event.mimeData().hasUrls():
             event.setDropAction(Qt.CopyAction)
-            links = []
             for url in event.mimeData().urls():
                 path = url.toLocalFile()
 
-                with captureOutput(mainWindow.logWidget):
+                with captureOutput(self.mainWindow.logWidget):
                     try:
                         m = Module.loadFromFile(path)
                         m.update()
@@ -665,8 +665,8 @@ class TreeWidget(QTreeWidget):
                     except ET.ParseError as e:
                         print(e)
                         print("Error '%s': invalid module"%path)
-                        mainWindow.showLog()
-                        mainWindow.logWidget.ensureCursorVisible()
+                        self.mainWindow.showLog()
+                        self.mainWindow.logWidget.ensureCursorVisible()
 
         if self.dragItems:
             for oldParent, item in zip(self.dragParents, self.dragItems):
@@ -812,8 +812,8 @@ class TreeWidget(QTreeWidget):
 
         except ET.ParseError:
             print("Error '%s': invalid module"%path)
-            mainWindow.showLog()
-            mainWindow.logWidget.ensureCursorVisible()
+            self.mainWindow.showLog()
+            self.mainWindow.logWidget.ensureCursorVisible()
 
     def saveModule(self):
         def clearModifiedFlag(module): # clear modified flag on embeded modules
@@ -945,6 +945,9 @@ class TreeWidget(QTreeWidget):
     def event(self, event):
         if event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Tab:
+                Module.updateUidsCache()
+                self.mainWindow.updateInfo()
+
                 self.moduleListDialog.exec_()
 
                 if self.moduleListDialog.selectedFileName:
@@ -1319,9 +1322,10 @@ class EditAttributesDialog(QDialog):
         self.accept()
 
 class CodeEditorWidget(CodeEditorWithNumbersWidget):
-    def __init__(self, module=None, **kwargs):
+    def __init__(self, module=None, *, mainWindow=None, **kwargs):
         super(CodeEditorWidget, self).__init__(**kwargs)
 
+        self.mainWindow = mainWindow
         self.module = module
 
         self.editorWidget.syntax = PythonHighlighter(self.editorWidget.document())
@@ -1351,7 +1355,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.module:
             return
 
-        words = list(mainWindow.getModuleGlobalEnv().keys())
+        words = list(self.mainWindow.getModuleGlobalEnv().keys())
         words.extend(list(widgets.WidgetsAPI.keys()))
 
         for a in self.module.getAttributes():
@@ -1489,25 +1493,35 @@ class RigBuilderWindow(QFrame):
         self.setLayout(layout)
 
         self.logWidget = LogWidget()
-        self.attributesTabWidget = AttributesTabWidget()
-        self.treeWidget = TreeWidget()
+        self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+        self.attributesTabWidget = AttributesTabWidget(mainWindow=self)
+        self.attributesTabWidget.hide()
+
+        self.treeWidget = TreeWidget(mainWindow=self)
         self.treeWidget.itemSelectionChanged.connect(self.treeItemSelectionChanged)
 
-        self.codeEditorWidget = CodeEditorWidget()
+        self.codeEditorWidget = CodeEditorWidget(mainWindow=self)
+        self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
 
-        runBtn = QPushButton("Run!")
-        runBtn.setStyleSheet("background-color: #3e4f89")
-        runBtn.clicked.connect(self.runModulesBtnClicked)
+        self.runBtn = QPushButton("Run!")
+        self.runBtn.setStyleSheet("background-color: #3e4f89")
+        self.runBtn.clicked.connect(self.runModulesBtnClicked)
+        self.runBtn.hide()
+
+        self.infoWidget = QTextBrowser()
+        self.updateInfo()
 
         attrsToolsWidget = QWidget()
         attrsToolsWidget.setLayout(QVBoxLayout())
-        attrsToolsWidget.layout().addWidget(self.attributesTabWidget)
-        attrsToolsWidget.layout().addWidget(runBtn)
+        attrsToolsWidget.layout().addWidget(self.infoWidget)
+        attrsToolsWidget.layout().addWidget(self.attributesTabWidget)        
+        attrsToolsWidget.layout().addWidget(self.runBtn)        
 
         hsplitter = WideSplitter(Qt.Horizontal)
         hsplitter.addWidget(self.treeWidget)
-        hsplitter.addWidget(attrsToolsWidget)
+        hsplitter.addWidget(attrsToolsWidget)        
         hsplitter.setSizes([400, 600])
 
         self.vsplitter = WideSplitter(Qt.Vertical)
@@ -1517,7 +1531,7 @@ class RigBuilderWindow(QFrame):
         self.vsplitter.setSizes([500, 0, 0])
 
         self.vsplitter.splitterMoved.connect(self.codeSplitterMoved)
-        self.codeEditorWidget.setEnabled(False)
+        self.codeEditorWidget.setEnabled(False)        
 
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
@@ -1530,7 +1544,9 @@ class RigBuilderWindow(QFrame):
     def treeItemSelectionChanged(self):
         selected = self.treeWidget.selectedItems()
         en = True if selected else False
-        self.attributesTabWidget.setEnabled(en)
+        self.attributesTabWidget.setVisible(en)
+        self.runBtn.setVisible(en)
+        self.infoWidget.setVisible(not en)
         self.codeEditorWidget.setEnabled(en and not self.isCodeEditorHidden())
 
         if selected:
@@ -1542,6 +1558,35 @@ class RigBuilderWindow(QFrame):
             if self.codeEditorWidget.isEnabled():
                 self.codeEditorWidget.module = item.module
                 self.codeEditorWidget.update()
+
+    def updateInfo(self):
+        self.infoWidget.clear()
+        template = []
+        template.append("<center><h1>Last modified modules</h1></center>")
+        
+        # local modules
+        def displayFiles(files):
+            for k, v in files.items():
+                if k == "Others":
+                    continue
+
+                if v:
+                    template.append("<h3>%s</h3>"%k)
+                    for file in v:
+                        template.append("<p style='color: #888888'>%s</p>"%Module.calculateRelativePath(file))
+
+        files, count = categorizeFilesByModTime(Module.LocalUids.values())
+        if count > 0:
+            template.append("<h2 style='background-color: #444444'>Local modules</h2>")
+            displayFiles(files)
+
+        files, count = categorizeFilesByModTime(Module.ServerUids.values())
+        if count > 0:
+            template.append("<h2 style='background-color: #444444'>Server modules</h2>")
+            displayFiles(files)
+
+        self.infoWidget.insertHtml("".join(template))
+        self.infoWidget.moveCursor(QTextCursor.Start)
 
     def getCurrentModule(self):
         selected = self.treeWidget.selectedItems()
@@ -1634,105 +1679,7 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.endProgress()
         self.attributesTabWidget.updateTabs()
 
-class RigBuilderToolWindow(QFrame):
-    def __init__(self, module):
-        super(RigBuilderToolWindow, self).__init__(parent=ParentWindow)
-
-        self.module = module
-
-        self.setWindowFlags(self.windowFlags() | Qt.Window)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinimizeButtonHint & ~Qt.WindowMaximizeButtonHint)
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        self.logWidget = LogWidget()
-        self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.logWidget.hide()
-
-        self.attributesTabWidget = AttributesTabWidget(self.module)
-        self.codeEditorWidget = CodeEditorWidget(None)
-        self.codeEditorWidget.hide()
-
-        runBtn = QPushButton("Run!")
-        runBtn.setStyleSheet("background-color: #3e4f89")
-        runBtn.clicked.connect(self.runModulesBtnClicked)
-
-        self.progressBarWidget = MyProgressBar()
-        self.progressBarWidget.hide()
-
-        self.vsplitter = WideSplitter(Qt.Vertical)
-        self.vsplitter.addWidget(self.attributesTabWidget)
-        self.vsplitter.addWidget(self.logWidget) # log is hidden by default
-
-        layout.addWidget(self.vsplitter)
-        layout.addWidget(runBtn)
-        layout.addWidget(self.progressBarWidget)
-
-    def setStayOnTop(self, v):
-        if v:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
-        self.show()
-
-    def showLog(self):
-        sizes = self.vsplitter.sizes()
-        if sizes[-1] < 10:
-            sizes[-1] = 200
-            self.vsplitter.setSizes(sizes)
-
-    def getModuleGlobalEnv(self):
-        env = {"beginProgress": self.progressBarWidget.beginProgress,
-               "stepProgress": self.progressBarWidget.stepProgress,
-               "endProgress": self.progressBarWidget.endProgress,
-               "currentTabIndex": self.attributesTabWidget.currentIndex()}
-
-        for k,v in getModuleDefaultEnv().items():
-            env[k] = v
-
-        for k, f in widgets.WidgetsAPI.items():
-            env[k] = f
-
-        return env
-
-    def runModulesBtnClicked(self):
-        if DCC == "maya":
-            self.runModules()
-
-    def runModules(self):
-        def uiCallback(mod):
-            pass
-
-        self.setFocus()
-
-        self.logWidget.show()
-        self.logWidget.clear()
-        self.showLog()
-
-        with captureOutput(self.logWidget):
-            startTime = time.time()
-            timeStr = time.strftime("%H:%M", time.localtime(startTime))
-            print("Start running at " + timeStr)
-
-            self.progressBarWidget.initialize()
-
-            if DCC == "maya":
-                cmds.undoInfo(ock=True) # open undo block
-
-            try:
-                self.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
-            except Exception as ex:
-                printErrorStack()
-            finally:
-                print("Done in %.2fs"%(time.time() - startTime))
-
-                if DCC == "maya":
-                    cmds.undoInfo(cck=True) # close undo block
-
-        self.attributesTabWidget.updateTabs()
-
-def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relative path, uid
+def RigBuilderTool(spec, child=None): # spec can be full path, relative path, uid
     module = Module.loadModule(spec)
     if not module:
         print("Cannot load '{}' module".format(spec))
@@ -1744,9 +1691,14 @@ def RigBuilderTool(spec, child=None, **kwargs): # spec can be full path, relativ
             print("Cannot find '{}' child".format(child))
             return
 
-    w = RigBuilderToolWindow(module)
+    w = RigBuilderWindow()
+    w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
+    w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
     w.setWindowTitle("Rig Builder Tool - {}".format(module.getPath()))
-    w.adjustSize()
+    w.attributesTabWidget.adjustSize()
+    w.resize(w.attributesTabWidget.size() + QSize(50, 100))
+    w.codeEditorWidget.hide()
+    w.treeWidget.hide()
     centerWindow(w)
     return w
 
