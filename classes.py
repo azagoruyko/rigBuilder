@@ -60,8 +60,8 @@ def categorizeFilesByModTime(files):
     now = datetime.now()
 
     categories = {
-        "This day": [],
-        "This week": [],
+        "Less 1 day ago": [],
+        "Less 1 week ago": [],
         "Others": []
     }
 
@@ -72,9 +72,9 @@ def categorizeFilesByModTime(files):
 
         count += 1
         if time_diff <= timedelta(days=1):
-            categories["This day"].append(file)
+            categories["Less 1 day ago"].append(file)
         elif time_diff <= timedelta(weeks=1):
-            categories["This week"].append(file)
+            categories["Less 1 week ago"].append(file)
         else:
             categories["Others"].append(file)
             count -= 1

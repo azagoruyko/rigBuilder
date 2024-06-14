@@ -1570,7 +1570,7 @@ class RigBuilderWindow(QFrame):
     def updateInfo(self):
         self.infoWidget.clear()
         template = []
-        template.append("<center><h1>Last modified modules</h1></center>")
+        template.append("<center><h1>Recent updates</h1></center>")
         
         # local modules
         def displayFiles(files):
@@ -1579,9 +1579,9 @@ class RigBuilderWindow(QFrame):
                     continue
 
                 if v:
-                    template.append("<h3>%s</h3>"%k)
+                    template.append("<h3>%s</h3>"%escape(k))
                     for file in v:
-                        template.append("<p style='color: #888888'>%s</p>"%Module.calculateRelativePath(file))
+                        template.append("<p style='color: #888888'>%s</p>"%Module.calculateRelativePath(escape(file)))
 
         files, count = categorizeFilesByModTime(Module.LocalUids.values())
         if count > 0:
