@@ -786,6 +786,8 @@ class TreeWidget(QTreeWidget):
             for item in self.selectedItems():
                 if item.module.isLoadedFromLocal():
                     item.module.sendToServer()
+                else:
+                    QMessageBox.warning(self, "Rig Builder", "Can't send '%s' to server.\nIt works for local modules only!"%item.module.name)
 
     def insertModule(self):
         item = self.makeItemFromModule(Module("module"))
