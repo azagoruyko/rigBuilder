@@ -60,7 +60,7 @@ def categorizeFilesByModTime(files):
     now = datetime.now()
     
     categories = {
-        "Today": [],
+        "This day": [],
         "This week": [],
         "Others": []
     }
