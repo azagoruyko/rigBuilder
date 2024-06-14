@@ -58,13 +58,13 @@ def copyJson(data):
 def categorizeFilesByModTime(files):
     from datetime import datetime, timedelta
     now = datetime.now()
-    
+
     categories = {
         "This day": [],
         "This week": [],
         "Others": []
     }
-    
+
     count = 0
     for file in files:
         mod_time = datetime.fromtimestamp(os.path.getmtime(file))
@@ -72,15 +72,15 @@ def categorizeFilesByModTime(files):
 
         count += 1
         if time_diff <= timedelta(days=1):
-            categories["Today"].append(file)
+            categories["This day"].append(file)
         elif time_diff <= timedelta(weeks=1):
             categories["This week"].append(file)
         else:
             categories["Others"].append(file)
             count -= 1
-    
+
     return categories, count
-    
+
 class ExitModuleException(Exception):pass
 class AttributeResolverError(Exception):pass
 class ModuleNotFoundError(Exception):pass
@@ -194,7 +194,7 @@ class Module(object):
         for ch in self._children:
             if ch.name == name:
                 return ch
-            
+
     def getRoot(self):
         return self.parent.getRoot() if self.parent else self
 
@@ -215,7 +215,7 @@ class Module(object):
             if a.name == name:
                 return a
 
-    def toXml(self, keepConnections=True):
+    def toXml(self, *, keepConnections=True):
         attrs = [("name", self.name),
                  ("muted", int(self.muted)),
                  ("uid", self.uid)]
@@ -228,7 +228,7 @@ class Module(object):
                                  "</run>"]))
 
         template.append("<attributes>")
-        template += [a.toXml(keepConnections) for a in self._attributes]
+        template += [a.toXml(keepConnections=keepConnections) for a in self._attributes]
         template.append("</attributes>")
 
         template.append("<children>")
@@ -263,12 +263,12 @@ class Module(object):
 
     def isReference(self):
         return True if self.getReferenceFile() else False
-    
+
     def getReferenceFile(self):
         path = Module.LocalUids.get(self.uid) or Module.ServerUids.get(self.uid)
         if path and os.path.exists(path):
             return path
-    
+
     @staticmethod
     def calculateRelativePath(path, *, relativeTo="modules"):
         norm = os.path.normpath
@@ -337,12 +337,25 @@ class Module(object):
         for ch in self._children:
             ch.update()
 
+    def sendToServer(self): # save the module on server, remove locally
+        if self.isLoadedFromLocal():
+            savePath = os.path.normpath(RigBuilderPath+"/modules/"+self.getRelativeLoadedPathString()+".xml")
+            if not os.path.exists(os.path.dirname(savePath)):
+                os.makedirs(os.path.dirname(savePath))
+
+            oldPath = self.loadedFrom
+            self.saveToFile(savePath)
+            os.unlink(oldPath) # remove local file
+
+            Module.ServerUids[self.uid] = savePath
+            return savePath
+
     def saveToFile(self, fileName):
         if not self.uid:
             self.uid = generateUid()
 
-        with open(fileName, "w") as f:
-            f.write(self.toXml(False)) # don't keep outter connections
+        with open(os.path.realpath(fileName), "w") as f: # resolve links
+            f.write(self.toXml(keepConnections=False)) # don't keep outer connections
 
         self.loadedFrom = os.path.normpath(fileName)
 
@@ -399,7 +412,7 @@ class Module(object):
         if self.parent:
             return self.parent.getPath() + ("/" + self.name if inclusive else "")
         return self.name
-    
+
     def listConnections(self, srcAttr):
         def _listConnections(currentModule):
             connections = []
@@ -413,7 +426,7 @@ class Module(object):
                         if a is srcAttr:
                             connections.append((ch, attr))
 
-                connections += _listConnections(ch)                    
+                connections += _listConnections(ch)
             return connections
 
         return _listConnections(self.getRoot())
@@ -529,13 +542,13 @@ class Module(object):
         return uids
 
 # used inside modules in scripts
-class Dict(dict): 
+class Dict(dict):
     def __init__(self):
         pass
 
     def __getattr__(self, name):
         return self.get(name)
-    
+
     def __setattr__(self, name, value):
         self[name] = value
 
@@ -553,7 +566,7 @@ class AttributeWrapper(object):
         srcAttr = self._attr
         if self._attr.connect and self._module.parent:
             srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
-            
+
         default = srcAttr.data.get("default")
         if default:
             srcAttr.data[default] = vcopy
@@ -598,11 +611,11 @@ module.parent().attr.someAttr.set(20)
 print(@attr) # module.attr.attr.get()
 @set_attr(30) # module.attr.attr.set(30)
 '''
-class ModuleWrapper(object):    
+class ModuleWrapper(object):
     glob = Dict() # global memory
     env = {} # default environment for module scripts
 
-    def __init__(self, specOrModule): # spec is path or module       
+    def __init__(self, specOrModule): # spec is path or module
         if isinstance(specOrModule, str):
             self._module = Module.loadModule(specOrModule)
 

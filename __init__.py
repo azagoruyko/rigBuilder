@@ -589,9 +589,10 @@ class TreeWidget(QTreeWidget):
 
         # set selected style
         if modelIdx in self.selectedIndexes():
-            painter.fillRect(rect.x()-1, rect.y(), painter.viewport().width(), rect.height(), QColor(80, 96, 154, 60))
+            width = nameRect.width() + pathRect.width() + sourceRect.width() + uidRect.width()
+            painter.fillRect(rect.x()-1, rect.y(), width, rect.height(), QColor(80, 96, 154, 60))
             painter.setPen(QColor(73, 146, 158, 200))
-            painter.drawRect(rect.x()-1, rect.y()+1, painter.viewport().width(), rect.height()-3)
+            painter.drawRect(rect.x()-1, rect.y()+1, width, rect.height()-3)
 
         painter.setPen(QColor(200, 200, 200))
 
@@ -770,6 +771,7 @@ class TreeWidget(QTreeWidget):
             menu.addAction("Save", self.saveModule, "Ctrl+S")
             menu.addAction("Save as", self.saveAsModule)
             menu.addAction("Update", self.updateModule, "Ctrl+U")
+            menu.addAction("Send to server", self.sendModuleToServer)
             menu.addAction("Embed", self.embedModule)
             menu.addSeparator()
             menu.addAction("Remove", self.removeModule, "Delete")
@@ -778,6 +780,12 @@ class TreeWidget(QTreeWidget):
         menu.addAction("Clear all", self.clearAll)
 
         menu.popup(event.globalPos())
+
+    def sendModuleToServer(self):
+        if QMessageBox.question(self, "Rig Builder", "Send modules to server?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            for item in self.selectedItems():
+                if item.module.isLoadedFromLocal():
+                    item.module.sendToServer()
 
     def insertModule(self):
         item = self.makeItemFromModule(Module("module"))
