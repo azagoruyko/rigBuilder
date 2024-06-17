@@ -127,8 +127,11 @@ class TabAttributesWidget(QWidget):
                     self.mainWindow.showLog()
                     self.mainWindow.logWidget.ensureCursorVisible()
 
+        globEnv = self.mainWindow.getModuleGlobalEnv()
+        globEnv["module"] = ModuleWrapper(self.module)
+        
         for a in attributes:
-            templateWidget = widgets.TemplateWidgets[a.template](env=self.mainWindow.getModuleGlobalEnv())
+            templateWidget = widgets.TemplateWidgets[a.template](env=globEnv)
             templateWidget.setJsonData(a.data)
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
             templateWidget.needUpdateUI.connect(self.needUpdateUI.emit)
