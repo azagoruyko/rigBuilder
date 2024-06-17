@@ -1583,7 +1583,7 @@ class RigBuilderWindow(QFrame):
                 if v:
                     template.append("<h3>%s</h3>"%escape(k))
                     for file in v:
-                        template.append("<p style='color: #888888'>%s</p>"%Module.calculateRelativePath(escape(file)))
+                        template.append("<p style='color: #888888'>{0}</p>".format(escape(Module.calculateRelativePath(file))))
 
         files, count = categorizeFilesByModTime(Module.LocalUids.values())
         if count > 0:

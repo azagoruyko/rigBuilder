@@ -51,9 +51,9 @@ class TemplateWidget(QWidget):
     somethingChanged = Signal()
     needUpdateUI = Signal()
 
-    def __init__(self, env={}, **kwargs):
+    def __init__(self, env=None, **kwargs):
         super(TemplateWidget, self).__init__(**kwargs)
-        self.env = env # used to pass data to widgets
+        self.env = env or {} # used to pass data to widgets
 
     def getDefaultData(self):
         return self.getJsonData()
@@ -504,7 +504,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         for i in range(self.listWidget.count()):
             height += self.listWidget.sizeHintForRow(i)
         height += 2*self.listWidget.frameWidth() + 25
-        self.listWidget.setFixedSize(clamp(width, 50, 500), clamp(height, 50, 500))
+        self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 500))
 
     def editItem(self):
         items = ";".join([self.listWidget.item(i).text() for i in range(self.listWidget.count())])
@@ -755,8 +755,10 @@ class TableTemplateWidget(TemplateWidget):
         height = 0
         for i in range(self.tableWidget.rowCount()):
             height += self.tableWidget.rowHeight(i)
-        height += self.tableWidget.verticalHeader().sizeHint().height() + 25
-        self.tableWidget.setFixedHeight(clamp(height, 0, 500))
+
+        headerHeight = self.tableWidget.verticalHeader().sizeHint().height()
+        height += headerHeight + 25
+        self.tableWidget.setFixedHeight(clamp(height, headerHeight+100, 500))
 
     def clearAll(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really remove all elements?",
