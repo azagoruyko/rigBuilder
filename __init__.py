@@ -499,20 +499,21 @@ class ModuleListDialog(QDialog):
                 continue
 
             dirItem = self.treeWidget.invisibleRootItem()
-            for p in relativeDir.split("\\"):
-                ch = findChildByText(p, dirItem)
-                if ch:
-                    dirItem = ch
-                else:
-                    ch = QTreeWidgetItem([p, ""])
-                    font = ch.font(0)
-                    font.setBold(True)
-                    ch.setForeground(0, QColor(130, 130, 230))
-                    ch.setFont(0, font)
+            if relativeDir:
+                for p in relativeDir.split("\\"):
+                    ch = findChildByText(p, dirItem)
+                    if ch:
+                        dirItem = ch
+                    else:
+                        ch = QTreeWidgetItem([p, ""])
+                        font = ch.font(0)
+                        font.setBold(True)
+                        ch.setForeground(0, QColor(130, 130, 230))
+                        ch.setFont(0, font)
 
-                    dirItem.addChild(ch)
-                    dirItem.setExpanded(True if mask else False)
-                    dirItem = ch
+                        dirItem.addChild(ch)
+                        dirItem.setExpanded(True if mask else False)
+                        dirItem = ch
 
             modtime = time.strftime("%Y/%m/%d %H:%M", time.localtime(os.path.getmtime(f)))
             item = QTreeWidgetItem([name, modtime])
