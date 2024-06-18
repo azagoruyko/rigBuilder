@@ -129,7 +129,7 @@ class TabAttributesWidget(QWidget):
 
         globEnv = self.mainWindow.getModuleGlobalEnv()
         globEnv["module"] = ModuleWrapper(self.module)
-        
+
         for a in attributes:
             templateWidget = widgets.TemplateWidgets[a.template](env=globEnv)
             templateWidget.setJsonData(a.data)
@@ -441,7 +441,7 @@ class ModuleListDialog(QDialog):
 
     def showEvent(self, event):
         pos = self.mapToParent(self.mapFromGlobal(QCursor.pos()))
-        self.setGeometry(pos.x(), pos.y(), 600, 400)        
+        self.setGeometry(pos.x(), pos.y(), 600, 400)
 
         self.selectedFileName = ""
         self.updateModules()
@@ -453,67 +453,72 @@ class ModuleListDialog(QDialog):
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
-        os.system("explorer /select,%s"%os.path.normpath(self.getRootDirectory() + "/modules"))
+        for item in self.treeWidget.selectedItems():
+            if item.childCount() == 0: # files only
+                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
     def treeItemActivated(self, item, _):
         if item.childCount() == 0:
             self.selectedFileName = item.filePath
             self.done(0)
 
-    def findChildByText(self, text, parent, column=0):
-        for i in range(parent.childCount()):
-            ch = parent.child(i)
-            if text == ch.text(column):
-                return ch
-
-    def makeRecursiveItems(self, elements, expanded=True): # ["folder", "child", ...] -> QTreeWidgetItem
-        currentParentItem = self.treeWidget.invisibleRootItem()
-
-        for i, elem in enumerate(elements):
-            item = self.findChildByText(elem, currentParentItem)
-            if not item:
-                item = QTreeWidgetItem([elem, ""])
-                item.setForeground(0, QColor(130, 130, 230))
-                currentParentItem.addChild(item)
-                item.setExpanded(expanded)
-
-            currentParentItem = item
-
-        return currentParentItem
-
     def updateModules(self):
+        def findChildByText(text, parent, column=0):
+            for i in range(parent.childCount()):
+                ch = parent.child(i)
+                if text == ch.text(column):
+                    return ch
+                        
         updateSource = self.updateSourceWidget.currentIndex()
-        modulesFrom = self.modulesFromWidget.currentIndex()
-
-        modulesDirectory = RigBuilderPath+"/modules" if modulesFrom == 0 else RigBuilderLocalPath+"/modules"
-
         UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
         Module.updateUidsCache(UpdateSourceFromInt[updateSource])
 
-        mask = re.escape(self.maskWidget.text())
+        modulesFrom = self.modulesFromWidget.currentIndex()
+        modulesDirectory = RigBuilderPath+"\\modules" if modulesFrom == 0 else RigBuilderLocalPath+"\\modules"
+        modules = list(Module.ServerUids.values()) if modulesFrom == 0 else list(Module.LocalUids.values())
+        modules = sorted(modules)
 
-        tw = self.treeWidget
-        tw.clear()
+        self.treeWidget.clear()
 
-        modules = Module.listModules(modulesDirectory)
+        mask = self.maskWidget.text().split() # split by spaces, '/folder mask /other mask'
+
+        # make tree dict from module files
         for f in modules:
+            relativePath = os.path.relpath(f, modulesDirectory)
+            relativeDir = os.path.dirname(relativePath)
             name, _ = os.path.splitext(os.path.basename(f))
 
-            relativePath = os.path.relpath(f, modulesDirectory)
+            okMask = True
+            dirMask = "/"+relativePath.replace("\\", "/")+"/"
+            for m in mask:
+                if not re.search(re.escape(m), dirMask, re.IGNORECASE):
+                    okMask = False
+                    break
 
-            if re.search(mask, name, re.IGNORECASE):
-                dirname = os.path.dirname(relativePath)
+            if not okMask:
+                continue
 
-                if dirname:
-                    parentItem = self.makeRecursiveItems(re.split("[\\/]", dirname), True if mask else False)
+            dirItem = self.treeWidget.invisibleRootItem()
+            for p in relativeDir.split("\\"):
+                ch = findChildByText(p, dirItem)
+                if ch:
+                    dirItem = ch
                 else:
-                    parentItem = self.treeWidget.invisibleRootItem()
+                    ch = QTreeWidgetItem([p, ""])
+                    font = ch.font(0)
+                    font.setBold(True)
+                    ch.setForeground(0, QColor(130, 130, 230))
+                    ch.setFont(0, font)
 
-                modtime = time.strftime("%Y/%m/%d %H:%M", time.localtime(os.path.getmtime(f)))
+                    dirItem.addChild(ch)
+                    dirItem.setExpanded(True if mask else False)
+                    dirItem = ch
 
-                item = QTreeWidgetItem([name, modtime])
-                item.filePath = f
-                parentItem.addChild(item)
+            modtime = time.strftime("%Y/%m/%d %H:%M", time.localtime(os.path.getmtime(f)))
+            item = QTreeWidgetItem([name, modtime])
+            item.filePath = f
+            dirItem.addChild(item)
+            dirItem.setExpanded(True if mask else False)
 
 class TreeWidget(QTreeWidget):
     def __init__(self, *, mainWindow=None, **kwargs):
@@ -703,7 +708,7 @@ class TreeWidget(QTreeWidget):
             if ok and newName:
                 newName = replaceSpecialChars(newName).strip()
 
-                # rename in connections                
+                # rename in connections
                 connections = _keepConnections(item.module)
 
                 item.module.name = newName
@@ -1102,7 +1107,7 @@ class EditTemplateWidget(QWidget):
     def nameMouseDoubleClickEvent(self, event):
         oldName = self.nameWidget.text()
         newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
-        if ok:            
+        if ok:
             newName = replaceSpecialChars(newName)
             self.nameWidget.setText(newName)
             self.nameChanged.emit(oldName, newName)
@@ -1201,7 +1206,7 @@ class EditAttributesWidget(QWidget):
         w.nameChanged.connect(self.nameChanged.emit)
         self.attributesLayout.insertWidget(row, w)
         return w
-    
+
     def resizeNameFields(self):
         fontMetrics = self.fontMetrics()
         maxWidth = max([fontMetrics.width(self.attributesLayout.itemAt(k).widget().nameWidget.text()) for k in range(self.attributesLayout.count())])
@@ -1356,7 +1361,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
     def update(self):
         if not self.module:
             return
-        
+
         self.editorWidget.setTextSafe(self.module.runCode)
         self.editorWidget.document().clearUndoRedoStacks()
         self.generateCompletionWords()
@@ -1529,12 +1534,12 @@ class RigBuilderWindow(QFrame):
         attrsToolsWidget = QWidget()
         attrsToolsWidget.setLayout(QVBoxLayout())
         attrsToolsWidget.layout().addWidget(self.infoWidget)
-        attrsToolsWidget.layout().addWidget(self.attributesTabWidget)        
-        attrsToolsWidget.layout().addWidget(self.runBtn)        
+        attrsToolsWidget.layout().addWidget(self.attributesTabWidget)
+        attrsToolsWidget.layout().addWidget(self.runBtn)
 
         hsplitter = WideSplitter(Qt.Horizontal)
         hsplitter.addWidget(self.treeWidget)
-        hsplitter.addWidget(attrsToolsWidget)        
+        hsplitter.addWidget(attrsToolsWidget)
         hsplitter.setSizes([400, 600])
 
         self.vsplitter = WideSplitter(Qt.Vertical)
@@ -1544,7 +1549,7 @@ class RigBuilderWindow(QFrame):
         self.vsplitter.setSizes([500, 0, 0])
 
         self.vsplitter.splitterMoved.connect(self.codeSplitterMoved)
-        self.codeEditorWidget.setEnabled(False)        
+        self.codeEditorWidget.setEnabled(False)
 
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
@@ -1576,7 +1581,7 @@ class RigBuilderWindow(QFrame):
         self.infoWidget.clear()
         template = []
         template.append("<center><h1>Recent updates</h1></center>")
-        
+
         # local modules
         def displayFiles(files):
             for k, v in files.items():
@@ -1586,7 +1591,8 @@ class RigBuilderWindow(QFrame):
                 if v:
                     template.append("<h3>%s</h3>"%escape(k))
                     for file in v:
-                        template.append("<p style='color: #888888'>{0}</p>".format(escape(Module.calculateRelativePath(file))))
+                        relPath = Module.calculateRelativePath(file).replace("\\", "/")
+                        template.append("<p style='color: #888888'>{0}</p>".format(escape(relPath)))
 
         files, count = categorizeFilesByModTime(Module.LocalUids.values())
         if count > 0:
