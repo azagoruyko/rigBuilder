@@ -651,7 +651,10 @@ class ModuleWrapper(object):
         return self._module.getPath()
 
     def run(self):
+        muted = self._module.muted
+        self._module.muted = False
         self._module.run(ModuleWrapper.env)
+        self._module.muted = muted
 
 def getModuleDefaultEnv():
     def printError(msg):
