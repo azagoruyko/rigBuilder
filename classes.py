@@ -623,7 +623,10 @@ class ModuleWrapper(object):
     def __eq__(self, other):
         if not isinstance(other, ModuleWrapper):
             return False
-        return self._module == other._module        
+        return self._module == other._module
+
+    def name(self):
+        return self._module.name
 
     def child(self, nameOrIndex):
         if type(nameOrIndex) == int:
