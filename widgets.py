@@ -168,10 +168,7 @@ class ButtonTemplateWidget(TemplateWidget):
 
     def buttonClicked(self):
         if self.buttonCommand:
-            localEnv = {}
-
-            for k in self.env: # copy default env
-                localEnv[k] = self.env[k]
+            localEnv = dict(self.env)
 
             def f():
                 exec(self.buttonCommand, localEnv)
@@ -470,11 +467,12 @@ value = path or value'''
 
     def buttonClicked(self):
         if self.buttonCommand:
-            env = {"value": self.textWidget.text()}
+            env = dict(self.env)
+            env["value"] = smartConversion(self.textWidget.text().strip())
 
             def f():
                 exec(self.buttonCommand, env)
-                self.setCustomText(env["value"])
+                self.textWidget.setText(fromSmartConversion(env["value"]))
                 self.somethingChanged.emit()
 
             if DCC == "maya":
@@ -490,7 +488,7 @@ value = path or value'''
         self.textWidget.setText(fromSmartConversion(value))
 
     def setJsonData(self, data):
-        self.setCustomText(data["value"])
+        self.textWidget.setText(fromSmartConversion(data["value"]))
         self.buttonCommand = data["buttonCommand"]
         self.buttonWidget.setText(data["buttonLabel"])
 
