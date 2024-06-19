@@ -862,7 +862,7 @@ class TreeWidget(QTreeWidget):
 
     def saveAsModule(self):
         for item in self.selectedItems():
-            outputDir = ""#os.path.dirname(pm.api.MFileIO.currentFile())
+            outputDir = os.path.dirname(item.module.loadedFrom) or RigBuilderLocalPath+"/modules"
             outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name, outputDir + "/" +item.module.name, "*.xml")
 
             if outputPath:
@@ -1693,8 +1693,12 @@ class RigBuilderWindow(QFrame):
             self.progressBarWidget.stepProgress(self.progressCounter, mod.getPath())
             self.progressCounter += 1
 
-        if not self.treeWidget.selectedItems():
+        selectedItems = self.treeWidget.selectedItems()
+
+        if not selectedItems:
             return
+        
+        currentItem = selectedItems[0]
 
         self.setFocus()
 
@@ -1709,24 +1713,22 @@ class RigBuilderWindow(QFrame):
             self.progressBarWidget.initialize()
             self.progressCounter = 0
 
+            count = getChildrenCount(currentItem)
+            self.progressBarWidget.beginProgress(currentItem.module.name, count+1)
+
             if DCC == "maya":
-                cmds.undoInfo(ock=True) # open undo block
+                cmds.undoInfo(ock=True) # open undo block            
 
-            try:
-                for item in self.treeWidget.selectedItems():
-                    count = getChildrenCount(item)
-                    self.progressBarWidget.beginProgress(item.module.name, count+1)
+            muted = currentItem.module.muted
+            currentItem.module.muted = False
 
-                    muted = item.module.muted
-
-                    item.module.muted = False
-                    item.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
-                    item.module.muted = muted
-
+            try:                
+                currentItem.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
             except Exception:
                 printErrorStack()
 
             finally:
+                currentItem.module.muted = muted
                 print("Done in %.2fs"%(time.time() - startTime))
 
                 if DCC == "maya":

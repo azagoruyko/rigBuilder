@@ -647,7 +647,7 @@ class ModuleWrapper(object):
 
     def muted(self):
         return self._module.muted
-
+    
     def mute(self):
         self._module.muted = True
 
@@ -658,10 +658,14 @@ class ModuleWrapper(object):
         return self._module.getPath()
 
     def run(self):
-        muted = self._module.muted
+        muted = self._module.muted        
         self._module.muted = False
-        self._module.run(ModuleWrapper.env)
-        self._module.muted = muted
+        try:
+            self._module.run(ModuleWrapper.env)
+        except:
+            raise
+        finally:            
+            self._module.muted = muted
 
 def getModuleDefaultEnv():
     def printError(msg):
