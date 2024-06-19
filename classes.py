@@ -104,8 +104,7 @@ class Attribute(object):
         return self.name == other.name and\
                self.data == other.data and\
                self.category == other.category and\
-               self.template == other.template and\
-               self.connect == other.connect
+               self.template == other.template # don't compare connections
 
     def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
@@ -165,13 +164,10 @@ class Module(object):
     def __eq__(self, other):
         if not isinstance(other, Module):
             return False
-
         return self.uid == other.uid and\
                self.name == other.name and\
                self.runCode == other.runCode and\
-               self.parent == other.parent and\
-               all([a==b for a, b in zip(self._attributes, other._attributes)]) and\
-               all([a==b for a, b in zip(self._children, other._children)])
+               self.loadedFrom == other.loadedFrom
 
     def clearChildren(self):
         self._children = []
@@ -623,6 +619,11 @@ class ModuleWrapper(object):
             self._module = specOrModule
 
         self.attr = AttrsWrapper(self._module)
+
+    def __eq__(self, other):
+        if not isinstance(other, ModuleWrapper):
+            return False
+        return self._module == other._module        
 
     def child(self, nameOrIndex):
         if type(nameOrIndex) == int:

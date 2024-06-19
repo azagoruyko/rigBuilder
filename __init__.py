@@ -961,20 +961,39 @@ class TreeWidget(QTreeWidget):
             else:
                 self.invisibleRootItem().removeChild(item)
 
+    def browseModuleSelector(self, *, mask=None, updateSource=None, modulesFrom=None):
+        Module.updateUidsCache()
+
+        if mask:
+            self.moduleListDialog.maskWidget.setText(mask)
+        
+        if updateSource:
+            self.moduleListDialog.updateSourceWidget.setCurrentIndex({"all":0, "server": 1, "local": 2, "": 3}[updateSource])
+        
+        if modulesFrom:
+            self.moduleListDialog.modulesFromWidget.setCurrentIndex({"server": 0, "local": 1}[modulesFrom])
+        
+        self.moduleListDialog.exec_()
+
+        if self.moduleListDialog.selectedFileName:
+            m = Module.loadFromFile(self.moduleListDialog.selectedFileName)
+            m.update()
+            self.addTopLevelItem(self.makeItemFromModule(m))
+
+            # add to recent modules
+            if m not in self.mainWindow.infoWidget.recentModules:
+                self.mainWindow.infoWidget.recentModules.insert(0, m)
+                if len(self.mainWindow.infoWidget.recentModules) > 10:
+                    self.mainWindow.infoWidget.recentModules.pop()
+
+                self.mainWindow.updateInfo()
+
+            return m     
+
     def event(self, event):
         if event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Tab:
-                Module.updateUidsCache()
-                self.mainWindow.updateInfo()
-
-                self.moduleListDialog.exec_()
-
-                if self.moduleListDialog.selectedFileName:
-                    m = Module.loadFromFile(self.moduleListDialog.selectedFileName)
-                    m.update()
-
-                    self.addTopLevelItem(self.makeItemFromModule(m))
-
+                self.browseModuleSelector()
                 event.accept()
                 return True
 
@@ -1530,6 +1549,9 @@ class RigBuilderWindow(QFrame):
         self.runBtn.hide()
 
         self.infoWidget = QTextBrowser()
+        self.infoWidget.anchorClicked.connect(self.infoLinkClicked)
+        self.infoWidget.setOpenLinks(False)
+        self.infoWidget.recentModules = []
         self.updateInfo()
 
         attrsToolsWidget = QWidget()
@@ -1578,13 +1600,27 @@ class RigBuilderWindow(QFrame):
                 self.codeEditorWidget.module = item.module
                 self.codeEditorWidget.update()
 
+    def infoLinkClicked(self, url):
+        scheme = url.scheme()
+        path = url.path()
+
+        self.treeWidget.browseModuleSelector(mask=path+".", modulesFrom="server" if scheme == "server" else "local")
+
     def updateInfo(self):
         self.infoWidget.clear()
         template = []
+
+        template.append("<center><h1>Recent modules</h1></center>")
+        for m in self.infoWidget.recentModules:
+            prefix = "local" if m.isLoadedFromLocal() else "server"
+            relPath = Module.calculateRelativePath(m.loadedFrom).replace(".xml","").replace("\\", "/")
+            template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
+
         template.append("<center><h1>Recent updates</h1></center>")
 
         # local modules
-        def displayFiles(files):
+        def displayFiles(files, *, local):
+            prefix = "local" if local else "server"
             for k, v in files.items():
                 if k == "Others":
                     continue
@@ -1592,18 +1628,18 @@ class RigBuilderWindow(QFrame):
                 if v:
                     template.append("<h3>%s</h3>"%escape(k))
                     for file in v:
-                        relPath = Module.calculateRelativePath(file).replace("\\", "/")
-                        template.append("<p style='color: #888888'>{0}</p>".format(escape(relPath)))
+                        relPath = Module.calculateRelativePath(file).replace(".xml", "").replace("\\", "/")
+                        template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
 
         files, count = categorizeFilesByModTime(Module.LocalUids.values())
         if count > 0:
             template.append("<h2 style='background-color: #444444'>Local modules</h2>")
-            displayFiles(files)
+            displayFiles(files, local=True)
 
         files, count = categorizeFilesByModTime(Module.ServerUids.values())
         if count > 0:
             template.append("<h2 style='background-color: #444444'>Server modules</h2>")
-            displayFiles(files)
+            displayFiles(files, local=False)
 
         self.infoWidget.insertHtml("".join(template))
         self.infoWidget.moveCursor(QTextCursor.Start)
