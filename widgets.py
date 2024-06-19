@@ -406,8 +406,23 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super(LineEditAndButtonTemplateWidget, self).__init__(**kwargs)
 
+        self.templates = {}
         if DCC == "maya":
-            self.buttonCommand = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
+            self.templates["Get selected"] = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
+
+        self.templates["Get open file"] = '''from PySide2.QtWidgets import QFileDialog;import os
+path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
+value = path or value'''
+
+        self.templates["Get save file"] = '''from PySide2.QtWidgets import QFileDialog;import os
+path,_ = QFileDialog.getSaveFileName(None, "Save file", os.path.expandvars(value))
+value = path or value'''
+
+        self.templates["Get existing directory"] = '''from PySide2.QtWidgets import QFileDialog;import os
+path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
+value = path or value'''
+
+        self.buttonCommand = self.templates.get("Get selected", "value = 'something'")
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -428,6 +443,16 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
 
         menu.addAction("Edit label", self.editLabelActionClicked)
         menu.addAction("Edit command", self.editActionClicked)
+
+        if self.templates:
+            def setText(cmd):
+                self.buttonCommand = cmd
+                self.somethingChanged.emit()
+
+            templatesMenu = QMenu("Templates", self)
+            for k in self.templates:
+                templatesMenu.addAction(k, lambda cmd=self.templates[k]:setText(cmd))
+            menu.addMenu(templatesMenu)
 
         menu.popup(event.globalPos())
 
