@@ -645,6 +645,9 @@ class ModuleWrapper(object):
     def parent(self):
         return ModuleWrapper(self._module.parent) if self._module.parent else None
 
+    def muted(self):
+        return self._module.muted
+
     def mute(self):
         self._module.muted = True
 
