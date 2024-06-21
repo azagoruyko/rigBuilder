@@ -359,6 +359,7 @@ class Module(object):
     def loadFromFile(fileName):
         m = Module.fromXml(ET.parse(fileName).getroot())
         m.loadedFrom = os.path.normpath(fileName)
+        m.muted = False
         return m
 
     @staticmethod
