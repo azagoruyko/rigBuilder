@@ -18,11 +18,10 @@ DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 ParentWindow = None
 
 if DCC == "maya":
-    import pymel.core as pm
-    import maya.cmds as cmds
-
+    import maya.OpenMayaUI as omui
+    import maya.OpenMaya as om
     from shiboken2 import wrapInstance
-    ParentWindow = wrapInstance(int(pm.api.MQtUtil.mainWindow()), QMainWindow)
+    ParentWindow = wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
 
 def Callback(f, *args, **kwargs):
    return lambda: f(*args, **kwargs)
@@ -772,7 +771,7 @@ class TreeWidget(QTreeWidget):
         sceneDir = RigBuilderLocalPath + "/modules"
 
         if DCC == "maya":
-            sceneDir = os.path.dirname(pm.api.MFileIO.currentFile())
+            sceneDir = os.path.dirname(om.MFileIO.currentFile())
 
         path, _ = QFileDialog.getOpenFileName(mainWindow, "Import", sceneDir, "*.xml")
 

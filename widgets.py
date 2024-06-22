@@ -14,6 +14,9 @@ if sys.version_info.major > 2:
 else:
     RootPath = os.path.dirname(__file__.decode(sys.getfilesystemencoding())) # legacy
 
+if DCC == "maya":
+    import maya.cmds as cmds
+
 def Callback(f, *args, **kwargs):
    return lambda: f(*args, **kwargs)
 
@@ -542,8 +545,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
 
         if DCC == "maya":
-            import pymel.core as pm
-            pm.select(items)
+            cmds.select(items)
 
     def getFromDCC(self, add=False):
         if not add:
@@ -555,8 +557,7 @@ class ListBoxTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
         if DCC == "maya":
-            import pymel.core as pm
-            nodes = [n.name() for n in pm.ls(sl=True)]
+            nodes = [n for n in cmds.ls(sl=True)]
             updateUI(nodes)
 
     def clearItems(self):
