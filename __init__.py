@@ -205,8 +205,8 @@ class TabAttributesWidget(QWidget):
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: attribute already exists")
             return
 
-        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes)
-        prefix = self.module.name + "_" if doUsePrefix == QMessageBox.Yes else ""
+        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        prefix = self.module.name + "_" if doUsePrefix else ""
         expAttr = attr.copy()
         expAttr.name = prefix + expAttr.name
         self.module.parent.addAttribute(expAttr)
@@ -468,7 +468,7 @@ class ModuleListDialog(QDialog):
                 ch = parent.child(i)
                 if text == ch.text(column):
                     return ch
-                        
+
         updateSource = self.updateSourceWidget.currentIndex()
         UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
         Module.updateUidsCache(UpdateSourceFromInt[updateSource])
@@ -735,75 +735,28 @@ class TreeWidget(QTreeWidget):
 
         return item
 
-    def keyPressEvent(self, event):
-        shift = event.modifiers() & Qt.ShiftModifier
-        ctrl = event.modifiers() & Qt.ControlModifier
-        alt = event.modifiers() & Qt.AltModifier
-        key = event.key()
-
-        if key == Qt.Key_Insert:
-            self.insertModule()
-
-        elif ctrl and key == Qt.Key_D:
-            self.duplicateModule()
-
-        elif key == Qt.Key_M:
-            self.muteModule()
-
-        elif ctrl and key == Qt.Key_S:
-            self.saveModule()
-
-        elif ctrl and key == Qt.Key_I:
-            self.importModule()
-
-        elif ctrl and key == Qt.Key_U:
-            self.updateModule()
-
-        elif ctrl and key == Qt.Key_R:
-            self.updateModule(False)
-
-        elif key == Qt.Key_Delete:
-            self.removeModule()
-
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-
-        menu.addAction("New", self.insertModule, "Insert")
-        menu.addAction("Import", self.importModule, "Ctrl+I")
-
-        if self.selectedItems():
-            menu.addAction("Duplicate", self.duplicateModule, "Ctrl+D")
-            menu.addAction("Mute", self.muteModule, "M")
-
-            menu.addSeparator()
-
-            menu.addAction("Save", self.saveModule, "Ctrl+S")
-            menu.addAction("Save as", self.saveAsModule)
-            menu.addAction("Update", self.updateModule, "Ctrl+U")
-            menu.addAction("Send to server", self.sendModuleToServer)
-            menu.addAction("Embed", self.embedModule)
-            menu.addSeparator()
-            menu.addAction("Remove", self.removeModule, "Delete")
-
-        menu.addAction("Locate file", self.locateModuleFile)
-        menu.addAction("Clear all", self.clearAll)
-
-        menu.addSeparator()
-
-        menu.addAction("Help", self.showHelp)
-
+        for m in self.mainWindow.menuBar.findChildren(QMenu):
+            if m.title():
+                menu.addMenu(m)
         menu.popup(event.globalPos())
 
-    def showHelp(self):
-        subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])        
-
     def sendModuleToServer(self):
-        if QMessageBox.question(self, "Rig Builder", "Send modules to server?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            for item in self.selectedItems():
-                if item.module.isLoadedFromLocal():
-                    item.module.sendToServer()
-                else:
-                    QMessageBox.warning(self, "Rig Builder", "Can't send '%s' to server.\nIt works for local modules only!"%item.module.name)
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
+        
+        msg = "\n".join([item.module.name for item in selectedItems])
+
+        if QMessageBox.question(self, "Rig Builder", "Send modules to server?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+
+        for item in selectedItems:
+            if item.module.isLoadedFromLocal():
+                item.module.sendToServer()
+            else:
+                QMessageBox.warning(self, "Rig Builder", "Can't send '%s' to server.\nIt works for local modules only!"%item.module.name)
 
     def insertModule(self):
         item = self.makeItemFromModule(Module("module"))
@@ -816,13 +769,12 @@ class TreeWidget(QTreeWidget):
             self.addTopLevelItem(item)
 
     def importModule(self):
-        defaultPath = RigBuilderLocalPath+"/modules/"
+        sceneDir = RigBuilderLocalPath + "/modules"
 
-        sceneDir = ""#os.path.dirname(pm.api.MFileIO.currentFile())
-        if sceneDir:
-            defaultPath = sceneDir + "/"
+        if DCC == "maya":
+            sceneDir = os.path.dirname(pm.api.MFileIO.currentFile())
 
-        path, _ = QFileDialog.getOpenFileName(mainWindow, "Import", defaultPath, "*.xml")
+        path, _ = QFileDialog.getOpenFileName(mainWindow, "Import", sceneDir, "*.xml")
 
         if not path:
             return
@@ -848,24 +800,30 @@ class TreeWidget(QTreeWidget):
                 if not ch.uid:
                     clearModifiedFlag(ch)
 
-        msg = "\n".join(["%s -> %s"%(item.module.name, item.module.getSavePath() or "N/A") for item in self.selectedItems()])
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
 
-        if QMessageBox.question(self, "Rig Builder", "Save modules?\n%s"%msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            for item in self.selectedItems():
-                outputPath = item.module.getSavePath()
+        msg = "\n".join(["%s -> %s"%(item.module.name, item.module.getSavePath() or "N/A") for item in selectedItems])
 
-                if not outputPath:
-                    outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+item.module.name, "*.xml")
+        if QMessageBox.question(self, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+        
+        for item in selectedItems:
+            outputPath = item.module.getSavePath()
 
-                if outputPath:
-                    dirname = os.path.dirname(outputPath)
-                    if not os.path.exists(dirname):
-                        os.makedirs(dirname)
+            if not outputPath:
+                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+item.module.name, RigBuilderLocalPath+"/modules/"+item.module.name, "*.xml")
 
-                    item.module.saveToFile(outputPath)
-                    clearModifiedFlag(item.module)
+            if outputPath:
+                dirname = os.path.dirname(outputPath)
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
 
-                item.setText(1, item.module.getRelativeLoadedPathString()+" ") # update path string
+                item.module.saveToFile(outputPath)
+                clearModifiedFlag(item.module)
+
+            item.setText(1, item.module.getRelativeLoadedPathString()+" ") # update path string
 
     def saveAsModule(self):
         for item in self.selectedItems():
@@ -878,54 +836,56 @@ class TreeWidget(QTreeWidget):
                 item.setText(1, item.module.getRelativeLoadedPathString()+" ") # update path string
 
     def embedModule(self):
-        if QMessageBox.question(self, "Rig Builder", "Embed modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            for item in self.selectedItems():
-                item.module.uid = ""
-                item.module.loadedFrom = ""
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
 
-                for i in range(1,4): # clear path, source and uid
-                    item.setText(i, "") # update path string
+        msg = "\n".join([item.module.name for item in selectedItems])
 
-    def locateModuleFile(self):
-        for item in self.selectedItems():
-            if item and os.path.exists(item.module.loadedFrom):
-                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.module.loadedFrom)))
+        if QMessageBox.question(self, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+            
+        for item in selectedItems:
+            item.module.uid = ""
+            item.module.loadedFrom = ""
 
-    def clearAll(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        if ok:
-            self.clear()
+            for i in range(1,4): # clear path, source and uid
+                item.setText(i, "") # update path string
 
     def updateModule(self):
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
+
         Module.updateUidsCache()
 
-        items = "\n".join([item.text(0) for item in self.selectedItems()])
-        ok = QMessageBox.question(self, "Rig Builder", "Update selected modules?\n%s"%items,
-                                  QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        if ok:
-            for item in self.selectedItems():
-                item.module.update()
+        msg = "\n".join([item.module.name for item in selectedItems])
+        if QMessageBox.question(self, "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+        
+        for item in selectedItems:
+            item.module.update()
 
-                newItem = self.makeItemFromModule(item.module)
+            newItem = self.makeItemFromModule(item.module)
 
-                expanded = item.isExpanded()
+            expanded = item.isExpanded()
 
-                if item.parent():
-                    parent = item.parent()
-                    idx = parent.indexOfChild(item)
-                    parent.removeChild(item)
-                    parent.insertChild(idx, newItem)
+            if item.parent():
+                parent = item.parent()
+                idx = parent.indexOfChild(item)
+                parent.removeChild(item)
+                parent.insertChild(idx, newItem)
 
-                    parent.module.removeChild(item.module)
-                    parent.module.insertChild(idx, newItem.module)
+                parent.module.removeChild(item.module)
+                parent.module.insertChild(idx, newItem.module)
 
-                else:
-                    parent = self.invisibleRootItem()
-                    idx = parent.indexOfChild(item)
-                    parent.removeChild(item)
-                    parent.insertChild(idx, newItem)
+            else:
+                parent = self.invisibleRootItem()
+                idx = parent.indexOfChild(item)
+                parent.removeChild(item)
+                parent.insertChild(idx, newItem)
 
-                newItem.setExpanded(expanded)
+            newItem.setExpanded(expanded)
 
     def muteModule(self):
         for item in self.selectedItems():
@@ -953,14 +913,16 @@ class TreeWidget(QTreeWidget):
             item.setSelected(True)
 
     def removeModule(self):
-        items = "\n".join([item.text(0) for item in self.selectedItems()])
-
-        ok = QMessageBox.question(self, "Rig Builder", "Remove modules?\n%s"%items,
-                                  QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        if not ok:
+        selectedItems = self.selectedItems()
+        if not selectedItems:
             return
 
-        for item in self.selectedItems():
+        msg = "\n".join([item.module.name for item in selectedItems])
+
+        if QMessageBox.question(self, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+
+        for item in selectedItems:
             parent = item.parent()
             if parent:
                 parent.removeChild(item)
@@ -969,17 +931,17 @@ class TreeWidget(QTreeWidget):
                 self.invisibleRootItem().removeChild(item)
 
     def browseModuleSelector(self, *, mask=None, updateSource=None, modulesFrom=None):
-        Module.updateUidsCache()        
+        Module.updateUidsCache()
 
         if mask:
             self.moduleListDialog.maskWidget.setText(mask)
-        
+
         if updateSource:
             self.moduleListDialog.updateSourceWidget.setCurrentIndex({"all":0, "server": 1, "local": 2, "": 3}[updateSource])
-        
+
         if modulesFrom:
             self.moduleListDialog.modulesFromWidget.setCurrentIndex({"server": 0, "local": 1}[modulesFrom])
-        
+
         self.moduleListDialog.exec_()
 
         if self.moduleListDialog.selectedFileName:
@@ -991,8 +953,8 @@ class TreeWidget(QTreeWidget):
             if m not in self.mainWindow.infoWidget.recentModules:
                 self.mainWindow.infoWidget.recentModules.insert(0, m)
                 if len(self.mainWindow.infoWidget.recentModules) > 10:
-                    self.mainWindow.infoWidget.recentModules.pop()            
-            
+                    self.mainWindow.infoWidget.recentModules.pop()
+
             return m
 
     def event(self, event):
@@ -1139,9 +1101,7 @@ class EditTemplateWidget(QWidget):
             self.nameChanged.emit(oldName, newName)
 
     def removeBtnClicked(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Remove '%s' attribute?"%self.nameWidget.text(),
-                                  QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        if ok:
+        if QMessageBox.question(self, "Rig Builder", "Remove '%s' attribute?"%self.nameWidget.text(), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.copyTemplate()
             self.deleteLater()
 
@@ -1297,9 +1257,7 @@ class EditAttributesTabWidget(QTabWidget):
             self.setTabText(idx, newName)
 
     def tabCloseRequest(self, i):
-        ok = QMessageBox.question(self, "Rig Builder", "Remove '%s' tab?"%self.tabText(i),
-                                  QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        if ok:
+        if QMessageBox.question(self, "Rig Builder", "Remove '%s' tab?"%self.tabText(i), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.setCurrentIndex(i-1)
             self.clearTab(i)
 
@@ -1583,10 +1541,53 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
 
+        self.menuBar = self.createMenu()
+        layout.setMenuBar(self.menuBar)
+
         layout.addWidget(self.vsplitter)
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
+
+    def createMenu(self):
+        menuBar = QMenuBar(self)
+
+        fileMenu = menuBar.addMenu("File")
+        fileMenu.addAction("New", self.treeWidget.insertModule, "Insert")
+        fileMenu.addAction("Import", self.treeWidget.importModule, "Ctrl+I")
+        fileMenu.addSeparator()
+        fileMenu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
+        fileMenu.addAction("Save as", self.treeWidget.saveAsModule)
+        fileMenu.addSeparator()
+        fileMenu.addAction("Locate file", self.locateModuleFile)
+
+        editMenu = menuBar.addMenu("Edit")
+        editMenu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
+        editMenu.addSeparator()
+        editMenu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
+        editMenu.addAction("Send to server", self.treeWidget.sendModuleToServer)
+        editMenu.addAction("Embed", self.treeWidget.embedModule)
+        editMenu.addSeparator()
+        editMenu.addAction("Mute", self.treeWidget.muteModule, "M")
+        editMenu.addAction("Remove", self.treeWidget.removeModule, "Delete")
+        editMenu.addAction("Clear all", self.clearAllModules)
+
+        helpMenu = menuBar.addMenu("Help")
+        helpMenu.addAction("Documentation", self.showDocumenation)
+
+        return menuBar
+
+    def clearAllModules(self):
+        if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            self.treeWidget.clear()
+
+    def showDocumenation(self):
+        subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])
+
+    def locateModuleFile(self):
+        for item in self.treeWidget.selectedItems():
+            if item and os.path.exists(item.module.loadedFrom):
+                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.module.loadedFrom)))
 
     def treeItemSelectionChanged(self):
         selected = self.treeWidget.selectedItems()
@@ -1619,15 +1620,15 @@ class RigBuilderWindow(QFrame):
 
         # recent modules
         template.append("<center><h2 style='background-color: #666666'>Recent modules</h2></center>")
-        
+
         for m in self.infoWidget.recentModules:
             prefix = "local" if m.isLoadedFromLocal() else "server"
             relPath = Module.calculateRelativePath(m.loadedFrom).replace(".xml","").replace("\\", "/")
             template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
-        
+
         # recent updates
         template.append("<center><h2 style='background-color: #666666'>Recent updates</h2></center>")
-        
+
         # local modules
         def displayFiles(files, *, local):
             prefix = "local" if local else "server"
@@ -1707,7 +1708,7 @@ class RigBuilderWindow(QFrame):
 
         if not selectedItems:
             return
-        
+
         currentItem = selectedItems[0]
 
         self.setFocus()
@@ -1727,12 +1728,12 @@ class RigBuilderWindow(QFrame):
             self.progressBarWidget.beginProgress(currentItem.module.name, count+1)
 
             if DCC == "maya":
-                cmds.undoInfo(ock=True) # open undo block            
+                cmds.undoInfo(ock=True) # open undo block
 
             muted = currentItem.module.muted
             currentItem.module.muted = False
 
-            try:                
+            try:
                 currentItem.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
             except Exception:
                 printErrorStack()
