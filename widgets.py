@@ -542,7 +542,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
 
         if DCC == "maya":
-            import pymel.core as pm            
+            import pymel.core as pm
             pm.select(items)
 
     def getFromDCC(self, add=False):
@@ -747,7 +747,7 @@ class TableTemplateWidget(TemplateWidget):
 
         menu.addMenu(rowMenu)
 
-        columnMenu = QMenu("Column", self)        
+        columnMenu = QMenu("Column", self)
         columnMenu.addAction("Insert", Callback(self.insertColumn, self.tableWidget.currentColumn()))
         columnMenu.addAction("Append", Callback(self.insertColumn, self.tableWidget.currentColumn()+1))
 
@@ -795,11 +795,15 @@ class TableTemplateWidget(TemplateWidget):
     def insertColumn(self, current):
         self.tableWidget.insertColumn(current)
         self.tableWidget.setHorizontalHeaderItem(current, QTableWidgetItem("Untitled"))
+        for r in range(self.tableWidget.rowCount()):
+            self.tableWidget.setItem(r, current, QTableWidgetItem())
         self.resizeWidget()
 
     def insertRow(self, current):
         self.tableWidget.insertRow(current)
-        self.resizeWidget()        
+        for c in range(self.tableWidget.columnCount()):
+            self.tableWidget.setItem(current, c, QTableWidgetItem())
+        self.resizeWidget()
 
     def duplicateRow(self):
         newRow = self.tableWidget.currentRow()+1
