@@ -963,6 +963,7 @@ class TreeWidget(QTreeWidget):
 
     def browseModuleSelector(self, *, mask=None, updateSource=None, modulesFrom=None):
         Module.updateUidsCache()
+        self.mainWindow.updateInfo()
 
         if mask:
             self.moduleListDialog.maskWidget.setText(mask)
@@ -984,9 +985,7 @@ class TreeWidget(QTreeWidget):
             if m not in self.mainWindow.infoWidget.recentModules:
                 self.mainWindow.infoWidget.recentModules.insert(0, m)
                 if len(self.mainWindow.infoWidget.recentModules) > 10:
-                    self.mainWindow.infoWidget.recentModules.pop()
-
-                self.mainWindow.updateInfo()
+                    self.mainWindow.infoWidget.recentModules.pop()                
 
             return m     
 
