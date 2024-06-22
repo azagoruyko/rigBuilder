@@ -449,7 +449,7 @@ class ModuleListDialog(QDialog):
 
     def treeContextMenuEvent(self, event):
         menu = QMenu(self)
-        menu.addAction("Open explorer", self.browseModuleDirectory)
+        menu.addAction("Locate", self.browseModuleDirectory)
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
@@ -788,7 +788,14 @@ class TreeWidget(QTreeWidget):
         menu.addAction("Locate file", self.locateModuleFile)
         menu.addAction("Clear all", self.clearAll)
 
+        menu.addSeparator()
+
+        menu.addAction("Help", self.showHelp)
+
         menu.popup(event.globalPos())
+
+    def showHelp(self):
+        subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])        
 
     def sendModuleToServer(self):
         if QMessageBox.question(self, "Rig Builder", "Send modules to server?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
@@ -962,8 +969,7 @@ class TreeWidget(QTreeWidget):
                 self.invisibleRootItem().removeChild(item)
 
     def browseModuleSelector(self, *, mask=None, updateSource=None, modulesFrom=None):
-        Module.updateUidsCache()
-        self.mainWindow.updateInfo()
+        Module.updateUidsCache()        
 
         if mask:
             self.moduleListDialog.maskWidget.setText(mask)
@@ -985,14 +991,15 @@ class TreeWidget(QTreeWidget):
             if m not in self.mainWindow.infoWidget.recentModules:
                 self.mainWindow.infoWidget.recentModules.insert(0, m)
                 if len(self.mainWindow.infoWidget.recentModules) > 10:
-                    self.mainWindow.infoWidget.recentModules.pop()                
-
-            return m     
+                    self.mainWindow.infoWidget.recentModules.pop()            
+            
+            return m
 
     def event(self, event):
         if event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Tab:
                 self.browseModuleSelector()
+                self.mainWindow.updateInfo()
                 event.accept()
                 return True
 
@@ -1604,19 +1611,23 @@ class RigBuilderWindow(QFrame):
         path = url.path()
 
         self.treeWidget.browseModuleSelector(mask=path+".", modulesFrom="server" if scheme == "server" else "local")
+        self.updateInfo()
 
     def updateInfo(self):
         self.infoWidget.clear()
         template = []
 
-        template.append("<center><h1>Recent modules</h1></center>")
+        # recent modules
+        template.append("<center><h2 style='background-color: #666666'>Recent modules</h2></center>")
+        
         for m in self.infoWidget.recentModules:
             prefix = "local" if m.isLoadedFromLocal() else "server"
             relPath = Module.calculateRelativePath(m.loadedFrom).replace(".xml","").replace("\\", "/")
             template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
-
-        template.append("<center><h1>Recent updates</h1></center>")
-
+        
+        # recent updates
+        template.append("<center><h2 style='background-color: #666666'>Recent updates</h2></center>")
+        
         # local modules
         def displayFiles(files, *, local):
             prefix = "local" if local else "server"
@@ -1625,7 +1636,7 @@ class RigBuilderWindow(QFrame):
                     continue
 
                 if v:
-                    template.append("<h3>%s</h3>"%escape(k))
+                    template.append("<h3 style='background-color: #393939'>%s</h3>"%escape(k))
                     for file in v:
                         relPath = Module.calculateRelativePath(file).replace(".xml", "").replace("\\", "/")
                         template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
