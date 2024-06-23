@@ -102,7 +102,7 @@ class LabelTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.label = QLabel()
         self.label.setCursor(Qt.PointingHandCursor)
@@ -141,7 +141,7 @@ class ButtonTemplateWidget(TemplateWidget):
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.buttonWidget = QPushButton("Press me")
         self.buttonWidget.clicked.connect(self.buttonClicked)
@@ -200,7 +200,7 @@ class CheckBoxTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.checkBox = QCheckBox()
         self.checkBox.stateChanged.connect(self.somethingChanged)
@@ -218,7 +218,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.comboBox = QComboBox()
         self.comboBox.currentIndexChanged.connect(self.somethingChanged)
@@ -330,7 +330,7 @@ class LineEditTemplateWidget(TemplateWidget):
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.textWidget = QLineEdit()
         self.textWidget.editingFinished.connect(self.textChanged)
@@ -426,7 +426,7 @@ value = path or value'''
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.textWidget = QLineEdit()
         self.textWidget.editingFinished.connect(self.somethingChanged)
@@ -501,7 +501,7 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.listWidget = QListWidget()
         self.listWidget.itemDoubleClicked.connect(self.itemDoubleClicked)
@@ -602,7 +602,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
         layout = QGridLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.buttonsGroupWidget = QButtonGroup()
         self.buttonsGroupWidget.buttonClicked.connect(self.buttonClicked)
@@ -691,7 +691,7 @@ class TableTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.tableWidget = QTableWidget()
         self.tableWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -857,7 +857,7 @@ class TextTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.textWidget = QTextEdit()
         self.textWidget.textChanged.connect(self.somethingChanged)
@@ -877,7 +877,7 @@ class VectorTemplateWidget(TemplateWidget):
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
 
         self.xWidget = QLineEdit("0")
         self.xWidget.setValidator(QDoubleValidator())
@@ -1224,7 +1224,7 @@ class CurveTemplateWidget(TemplateWidget):
         super(CurveTemplateWidget, self).__init__(**kwargs)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setMargin(0)
         self.setLayout(layout)
 
         self.curveView = CurveView()
