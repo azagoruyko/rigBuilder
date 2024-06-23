@@ -1696,6 +1696,10 @@ class RigBuilderWindow(QFrame):
 
     def runModulesBtnClicked(self):
         if DCC == "maya":
+            cmds.undoInfo(ock=True) # run in undo chunk
+            self.runModules()
+            cmds.undoInfo(cck=True)
+        else:
             self.runModules()
 
     def runModules(self):
@@ -1726,9 +1730,6 @@ class RigBuilderWindow(QFrame):
             count = getChildrenCount(currentItem)
             self.progressBarWidget.beginProgress(currentItem.module.name, count+1)
 
-            if DCC == "maya":
-                cmds.undoInfo(ock=True) # open undo block
-
             muted = currentItem.module.muted
             currentItem.module.muted = False
 
@@ -1736,13 +1737,9 @@ class RigBuilderWindow(QFrame):
                 currentItem.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
             except Exception:
                 printErrorStack()
-
             finally:
                 currentItem.module.muted = muted
                 print("Done in %.2fs"%(time.time() - startTime))
-
-                if DCC == "maya":
-                    cmds.undoInfo(cck=True) # close undo block
 
         self.progressBarWidget.endProgress()
         self.attributesTabWidget.updateTabs()
