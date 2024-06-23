@@ -1,0 +1,37 @@
+<module name="example" muted="0" uid="f094f3d47efe4680b27c3d06b05f4ca6">
+<run><![CDATA[import time
+print("lineAttr:", @lineAttr, type(@lineAttr))
+
+beginProgress("Some slow operation", 10)
+for i in range(10):
+    stepProgress(i)
+    time.sleep(0.2)
+endProgress()
+
+@set_out_time(time.strftime(time.ctime()))
+
+# children access
+ch = module.child("child") # or module.child(0)
+ch.run()
+
+]]></run>
+<attributes>
+<attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# we can setup json data here directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})", "label": "Press me", "default": "label"}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<center><h3>You can use html markup here</h3></center>", "default": "text"}]]></attr>
+<attr name="lineAttr" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+<attr name="out_time" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+</attributes>
+<children>
+<module name="child" muted="1" uid="">
+<run><![CDATA[print("I'm a child")
+parent = module.parent()
+lineAttr = parent.attr.lineAttr
+print("lineAttr from child", lineAttr.get())]]></run>
+<attributes>
+<attr name="time" template="lineEdit" category="General" connect="/out_time"><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+</attributes>
+<children>
+</children>
+</module>
+</children>
+</module>
