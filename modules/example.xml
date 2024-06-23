@@ -19,16 +19,23 @@ ch.run()
 <attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# we can setup json data here directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})", "label": "Press me", "default": "label"}]]></attr>
 <attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<center><h3>You can use html markup here</h3></center>", "default": "text"}]]></attr>
 <attr name="lineAttr" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
-<attr name="out_time" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+<attr name="out_time" template="lineEdit" category="General" connect=""><![CDATA[{"value": "Sun Jun 23 08:30:22 2024", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
 </attributes>
 <children>
 <module name="child" muted="1" uid="">
-<run><![CDATA[print("I'm a child")
+<run><![CDATA[print("I'm a muted child, but can be run directly with Module.run")
 parent = module.parent()
 lineAttr = parent.attr.lineAttr
 print("lineAttr from child", lineAttr.get())]]></run>
 <attributes>
-<attr name="time" template="lineEdit" category="General" connect="/out_time"><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+<attr name="time" template="lineEdit" category="General" connect="/out_time"><![CDATA[{"value": "Sun Jun 23 08:30:22 2024", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+</attributes>
+<children>
+</children>
+</module>
+<module name="anotherChild" muted="0" uid="">
+<run><![CDATA[print("I'm running indirectly when my parent is executing")]]></run>
+<attributes>
 </attributes>
 <children>
 </children>
