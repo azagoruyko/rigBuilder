@@ -18,6 +18,7 @@ DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 ParentWindow = None
 
 if DCC == "maya":
+    import maya.cmds as cmds
     import maya.OpenMayaUI as omui
     import maya.OpenMaya as om
     from shiboken2 import wrapInstance
