@@ -739,7 +739,9 @@ class TreeWidget(QTreeWidget):
         menu = QMenu(self)
         for m in self.mainWindow.menuBar.findChildren(QMenu):
             if m.title():
-                menu.addMenu(m)
+                for a in m.actions():
+                    menu.addAction(a)
+                menu.addSeparator()
         menu.popup(event.globalPos())
 
     def sendModuleToServer(self):
