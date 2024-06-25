@@ -267,7 +267,7 @@ class SwoopSearchDialog(QDialog):
     def showEvent(self, event):
         self.updateSavedCursor()
         self.reposition()
-        self.filterWidget.setFocus()
+        self.updateStatus()
 
     def resultsMousePressEvent(self, event):
         cursor = self.resultsWidget.cursorForPosition(event.pos())
@@ -279,7 +279,8 @@ class SwoopSearchDialog(QDialog):
         c = self.edit.mapToGlobal(self.edit.cursorRect().topLeft())
         w = self.resultsWidget.document().idealWidth() + 30
         h = self.resultsWidget.document().blockCount()*self.resultsWidget.cursorRect().height() + 110
-        self.setGeometry(c.x(), c.y() + self.edit.currentFontPointSize+5, clamp(0, 500, w), clamp(0, 400, h))
+        pixelSize = self.edit.font().pixelSize()
+        self.setGeometry(c.x(), c.y() + pixelSize+5, clamp(0, 500, w), clamp(0, 400, h))
 
     def resultsLineChanged(self):
         if self.replaceMode:
@@ -373,9 +374,7 @@ class SwoopSearchDialog(QDialog):
         elif ctrl and event.key() == Qt.Key_D: # down only
             if not self.replaceMode:
                 self.downOnly = not self.downOnly
-
                 self.updateSavedCursor()
-
                 self.updateStatus()
                 self.filterTextChanged()
 
@@ -530,26 +529,20 @@ class CodeEditorWidget(QTextEdit):
     def __init__(self, **kwargs):
         super(CodeEditorWidget, self).__init__(**kwargs)
 
-        self.formatFunction = None
-
         self.preset = "default"
         self.lastSearch = ""
         self.lastReplace = ""
 
         self.editorState = {}
+        self.ignoreStates = False
 
-        self.thread = None
         self.canShowCompletions = True
-
-        self.currentFontPointSize = 16
 
         self.words = []
         self.currentWord = ("", 0, 0)
 
         self.searchStartWord = ("", 0, 0)
         self.prevCursorPosition = 0
-
-        self.setContextMenuPolicy(Qt.DefaultContextMenu)
 
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
@@ -606,7 +599,7 @@ class CodeEditorWidget(QTextEdit):
             blockData.hasBookmark = not blockData.hasBookmark
 
         if isinstance(self.parent(), CodeEditorWithNumbersWidget):
-            self.parent().numberBarWidget.update()
+            self.parent().numberBarWidget.updateState()
 
         block.setUserData(blockData)
         self.saveState(cursor=False, scroll=False, bookmarks=True)
@@ -627,10 +620,12 @@ class CodeEditorWidget(QTextEdit):
                 break
 
     def loadState(self, cursor=True, scroll=True, bookmarks=True):
+        if self.ignoreStates:
+            return
+
         scrollBar = self.verticalScrollBar()
 
-        self.blockSignals(True)
-        scrollBar.blockSignals(True)
+        self.ignoreStates = True
 
         if not self.preset or not self.editorState.get(self.preset):
             c = self.textCursor()
@@ -650,16 +645,13 @@ class CodeEditorWidget(QTextEdit):
                 scrollBar.setValue(state["scroll"])
 
             if bookmarks:
-                doc = self.document()
                 for i in state.get("bookmarks", []):
-                    b = doc.findBlockByNumber(i)
                     self.setBookmark(i)
 
-        self.blockSignals(False)
-        scrollBar.blockSignals(False)
+        self.ignoreStates = False
 
     def saveState(self, cursor=True, scroll=True, bookmarks=False):
-        if not self.preset:
+        if not self.preset or self.ignoreStates:
             return
 
         if not self.editorState.get(self.preset):
@@ -684,22 +676,17 @@ class CodeEditorWidget(QTextEdit):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        if callable(self.formatFunction):
-            formatAction = QAction("Format\tALT-SHIFT-F", self)
-            formatAction.triggered.connect(lambda _=None: self.setTextSafe((self.formatFunction(self.toPlainText()))))
-            menu.addAction(formatAction)
-
-        swoopAction = QAction("Swoop search\tF3", self)
-        swoopAction.triggered.connect(lambda _=None: self.swoopSearch())
-        menu.addAction(swoopAction)
-
-        gotoLineAction = QAction("Goto line\tCtrl-G", self)
-        gotoLineAction.triggered.connect(self.gotoLine)
-        menu.addAction(gotoLineAction)
-
-        selectAllAction = QAction("Select All", self)
-        selectAllAction.triggered.connect(self.selectAll)
-        menu.addAction(selectAllAction)
+        menu.addAction("Swoop search", self.swoopSearch, "F3")
+        menu.addAction("Highlight selected", self.highlightSelected, "Ctrl+H")
+        menu.addSeparator()
+        menu.addAction("Goto line", self.gotoLine, "Ctrl+G")
+        menu.addAction("Remove line", self.removeLine, "Ctrl+K")
+        menu.addAction("Comment block", self.toggleCommentBlock, "Ctrl+;")
+        menu.addSeparator()
+        menu.addAction("Set bookmark", self.setBookmark, "Alt+F2")
+        menu.addAction("Next bookmark", self.gotoNextBookmark, "F2")
+        menu.addSeparator()
+        menu.addAction("Select All", self.selectAll, "Ctrl+A")
 
         menu.popup(event.globalPos())
 
@@ -710,40 +697,15 @@ class CodeEditorWidget(QTextEdit):
 
         if ctrl:
             d = event.delta() / abs(event.delta())
-            self.currentFontPointSize = clamp(8, 40, self.currentFontPointSize + d)
 
-            self.setStyleSheet("font-size: %dpx;"%self.currentFontPointSize)
-            self.parent().numberBarWidget.update()
+            font = self.font()
+            pixelSize = clamp(8, 40, font.pixelSize() + d)
+            font.setPixelSize(pixelSize)
+            self.setFont(font)
+            self.parent().numberBarWidget.updateState()
 
         else:
             QTextEdit.wheelEvent(self, event)
-
-    def setTextSafe(self, text, withUndo=True):
-        scrollBar = self.verticalScrollBar()
-        self.blockSignals(True)
-        scrollBar.blockSignals(True)
-
-        scroll = scrollBar.value()
-        cursor = self.textCursor()
-        pos = cursor.position()
-
-        if withUndo:
-            cursor.select(QTextCursor.Document)
-            cursor.beginEditBlock()
-            cursor.removeSelectedText()
-            cursor.insertText(text)
-            cursor.endEditBlock()
-        else:
-            self.setText(text)
-
-        if pos < len(text):
-            cursor.setPosition(pos)
-            self.setTextCursor(cursor)
-
-        scrollBar.setValue(scroll)
-
-        self.blockSignals(False)
-        scrollBar.blockSignals(False)
 
     def keyPressEvent(self, event):
         shift = event.modifiers() & Qt.ShiftModifier
@@ -751,28 +713,7 @@ class CodeEditorWidget(QTextEdit):
         alt = event.modifiers() & Qt.AltModifier
         key = event.key()
 
-        if alt and shift and key == Qt.Key_F:
-            if callable(self.formatFunction):
-                self.setTextSafe((self.formatFunction(self.toPlainText())))
-
-        elif alt and key == Qt.Key_M: # back to indentation
-            cursor = self.textCursor()
-            linePos = cursor.block().position()
-            cursor.select(QTextCursor.LineUnderCursor)
-            text = cursor.selectedText()
-            cursor.clearSelection()
-
-            found = re.findall("^\\s*", text)
-            offset = len(found[0]) if found else 0
-
-            cursor.setPosition(linePos + offset)
-
-            self.setTextCursor(cursor)
-
-        elif ctrl and key == Qt.Key_H: # highlight selected
-            self.highlightSelected()
-
-        elif ctrl and alt and key == Qt.Key_Space:
+        if ctrl and alt and key == Qt.Key_Space:
             cursor = self.textCursor()
             pos = cursor.position()
             start, end = findBracketSpans(self.toPlainText(), pos)
@@ -784,9 +725,6 @@ class CodeEditorWidget(QTextEdit):
         elif key in [Qt.Key_Left, Qt.Key_Right]:
             QTextEdit.keyPressEvent(self, event)
             self.completionWidget.hide()
-
-        elif key == Qt.Key_F12: # full screen editor mode
-            pass
 
         elif alt and key == Qt.Key_F2: # set bookmark
             self.setBookmark()
@@ -862,51 +800,15 @@ class CodeEditorWidget(QTextEdit):
             else:
                 super().keyPressEvent(event)
 
-        elif ctrl and key == Qt.Key_L: # center line
-            self.centerLine()
+        elif ctrl and key == Qt.Key_H: # highlight selected
+            self.highlightSelected()
 
-        elif ctrl and key == Qt.Key_K: # kill line
-            self.killLine()
-
-        elif ctrl and key == Qt.Key_O: # remove redundant lines
-            cursor = self.textCursor()
-
-            cursor.beginEditBlock()
-            if not cursor.block().text().strip():
-                cursor.movePosition(QTextCursor.StartOfBlock)
-                cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor)
-                cursor.removeSelectedText()
-                cursor.movePosition(QTextCursor.Up)
-
-            while not cursor.block().text().strip() and not cursor.atStart(): # remove empty lines but last one
-                if cursor.block().previous().text():
-                    break
-
-                cursor.movePosition(QTextCursor.StartOfBlock)
-                cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor)
-                cursor.removeSelectedText()
-                cursor.movePosition(QTextCursor.Up)
-
-            cursor.endEditBlock()
-            self.setTextCursor(cursor)
-
-        elif ctrl and key == Qt.Key_D: # duplicate line
-            cursor = self.textCursor()
-            line = cursor.block().text()
-            cursor.movePosition(QTextCursor.EndOfBlock)
-            cursor.beginEditBlock()
-            cursor.insertBlock()
-            cursor.insertText(line)
-            cursor.endEditBlock()
-            self.setTextCursor(cursor)
+        elif ctrl and key == Qt.Key_K: # remove line
+            self.removeLine()
 
         elif ctrl and key == Qt.Key_Semicolon: # comment
-            cursor = self.textCursor()
+            self.toggleCommentBlock()
 
-            if cursor.selectedText():
-                self.toggleCommentBlock()
-            else:
-                self.toggleCommentLine()
         else:
             QTextEdit.keyPressEvent(self, event)
 
@@ -966,17 +868,33 @@ class CodeEditorWidget(QTextEdit):
         scrollBar = self.verticalScrollBar()
         scrollBar.setValue(scrollBar.value() + cursorY - self.geometry().height()/2)
 
-    def killLine(self):
+    def removeLine(self):
         cursor = self.textCursor()
 
-        if not cursor.block().text():
-            cursor.movePosition(QTextCursor.StartOfBlock)
-            cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor)
-        else:
-            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor)
 
         cursor.removeSelectedText()
         self.setTextCursor(cursor)
+
+    def toggleCommentBlock(self):
+        cursor = self.textCursor()        
+
+        if cursor.selectedText():
+            doc = self.document()
+            cursor.beginEditBlock()
+            sl = doc.findBlock(cursor.selectionStart()).blockNumber()
+            el = doc.findBlock(cursor.selectionEnd()).blockNumber()
+            startLine = min(sl, el)
+            endLine = max(sl, el)
+
+            for l in range(startLine, endLine+1):
+                if doc.findBlockByNumber(l).text().strip():
+                    self.gotoLine(l+1)
+                    self.toggleCommentLine()
+            cursor.endEditBlock()
+        else:
+            self.toggleCommentLine()
 
     def toggleCommentLine(self):
         comment = "# "
@@ -1123,7 +1041,7 @@ class CodeEditorWidget(QTextEdit):
 
         self.completionWidget.setGeometry(c.x(), c.y()+10, 200, 200)
         if items:
-            self.completionWidget.update(items)
+            self.completionWidget.updateItems(items)
 
         self.completionWidget.show()
 
@@ -1220,7 +1138,7 @@ class CompletionWidget(QTextEdit):
         self.setReadOnly(True)
         self.setWordWrapMode(QTextOption.NoWrap)
 
-        self.update([])
+        self.updateItems([])
 
     def currentLine(self):
         return self.textCursor().block().blockNumber()
@@ -1248,7 +1166,7 @@ class CompletionWidget(QTextEdit):
             if offset != 0:
                 self.gotoLine(clamp(0, lineCount, self._prevLine+offset))
 
-    def update(self, items):
+    def updateItems(self, items):
         if not items:
             return
 
@@ -1284,13 +1202,12 @@ class NumberBarWidget(QWidget):
         self.edit = edit
         self.highest_line = 0
 
-    def update(self, *args):
-        self.setStyleSheet(self.edit.styleSheet())
+    def updateState(self, *args):
+        self.setFont(self.edit.font())
 
         width = self.fontMetrics().width(str(self.highest_line)) + 19
         self.setFixedWidth(width)
-
-        QWidget.update(self, *args)
+        self.update()
 
     def paintEvent(self, event):
         contents_y = self.edit.verticalScrollBar().value()
@@ -1340,9 +1257,9 @@ class CodeEditorWithNumbersWidget(QWidget):
         self.editorWidget = CodeEditorWidget()
 
         self.numberBarWidget = NumberBarWidget(self.editorWidget)
-        self.editorWidget.document().blockCountChanged.connect(lambda _: self.numberBarWidget.update())
-        self.editorWidget.document().documentLayoutChanged.connect(self.numberBarWidget.update)
-        self.editorWidget.verticalScrollBar().valueChanged.connect(lambda _: self.numberBarWidget.update())
+        self.editorWidget.document().blockCountChanged.connect(lambda _: self.numberBarWidget.updateState())
+        self.editorWidget.document().documentLayoutChanged.connect(self.numberBarWidget.updateState)
+        self.editorWidget.verticalScrollBar().valueChanged.connect(lambda _: self.numberBarWidget.updateState())
 
         hlayout = QHBoxLayout()
         hlayout.setContentsMargins(0, 0, 0, 0)

@@ -314,7 +314,7 @@ class AttributesTabWidget(QTabWidget):
         dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=mainWindow)
         dialog.exec_()
 
-        self.mainWindow.codeEditorWidget.update()
+        self.mainWindow.codeEditorWidget.updateState()
         self.updateTabs()
 
     def onReplace(self, old, new, opts):
@@ -1331,24 +1331,30 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
 
         self.mainWindow = mainWindow
         self.module = module
+        self._skipSaving = False
 
         self.editorWidget.syntax = PythonHighlighter(self.editorWidget.document())
         self.editorWidget.textChanged.connect(self.codeChanged)
 
-        self.update()
+        self.updateState()
 
     def codeChanged(self):
-        if not self.module:
+        if not self.module or self._skipSaving:
             return
 
         self.module.runCode = self.editorWidget.toPlainText()
         self.module.modified = True
 
-    def update(self):
+    def updateState(self):
         if not self.module:
             return
 
-        self.editorWidget.setTextSafe(self.module.runCode)
+        self.editorWidget.ignoreStates = True
+        self._skipSaving = True
+        self.editorWidget.setText(self.module.runCode)
+        self._skipSaving = False
+        self.editorWidget.ignoreStates = False
+
         self.editorWidget.document().clearUndoRedoStacks()
         self.generateCompletionWords()
 
@@ -1561,7 +1567,7 @@ class RigBuilderWindow(QFrame):
         fileMenu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
         fileMenu.addAction("Save as", self.treeWidget.saveAsModule)
         fileMenu.addSeparator()
-        fileMenu.addAction("Locate file", self.locateModuleFile)
+        fileMenu.addAction("Locate file", self.locateModuleFile)        
 
         editMenu = menuBar.addMenu("Edit")
         editMenu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
@@ -1607,7 +1613,7 @@ class RigBuilderWindow(QFrame):
 
             if self.codeEditorWidget.isEnabled():
                 self.codeEditorWidget.module = item.module
-                self.codeEditorWidget.update()
+                self.codeEditorWidget.updateState()
 
     def infoLinkClicked(self, url):
         scheme = url.scheme()
@@ -1674,7 +1680,7 @@ class RigBuilderWindow(QFrame):
 
         elif not self.codeEditorWidget.isEnabled() and currentModule:
             self.codeEditorWidget.module = currentModule
-            self.codeEditorWidget.update()
+            self.codeEditorWidget.updateState()
             self.codeEditorWidget.setEnabled(True)
 
     def showLog(self):

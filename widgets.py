@@ -1203,7 +1203,6 @@ class CurveView(QGraphicsView):
 
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.TextAntialiasing, True)
-        self.setRenderHint(QPainter.HighQualityAntialiasing, True)
         #self.setRenderHint(QPainter.SmoothPixmapTransform, True)
         #self.setRenderHint(QPainter.NonCosmeticDefaultPen, True)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
