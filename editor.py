@@ -680,8 +680,8 @@ class CodeEditorWidget(QTextEdit):
         menu.addAction("Highlight selected", self.highlightSelected, "Ctrl+H")
         menu.addSeparator()
         menu.addAction("Goto line", self.gotoLine, "Ctrl+G")
-        menu.addAction("Remove line", self.removeLine, "Ctrl+K")
-        menu.addAction("Comment block", self.toggleCommentBlock, "Ctrl+;")
+        menu.addAction("Remove line", self.removeLines, "Ctrl+K")
+        menu.addAction("Comment line", self.toggleCommentBlock, "Ctrl+;")
         menu.addSeparator()
         menu.addAction("Set bookmark", self.setBookmark, "Alt+F2")
         menu.addAction("Next bookmark", self.gotoNextBookmark, "F2")
@@ -804,7 +804,7 @@ class CodeEditorWidget(QTextEdit):
             self.highlightSelected()
 
         elif ctrl and key == Qt.Key_K: # remove line
-            self.removeLine()
+            self.removeLines()
 
         elif ctrl and key == Qt.Key_Semicolon: # comment
             self.toggleCommentBlock()
@@ -868,66 +868,102 @@ class CodeEditorWidget(QTextEdit):
         scrollBar = self.verticalScrollBar()
         scrollBar.setValue(scrollBar.value() + cursorY - self.geometry().height()/2)
 
-    def removeLine(self):
+    def removeLines(self):
         cursor = self.textCursor()
 
+        if cursor.hasSelection():
+            startLine, endLine = self.selectedLineRange(cursor)
+
+            cursor.beginEditBlock()
+            cursor.setPosition(self.document().findBlockByLineNumber(startLine).position())
+
+            for _ in range(endLine-startLine+1):
+                self.removeLine(cursor)
+
+            cursor.endEditBlock()
+            self.setTextCursor(cursor)
+            
+        else:
+            self.removeLine()
+
+    def removeLine(self, initialCursor=None):
+        cursor = initialCursor or self.textCursor()
+        cursor.beginEditBlock()
         cursor.movePosition(QTextCursor.StartOfBlock)
         cursor.movePosition(QTextCursor.NextBlock, QTextCursor.KeepAnchor)
-
         cursor.removeSelectedText()
-        self.setTextCursor(cursor)
+        cursor.endEditBlock()
+        if not initialCursor:
+            self.setTextCursor(cursor)    
 
     def toggleCommentBlock(self):
         cursor = self.textCursor()        
+        selectedText = cursor.selectedText()
 
-        if cursor.selectedText():
-            doc = self.document()
+        if selectedText:
+            startLine, endLine = self.selectedLineRange()
             cursor.beginEditBlock()
-            sl = doc.findBlock(cursor.selectionStart()).blockNumber()
-            el = doc.findBlock(cursor.selectionEnd()).blockNumber()
-            startLine = min(sl, el)
-            endLine = max(sl, el)
 
-            for l in range(startLine, endLine+1):
-                if doc.findBlockByNumber(l).text().strip():
-                    self.gotoLine(l+1)
-                    self.toggleCommentLine()
+            cursor.setPosition(self.document().findBlockByLineNumber(startLine).position())
+            c = self.indentSizeUnderCursor(cursor)
+            
+            for _ in range(endLine-startLine+1):
+                self.toggleCommentLine(cursor, columnPosition=c)
             cursor.endEditBlock()
+            self.setTextCursor(cursor)
+
         else:
             self.toggleCommentLine()
 
-    def toggleCommentLine(self):
-        comment = "# "
-        commentSize = len(comment)
+    def indentSizeUnderCursor(self, cursor):
+        cursor.select(QTextCursor.LineUnderCursor)
+        line = cursor.selectedText()
+        return len(re.match("^\\s*", line).group())
 
-        cursor = self.textCursor()
+    def toggleCommentLine(self, initialCursor=None, *, columnPosition=None):
+        comment = "#"
 
-        pos = cursor.position()
+        cursor = initialCursor or self.textCursor()
+
         linePos = cursor.block().position()
         cursor.select(QTextCursor.LineUnderCursor)
         lineText = cursor.selectedText()
         cursor.clearSelection()
 
-        found = re.findall("^\\s*", lineText)
-        offset = len(found[0]) if found else 0
-
-        cursor.setPosition(linePos + offset)
-
-        newPos = pos + commentSize
+        indentSize = self.indentSizeUnderCursor(cursor)       
 
         cursor.beginEditBlock()
-        if not re.match("^\\s*%s"%comment, lineText):
-            cursor.insertText(comment)
-        else:
-            for i in range(len(comment)):
-                cursor.deleteChar()
-            newPos = pos - commentSize
 
+        m = re.match("^\\s*({}\\s?)".format(re.escape(comment)), lineText)
+        if not m:
+            offset = indentSize if columnPosition is None else min(indentSize, columnPosition)
+            cursor.setPosition(linePos + offset)
+            cursor.insertText(comment + " ")
+        else:
+            # some line
+            cursor.setPosition(linePos + indentSize)
+            for _ in range(len(m.group(1))):
+                cursor.deleteChar()            
+            
         cursor.endEditBlock()
 
-        cursor.setPosition(newPos)
+        cursor.movePosition(QTextCursor.NextBlock)
+        if not initialCursor:
+            self.setTextCursor(cursor)        
 
-        self.setTextCursor(cursor)
+    def selectedLineRange(self, initialCursor=None):
+        cursor = initialCursor or self.textCursor()
+        doc = self.document()
+        ss = cursor.selectionStart()
+        se = cursor.selectionEnd()
+        sl = doc.findBlock(ss).blockNumber()
+        el = doc.findBlock(se).blockNumber()
+        startLine = min(sl, el)
+        endLine = max(sl, el)
+        cursor.setPosition(se)
+        if cursor.columnNumber() == 0:
+            endLine -= 1
+        return startLine, endLine
 
     def gotoLine(self, line=-1):
         if line == -1:
