@@ -35,9 +35,6 @@ def clamp(mn, mx, val):
     else:
         return val
 
-def trimText(text, size):
-    return "..." + text[-size+3:]  if len(text) > size else " "*(size-len(text)) + text
-
 def replaceSpecialChars(text):
     return re.sub("[^a-zA-Z0-9_]", "_", text)
 
@@ -1438,11 +1435,11 @@ class WideSplitter(QSplitter):
         return WideSplitterHandle(self.orientation(), self)
 
 class MyProgressBar(QWidget):
-    LabelSize = 25
     def __init__(self, **kwargs):
         super(MyProgressBar, self).__init__(**kwargs)
 
         self.queue = []
+        self.labelSize = 25
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -1457,7 +1454,8 @@ class MyProgressBar(QWidget):
         self.queue = []
 
     def updateWithState(self, state):
-        self.labelWidget.setText(trimText(state["text"], MyProgressBar.LabelSize))
+        trimText = lambda text, size: "..." + text[-size+3:]  if len(text) > size else " "*(size-len(text)) + text
+        self.labelWidget.setText(trimText(state["text"], self.labelSize))
         self.progressBarWidget.setValue(state["value"])
         self.progressBarWidget.setMaximum(state["max"])
 
@@ -1476,10 +1474,7 @@ class MyProgressBar(QWidget):
         if not q["updatePercent"] or value % updateValue == 0:
             if text:
                 q["text"] = text
-                self.labelWidget.setText(trimText(text, MyProgressBar.LabelSize))
-
-            self.progressBarWidget.setMaximum(q["max"])
-            self.progressBarWidget.setValue(value)
+            self.updateWithState(q)
             QApplication.processEvents()
 
     def endProgress(self):
