@@ -223,7 +223,7 @@ class SwoopSearchDialog(QDialog):
 
         self.filterWidget = QLineEdit()
         self.filterWidget.setToolTip("Ctrl-C - case sensitive<br>Ctrl-W - word boundary<br>Ctrl-B - find inside brackets<br>Ctrl-D - down only<br>Ctrl-R - replace mode")
-        self.filterWidget.textChanged.connect(lambda:self.filterTextChanged())
+        self.filterWidget.textChanged.connect(self.filterTextChanged)
         self.filterWidget.keyPressEvent = self.filterKeyPressEvent
 
         self.resultsWidget = QTextEdit()
@@ -530,19 +530,18 @@ class CodeEditorWidget(QTextEdit):
         super(CodeEditorWidget, self).__init__(**kwargs)
 
         self.preset = "default"
-        self.lastSearch = ""
-        self.lastReplace = ""
+        self.commentChar = "#"
+        self.ignoreStates = False # don't save/load states
 
-        self.editorState = {}
-        self.ignoreStates = False
+        self._editorState = {}
 
-        self.canShowCompletions = True
+        self._canShowCompletions = True
 
         self.words = []
-        self.currentWord = ("", 0, 0)
+        self._currentWord = ("", 0, 0)
 
-        self.searchStartWord = ("", 0, 0)
-        self.prevCursorPosition = 0
+        self._searchStartWord = ("", 0, 0)
+        self._prevCursorPosition = 0
 
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
@@ -627,14 +626,14 @@ class CodeEditorWidget(QTextEdit):
 
         self.ignoreStates = True
 
-        if not self.preset or not self.editorState.get(self.preset):
+        if not self.preset or not self._editorState.get(self.preset):
             c = self.textCursor()
             c.setPosition(0)
             self.setTextCursor(c)
             scrollBar.setValue(0)
 
         else:
-            state = self.editorState[self.preset]
+            state = self._editorState[self.preset]
             if cursor:
                 c = self.textCursor()
                 c.setPosition(state["cursor"])
@@ -654,10 +653,10 @@ class CodeEditorWidget(QTextEdit):
         if not self.preset or self.ignoreStates:
             return
 
-        if not self.editorState.get(self.preset):
-            self.editorState[self.preset] = {"cursor": 0, "scroll": 0, "bookmarks": []}
+        if not self._editorState.get(self.preset):
+            self._editorState[self.preset] = {"cursor": 0, "scroll": 0, "bookmarks": []}
 
-        state = self.editorState[self.preset]
+        state = self._editorState[self.preset]
 
         if cursor:
             state["cursor"] = self.textCursor().position()
@@ -921,8 +920,6 @@ class CodeEditorWidget(QTextEdit):
         return len(re.match("^\\s*", line).group())
 
     def toggleCommentLine(self, initialCursor=None, *, columnPosition=None):
-        comment = "#"
-
         cursor = initialCursor or self.textCursor()
 
         linePos = cursor.block().position()
@@ -934,11 +931,11 @@ class CodeEditorWidget(QTextEdit):
 
         cursor.beginEditBlock()
 
-        m = re.match("^\\s*({}\\s?)".format(re.escape(comment)), lineText)
+        m = re.match("^\\s*({}\\s?)".format(re.escape(self.commentChar)), lineText)
         if not m:
             offset = indentSize if columnPosition is None else min(indentSize, columnPosition)
             cursor.setPosition(linePos + offset)
-            cursor.insertText(comment + " ")
+            cursor.insertText(self.commentChar + " ")
         else:
             # some line
             cursor.setPosition(linePos + indentSize)
@@ -984,12 +981,12 @@ class CodeEditorWidget(QTextEdit):
         word = block.text().split()[0]
 
         cursor = self.textCursor()
-        cursor.setPosition(self.currentWord[1])
-        cursor.setPosition(self.currentWord[2], QTextCursor.KeepAnchor)
+        cursor.setPosition(self._currentWord[1])
+        cursor.setPosition(self._currentWord[2], QTextCursor.KeepAnchor)
         cursor.removeSelectedText()
         cursor.insertText(word)
         self.setTextCursor(cursor)
-        self.canShowCompletions = False
+        self._canShowCompletions = False
 
     def highlightSelected(self):
         cursor = self.textCursor()
@@ -1016,7 +1013,7 @@ class CodeEditorWidget(QTextEdit):
         cursor = self.textCursor()
         pos = cursor.position()
 
-        if abs(pos - self.prevCursorPosition) > 1:
+        if abs(pos - self._prevCursorPosition) > 1:
             self.completionWidget.hide()
 
         if cursor.selectedText():
@@ -1025,7 +1022,7 @@ class CodeEditorWidget(QTextEdit):
 
         self.saveState(cursor=True, scroll=False, bookmarks=False)
 
-        self.prevCursorPosition = pos
+        self._prevCursorPosition = pos
 
         start, end = findBracketSpans(self.toPlainText(), pos)
 
@@ -1049,8 +1046,8 @@ class CodeEditorWidget(QTextEdit):
 
         cursor = self.textCursor()
 
-        self.currentWord = wordAtCursor(cursor)
-        currentWord, start, end = self.currentWord
+        self._currentWord = wordAtCursor(cursor)
+        currentWord, start, end = self._currentWord
 
         if start == 0 and end - start <= 1:
             return
@@ -1060,7 +1057,7 @@ class CodeEditorWidget(QTextEdit):
         words -= set([currentWord])
 
         if currentWord:
-            self.searchStartWord = self.currentWord
+            self._searchStartWord = self._currentWord
             items = [w for w in words if re.match(currentWord, w, re.IGNORECASE)]
 
             if items and cursor.position() == end:
