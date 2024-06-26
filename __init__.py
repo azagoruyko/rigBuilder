@@ -1434,7 +1434,7 @@ class WideSplitter(QSplitter):
     def createHandle(self):
         return WideSplitterHandle(self.orientation(), self)
 
-class MyProgressBar(QWidget):
+class MyProgressBar(QWidget):    
     def __init__(self, **kwargs):
         super(MyProgressBar, self).__init__(**kwargs)
 

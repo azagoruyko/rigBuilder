@@ -134,6 +134,15 @@ class PythonHighlighter(QSyntaxHighlighter):
         else:
            return False
 
+def fontSize(font):
+    return font.pixelSize() if font.pixelSize() > 0 else font.pointSize()
+
+def setFontSize(font, size):
+    if font.pixelSize() > 0:
+        font.setPixelSize(size)
+    else:
+        font.setPointSize(size)
+
 def highlightLine(widget, line=None, *, clear=False):
     if line is None:
         block = widget.textCursor().block()
@@ -279,8 +288,7 @@ class SwoopSearchDialog(QDialog):
         c = self.edit.mapToGlobal(self.edit.cursorRect().topLeft())
         w = self.resultsWidget.document().idealWidth() + 30
         h = self.resultsWidget.document().blockCount()*self.resultsWidget.cursorRect().height() + 110
-        pixelSize = self.edit.font().pixelSize()
-        self.setGeometry(c.x(), c.y() + pixelSize+5, clamp(0, 500, w), clamp(0, 400, h))
+        self.setGeometry(c.x(), c.y() + fontSize(self.edit.font())+5, clamp(0, 500, w), clamp(0, 400, h))
 
     def resultsLineChanged(self):
         if self.replaceMode:
@@ -696,10 +704,9 @@ class CodeEditorWidget(QTextEdit):
 
         if ctrl:
             d = event.delta() / abs(event.delta())
-
             font = self.font()
-            pixelSize = clamp(8, 40, font.pixelSize() + d)
-            font.setPixelSize(pixelSize)
+            sz = clamp(8, 40, fontSize(font) + d)
+            setFontSize(font, sz)
             self.setFont(font)
             self.parent().numberBarWidget.updateState()
 

@@ -177,8 +177,7 @@ class ButtonTemplateWidget(TemplateWidget):
                 exec(self.buttonCommand, localEnv)
                 self.needUpdateUI.emit() # update UI
 
-            if DCC == "maya":
-                f()
+            f()
 
     def getDefaultData(self):
         return {"command": "module.attr.someAttr.set(1)",
@@ -478,8 +477,7 @@ value = path or value'''
                 self.textWidget.setText(fromSmartConversion(env["value"]))
                 self.somethingChanged.emit()
 
-            if DCC == "maya":
-                f()
+            f()
 
     def getJsonData(self):
         return {"value": smartConversion(self.textWidget.text().strip()),
