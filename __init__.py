@@ -4,7 +4,6 @@ import re
 import os
 import subprocess
 import sys
-from contextlib import contextmanager
 
 from PySide2.QtGui import *
 from PySide2.QtCore import *
@@ -13,6 +12,7 @@ from PySide2.QtWidgets import *
 from .classes import *
 from .editor import *
 from . import widgets
+from .utils import *
 
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 ParentWindow = None
@@ -23,71 +23,6 @@ if DCC == "maya":
     import maya.OpenMaya as om
     from shiboken2 import wrapInstance
     ParentWindow = wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
-
-def Callback(f, *args, **kwargs):
-   return lambda: f(*args, **kwargs)
-
-def clamp(mn, mx, val):
-    if val < mn:
-        return mn
-    elif val > mx:
-        return mx
-    else:
-        return val
-
-def replaceSpecialChars(text):
-    return re.sub("[^a-zA-Z0-9_]", "_", text)
-
-def replacePairs(pairs, text):
-    for k, v in pairs:
-        text = re.sub(k, v, text)
-    return text
-
-@contextmanager
-def captureOutput(stream):
-    default_stdout = sys.stdout
-    default_stderr = sys.stderr
-
-    sys.stdout = stream
-    sys.stderr = stream
-    yield
-    sys.stdout = default_stdout
-    sys.stderr = default_stderr
-
-def printErrorStack():
-    exc_type, exc_value, exc_traceback = sys.exc_info()
-
-    tbs = []
-    tb = exc_traceback
-    while tb:
-        tbs.append(tb)
-        tb = tb.tb_next
-
-    skip = True
-    indent = "  "
-    for tb in tbs:
-        if tb.tb_frame.f_code.co_filename == "<string>":
-            skip = False
-
-        if not skip:
-            print("{}{}, {}, in line {},".format(indent, tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name, tb.tb_lineno))
-            indent += "  "
-    print("Error: {}".format(exc_value))
-
-def centerWindow(window):
-    screen = QDesktopWidget().screenGeometry()
-    cp = screen.center()
-    geom = window.frameGeometry()
-    geom.moveCenter(cp)
-    window.move(geom.topLeft())
-
-def getChildrenCount(item):
-    count = 0
-    for i in range(item.childCount()):
-        count += 1
-        count += getChildrenCount(item.child(i))
-
-    return count
 
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
@@ -339,7 +274,7 @@ class AttributesTabWidget(QTabWidget):
         if self.count() == 0:
             return
 
-        idx = clamp(0, self.count()-1, idx)
+        idx = clamp(idx, 0, self.count()-1)
 
         title = self.tabText(idx)
         scrollArea = self.widget(idx)
@@ -966,16 +901,6 @@ class TreeWidget(QTreeWidget):
 
         return QTreeWidget.event(self, event)
 
-def clearLayout(layout):
-     if layout is not None:
-         while layout.count():
-             item = layout.takeAt(0)
-             widget = item.widget()
-             if widget is not None:
-                 widget.setParent(None)
-             else:
-                 clearLayout(item.layout())
-
 class TemplateSelectorDialog(QDialog):
     def __init__(self, **kwargs):
         super(TemplateSelectorDialog, self).__init__(**kwargs)
@@ -1469,7 +1394,7 @@ class MyProgressBar(QWidget):
         q = self.queue[-1]
         q["value"] = value
 
-        updateValue = int(clamp(1, q["max"], q["max"] * q["updatePercent"]))
+        updateValue = int(clamp(q["max"] * q["updatePercent"], 1, q["max"]))
 
         if not q["updatePercent"] or value % updateValue == 0:
             if text:
@@ -1710,6 +1635,13 @@ class RigBuilderWindow(QFrame):
         def uiCallback(mod):
             self.progressBarWidget.stepProgress(self.progressCounter, mod.getPath())
             self.progressCounter += 1
+
+        def getChildrenCount(item):
+            count = 0
+            for i in range(item.childCount()):
+                count += 1
+                count += getChildrenCount(item.child(i))
+            return count
 
         selectedItems = self.treeWidget.selectedItems()
 

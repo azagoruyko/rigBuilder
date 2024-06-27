@@ -6,6 +6,7 @@ import sys
 import os
 import json
 import math
+from .utils import *
 
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 
@@ -16,27 +17,6 @@ else:
 
 if DCC == "maya":
     import maya.cmds as cmds
-
-def Callback(f, *args, **kwargs):
-   return lambda: f(*args, **kwargs)
-
-def clearLayout(layout):
-     if layout is not None:
-         while layout.count():
-             item = layout.takeAt(0)
-             widget = item.widget()
-             if widget is not None:
-                 widget.setParent(None)
-             else:
-                 clearLayout(item.layout())
-
-def clamp(val, low, high):
-    if low is not None and val < low:
-        return low
-    elif high is not None and val > high:
-        return high
-    else:
-        return val
 
 def smartConversion(x):
     try:
@@ -152,18 +132,18 @@ class ButtonTemplateWidget(TemplateWidget):
     def buttonContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        menu.addAction("Edit label", self.editLabelActionClicked)
-        menu.addAction("Edit command", self.editActionClicked)
+        menu.addAction("Edit label", self.editLabel)
+        menu.addAction("Edit command", self.editCommand)
 
         menu.popup(event.globalPos())
 
-    def editLabelActionClicked(self):
+    def editLabel(self):
         newName, ok = QInputDialog.getText(self, "Rename", "New label", QLineEdit.Normal, self.buttonWidget.text())
         if ok:
             self.buttonWidget.setText(newName)
             self.somethingChanged.emit()
 
-    def editActionClicked(self):
+    def editCommand(self):
         editText = EditTextDialog(self.buttonCommand, parent=QApplication.activeWindow())
         editText.exec_()
         self.buttonCommand = editText.outputText

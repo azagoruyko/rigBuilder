@@ -3,14 +3,7 @@ from PySide2.QtCore import *
 from PySide2.QtWidgets import *
 
 import re
-
-def clamp(mn, mx, val):
-    if val < mn:
-        return mn
-    elif val > mx:
-        return mx
-    else:
-        return val
+from .utils import clamp
 
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):
@@ -288,7 +281,7 @@ class SwoopSearchDialog(QDialog):
         c = self.edit.mapToGlobal(self.edit.cursorRect().topLeft())
         w = self.resultsWidget.document().idealWidth() + 30
         h = self.resultsWidget.document().blockCount()*self.resultsWidget.cursorRect().height() + 110
-        self.setGeometry(c.x(), c.y() + fontSize(self.edit.font())+5, clamp(0, 500, w), clamp(0, 400, h))
+        self.setGeometry(c.x(), c.y() + fontSize(self.edit.font())+5, clamp(w, 0, 500), clamp(h, 0, 400))
 
     def resultsLineChanged(self):
         if self.replaceMode:
@@ -352,17 +345,17 @@ class SwoopSearchDialog(QDialog):
         lineCount = rw.document().blockCount()-1
 
         if event.key() in [Qt.Key_Down, Qt.Key_Up, Qt.Key_PageDown, Qt.Key_PageUp]:
-            highlightLine(rw, clamp(0, lineCount, line), clear=True)
+            highlightLine(rw, clamp(line, 0, lineCount), clear=True)
             if event.key() == Qt.Key_Down:
-                highlightLine(rw, clamp(0, lineCount, line+1))
+                highlightLine(rw, clamp(line+1, 0, lineCount))
             elif event.key() == Qt.Key_Up:
-                highlightLine(rw, clamp(0, lineCount, line-1))
+                highlightLine(rw, clamp(line-1, 0, lineCount))
 
             elif event.key() == Qt.Key_PageDown:
-                highlightLine(rw, clamp(0, lineCount, line+5))
+                highlightLine(rw, clamp(line+5, 0, lineCount))
 
             elif event.key() == Qt.Key_PageUp:
-                highlightLine(rw, clamp(0, lineCount, line-5))
+                highlightLine(rw, clamp(line-5, 0, lineCount))
 
             self.resultsLineChanged()
 
@@ -705,7 +698,7 @@ class CodeEditorWidget(QTextEdit):
         if ctrl:
             d = event.delta() / abs(event.delta())
             font = self.font()
-            sz = clamp(8, 40, fontSize(font) + d)
+            sz = clamp(fontSize(font) + d, 8, 40)
             setFontSize(font, sz)
             self.setFont(font)
             self.parent().numberBarWidget.updateState()
@@ -1204,7 +1197,7 @@ class CompletionWidget(QTextEdit):
             keyMove = {Qt.Key_Down: 1, Qt.Key_Up: -1, Qt.Key_PageDown: 10, Qt.Key_PageUp: -10}
             offset = keyMove.get(event.key(), 0)
             if offset != 0:
-                self.gotoLine(clamp(0, lineCount, self._prevLine+offset))
+                self.gotoLine(clamp(self._prevLine+offset, 0, lineCount))
 
     def updateItems(self, items):
         if not items:
@@ -1231,7 +1224,7 @@ class CompletionWidget(QTextEdit):
         maxWidth = self.parent().width() - self.parent().cursorRect().left() - 30
         maxHeight = self.parent().height() - self.parent().cursorRect().top() - 30
 
-        self.setFixedSize(clamp(0,maxWidth,w), clamp(0, maxHeight, h))
+        self.setFixedSize(clamp(w, 0,maxWidth), clamp(h, 0, maxHeight))
 
     def showEvent(self, event):
         self.autoResize()
