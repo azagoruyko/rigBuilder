@@ -30,11 +30,8 @@ def widgetOnChange(widget, module, attr):
     if attr.connect:
         srcAttr = module.findConnectionSourceForAttribute(attr)
         srcAttr.data = data
-
     else:
         attr.data = data
-
-    #print attr.name, "=", attr.data
 
 class TabAttributesWidget(QWidget):
     needUpdateUI = Signal()
@@ -64,7 +61,15 @@ class TabAttributesWidget(QWidget):
 
         for a in attributes:
             templateWidget = widgets.TemplateWidgets[a.template](env=globEnv)
-            templateWidget.setJsonData(a.data)
+            with captureOutput(self.mainWindow.logWidget):
+                try:
+                    templateWidget.setJsonData(a.data)
+                except:
+                    print("Error: invalid json data for attribute '%s'"%a.name)
+                    a.data = templateWidget.getDefaultData()
+                    self.mainWindow.showLog()
+                    self.mainWindow.logWidget.ensureCursorVisible()
+
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
             templateWidget.needUpdateUI.connect(self.needUpdateUI.emit)
 
