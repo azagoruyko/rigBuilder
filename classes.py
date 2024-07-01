@@ -432,16 +432,14 @@ class Module(object):
         def _listConnections(currentModule):
             connections = []
             for ch in currentModule._children:
-                if ch is self:
-                    continue
+                if ch is not self:
+                    for attr in ch._attributes:
+                        if attr.connect:
+                            _, a = currentModule.findModuleAndAttributeByPath(attr.connect)
+                            if a is srcAttr:
+                                connections.append((ch, attr))
 
-                for attr in ch._attributes:
-                    if attr.connect:
-                        _, a = currentModule.findModuleAndAttributeByPath(attr.connect)
-                        if a is srcAttr:
-                            connections.append((ch, attr))
-
-                connections += _listConnections(ch)
+                connections.extend(_listConnections(ch))
             return connections
 
         return _listConnections(self.getRoot())
