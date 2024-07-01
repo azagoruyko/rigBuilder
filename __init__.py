@@ -174,6 +174,7 @@ class TabAttributesWidget(QWidget):
         tmp = widgets.TemplateWidgets[attr.template]()
         attr.data = tmp.getDefaultData()
         attr.connect = ""
+        widget.setJsonData(attr.data)
         self.setWidgetStyle(widget, attr)
 
     def disconnectAttr(self, attr, widget):
