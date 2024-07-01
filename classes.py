@@ -105,6 +105,24 @@ class Attribute(object):
                self.data == other.data and\
                self.category == other.category and\
                self.template == other.template # don't compare connections
+    
+    def hasDefault(self):
+        return "default" in self.data
+    
+    def getDefaultValue(self):
+        if self.hasDefault():
+            return self.data[self.data["default"]]
+    
+    def setDefaultValue(self, v):
+        if self.hasDefault():
+            self.data[self.data["default"]] = v
+
+    def updateFromAttribute(self, otherAttr):
+        # copy default value if any
+        if self.hasDefault() and otherAttr.hasDefault():
+            self.setDefaultValue(copyJson(otherAttr.getDefaultValue()))
+        else:
+            self.data = copyJson(otherAttr.data)        
 
     def toXml(self, keepConnections=True):
         attrs = [("name", self.name),
@@ -457,29 +475,27 @@ class Module(object):
         found = currentParent.findAttribute(attr)
         return (currentParent, found) if found else (currentParent, None)
 
-    def resolveConnections(self):
-        for attr in self._attributes:
-            if not attr.connect:
-                continue
+    def resolveConnection(self, attr):
+        if not attr.connect:
+            return
+        
+        srcAttr = self.findConnectionSourceForAttribute(attr)
+        if srcAttr is not attr:
+            if attr.template != srcAttr.template:
+                raise AttributeResolverError("{}: '{}' has incompatible connection template".format(self.name, attr.name))
 
-            srcAttr = self.findConnectionSourceForAttribute(attr)
-            if srcAttr is not attr:
-                if attr.template != srcAttr.template:
-                    raise AttributeResolverError(self.name + ": '%s' has incompatible connection data"%attr.name)
+            try:
+                attr.updateFromAttribute(srcAttr)
 
-                try:
-                    attr.data = copyJson(srcAttr.data)
-                except TypeError:
-                    raise AttributeResolverError(self.name + ": '%s' data is not JSON serializable"%attr.name)
-
-            else:
-                raise AttributeResolverError(self.name + ": cannot resolve connection for '%s' which is '%s'"%(attr.name, attr.connect))
+            except TypeError:
+                raise AttributeResolverError("{}: '{}' data is not JSON serializable".format(self.name, attr.name))
+            
+        else:
+            raise AttributeResolverError("{}: cannot resolve connection for '{}' which is '{}'".format(self.name, attr.name, attr.connect))
 
     def run(self, env, *, uiCallback=None):
         if self.muted:
             return
-
-        self.resolveConnections()
 
         localEnv = {
             "module": ModuleWrapper(self)
@@ -493,6 +509,8 @@ class Module(object):
 
         attrPrefix = "attr_"
         for attr in self._attributes:
+            self.resolveConnection(attr)
+
             attrWrapper = AttributeWrapper(self, attr)
             localEnv[attrPrefix+attr.name] = attrWrapper.get()
             localEnv[attrPrefix+"set_"+attr.name] = attrWrapper.set

@@ -26,12 +26,12 @@ if DCC == "maya":
 
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
+    attr.data = data
 
     if attr.connect:
         srcAttr = module.findConnectionSourceForAttribute(attr)
-        srcAttr.data = data
-    else:
-        attr.data = data
+        if srcAttr:
+            srcAttr.updateFromAttribute(attr)
 
 class TabAttributesWidget(QWidget):
     needUpdateUI = Signal()
@@ -50,7 +50,8 @@ class TabAttributesWidget(QWidget):
         if self.module:
             with captureOutput(self.mainWindow.logWidget):
                 try:
-                    self.module.resolveConnections()
+                    for attr in self.module.getAttributes():
+                        self.module.resolveConnection(attr)
                 except AttributeResolverError as err:
                     print("Error: " + str(err))
                     self.mainWindow.showLog()
@@ -72,11 +73,11 @@ class TabAttributesWidget(QWidget):
 
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
             templateWidget.needUpdateUI.connect(self.needUpdateUI.emit)
+            self.setWidgetStyle(templateWidget, a)
 
             nameWidget = QLabel(a.name)
             nameWidget.setAlignment(Qt.AlignRight)
             nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
-            self.setWidgetStyle(templateWidget, a)
 
             nameWidget.contextMenuEvent = lambda event, a=a, w=templateWidget: self.nameContextMenuEvent(event, a, w)
             nameWidget.attribute = a
@@ -181,9 +182,8 @@ class TabAttributesWidget(QWidget):
 
     def connectAttr(self, connect, destAttr, widget):
         destAttr.connect = connect
-        srcAttr = self.module.findConnectionSourceForAttribute(destAttr)
-        if srcAttr:
-            widget.setJsonData(srcAttr.data)
+        self.module.resolveConnection(destAttr)
+        widget.setJsonData(destAttr.data)
         self.setWidgetStyle(widget, destAttr)
 
 class SearchReplaceDialog(QDialog):
@@ -269,9 +269,9 @@ class AttributesTabWidget(QTabWidget):
             attributes = self.tabsAttributes[self.tabText(self.currentIndex())]
 
         for attr in attributes:
-            valueKey = attr.data.get("default")
-            if valueKey:
-                attr.data[valueKey] = replaceStringInData(attr.data[valueKey], old, new)
+            if attr.hasDefault():
+                v = replaceStringInData(attr.getDefaultValue(), old, new)
+                attr.setDefaultValue(v)
 
         self.updateTabs()
 
