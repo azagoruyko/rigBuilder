@@ -4,6 +4,7 @@ import re
 import os
 import subprocess
 import sys
+from xml.sax.saxutils import escape
 
 from PySide2.QtGui import *
 from PySide2.QtCore import *
@@ -52,13 +53,13 @@ class TabAttributesWidget(QWidget):
                 try:
                     for attr in self.module.getAttributes():
                         self.module.resolveConnection(attr)
-                except AttributeResolverError as err:
+                except Exception as err:
                     print("Error: " + str(err))
                     self.mainWindow.showLog()
                     self.mainWindow.logWidget.ensureCursorVisible()
 
         globEnv = self.mainWindow.getModuleGlobalEnv()
-        globEnv["module"] = ModuleWrapper(self.module)
+        globEnv.update({"module": ModuleWrapper(self.module), "ch": self.module.ch, "chset": self.module.chset})
 
         for a in attributes:
             templateWidget = widgets.TemplateWidgets[a.template](env=globEnv)
@@ -69,7 +70,7 @@ class TabAttributesWidget(QWidget):
                     print("Error: invalid json data for attribute '%s'"%a.name)
                     a.data = templateWidget.getDefaultData()
                     self.mainWindow.showLog()
-                    self.mainWindow.logWidget.ensureCursorVisible()
+                    self.mainWindow.logWidget.ensureCursorVisible()                    
 
             templateWidget.somethingChanged.connect(lambda w=templateWidget, e=module, a=a: widgetOnChange(w, e, a))
             templateWidget.needUpdateUI.connect(self.needUpdateUI.emit)
@@ -87,14 +88,6 @@ class TabAttributesWidget(QWidget):
 
         layout.addWidget(QLabel())
         layout.setRowStretch(layout.rowCount(), 1)
-
-    def setWidgetStyle(self, widget, attr):
-        if attr.connect:
-            widget.setToolTip("Connect: "+attr.connect)
-            widget.setStyleSheet("background-color: #6e6e39")
-        else:
-            widget.setToolTip("")
-            widget.setStyleSheet("")
 
     def connectionMenu(self, menu, module, attr, widget, path="/"):
         subMenu = QMenu(module.name)
@@ -126,13 +119,25 @@ class TabAttributesWidget(QWidget):
 
             menu.addMenu(makeConnectionMenu)
 
-        menu.addAction("Break connection", Callback(self.disconnectAttr, attr, widget))
+        if attr.connect:
+            menu.addAction("Break connection", Callback(self.disconnectAttr, attr, widget))
+
         menu.addAction("Set data", Callback(self.setData, attr, widget))
         menu.addAction("Reset", Callback(self.resetAttr, attr, widget))
         menu.addSeparator()
         menu.addAction("Expose", Callback(self.exposeAttr, attr, widget))
 
         menu.popup(event.globalPos())
+
+    def setWidgetStyle(self, widget, attr):
+        tooltip = ""
+        background = ""
+        if attr.connect:
+            tooltip = "Connect: "+attr.connect
+            background = "#6e6e39"
+
+        widget.setToolTip(tooltip)
+        widget.setStyleSheet("background-color:"+background)
 
     def exposeAttr(self, attr, widget):
         if not self.module.parent:
@@ -152,7 +157,7 @@ class TabAttributesWidget(QWidget):
 
     def setData(self, attr, widget):
         text = json.dumps(attr.data, indent=4).replace("'", "\"")
-        editText = widgets.EditTextDialog(text, "Set '%s' data"%attr.name, parent=mainWindow)
+        editText = widgets.EditTextDialog(text, title="Set data", parent=mainWindow)
         editText.exec_()
         if editText.result():
             with captureOutput(self.mainWindow.logWidget):
@@ -1558,7 +1563,7 @@ class RigBuilderWindow(QFrame):
         for m in self.infoWidget.recentModules:
             prefix = "local" if m.isLoadedFromLocal() else "server"
             relPath = Module.calculateRelativePath(m.loadedFrom).replace(".xml","").replace("\\", "/")
-            template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
+            template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
 
         # recent updates
         template.append("<center><h2 style='background-color: #666666'>Recent updates</h2></center>")
@@ -1574,7 +1579,7 @@ class RigBuilderWindow(QFrame):
                     template.append("<h3 style='background-color: #393939'>%s</h3>"%escape(k))
                     for file in v:
                         relPath = Module.calculateRelativePath(file).replace(".xml", "").replace("\\", "/")
-                        template.append("<p style='color: #888888'><a href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
+                        template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
 
         files, count = categorizeFilesByModTime(Module.LocalUids.values())
         if count > 0:

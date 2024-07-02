@@ -5,7 +5,6 @@ import glob
 import json
 import uuid
 import xml.etree.ElementTree as ET
-from xml.sax.saxutils import escape, unescape
 
 if sys.version_info.major > 2:
     RigBuilderPath = os.path.dirname(__file__)
@@ -124,13 +123,13 @@ class Attribute(object):
         else:
             self.data = copyJson(otherAttr.data)        
 
-    def toXml(self, keepConnections=True):
+    def toXml(self, *, keepConnection=True):
         attrs = [("name", self.name),
                  ("template", self.template),
                  ("category", self.category),
-                 ("connect", self.connect if keepConnections else "")]
+                 ("connect", self.connect if keepConnection else "")]
 
-        attrsStr = " ".join(["%s=\"%s\""%(k,v) for k, v in attrs])
+        attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
 
         header = "<attr {attribs}><![CDATA[{data}]]></attr>"
         return header.format(attribs=attrsStr, data=json.dumps(self.data))
@@ -142,7 +141,7 @@ class Attribute(object):
         attr.template = root.attrib["template"]
         attr.category = root.attrib["category"]
         attr.connect = root.attrib["connect"]
-        attr.data = json.loads(root.text.replace("__default__", "default")) # backward compatibility
+        attr.data = json.loads(root.text)
         return attr
 
 class Module(object):
@@ -242,11 +241,11 @@ class Module(object):
                                  "</run>"]))
 
         template.append("<attributes>")
-        template += [a.toXml(keepConnections=keepConnections) for a in self._attributes]
+        template += [a.toXml(keepConnection=keepConnections) for a in self._attributes]
         template.append("</attributes>")
 
         template.append("<children>")
-        template += [ch.toXml(keepConnections=True) for ch in self._children] # keep inner connections only
+        template += [ch.toXml(keepConnections=True) for ch in self._children] # keep inner connections
         template.append("</children>")
 
         template.append("</module>")
@@ -456,14 +455,20 @@ class Module(object):
         '''
         Returns (module, attribute) by path, where path is /a/b/c, where c is attr, a/b is a parent relative path
         '''
-        def parsePath(path):
-            items = path.split("/")[1:] # /a/b/c => ["", a, b, c], skip ""
-            return ([], items[0]) if len(items) == 1 else (items[:-1], items[-1])
-
-        moduleList, attr = parsePath(path)
+        *moduleList, attr = path.split("/")
 
         currentParent = self
         for module in moduleList:
+            if not module:
+                continue
+
+            if module == "..":
+                currentParent = currentParent.parent
+                continue
+
+            elif module == ".":
+                continue
+
             found = currentParent.findChild(module)
             if found:
                 currentParent = found
@@ -490,13 +495,37 @@ class Module(object):
             
         else:
             raise AttributeResolverError("{}: cannot resolve connection for '{}' which is '{}'".format(self.name, attr.name, attr.connect))
+        
+    def ch(self, path, key=None):
+        mod, attr = self.findModuleAndAttributeByPath(path)
+        if attr:
+            attr = mod.findConnectionSourceForAttribute(attr)
+            if not key:
+                return copyJson(attr.getDefaultValue())
+            else:
+                return AttributeWrapper(self, attr).data().get(key)
+        else:
+            raise AttributeResolverError("Attribute '{}' not found".format(path))
+        
+    def chset(self, path, value, key=None):
+        mod, attr = self.findModuleAndAttributeByPath(path)
+        if attr:
+            attr = mod.findConnectionSourceForAttribute(attr)
+            if not key:
+                attr.setDefaultValue(value)
+            else:
+                AttributeWrapper(self, attr).data()[key] = value
+        else:
+            raise AttributeResolverError("Attribute '{}' not found".format(path))        
 
     def run(self, env, *, uiCallback=None):
         if self.muted:
             return
-
+        
         localEnv = {
-            "module": ModuleWrapper(self)
+            "module": ModuleWrapper(self),
+            "ch": self.ch,
+            "chset": self.chset
         }
 
         for k in env:
@@ -673,6 +702,12 @@ class ModuleWrapper(object):
 
     def path(self):
         return self._module.getPath()
+    
+    def ch(self, path, key=None):
+        return self._module.ch(path, key)
+    
+    def chset(self, path, value, key=None):
+        self._module.chset(path, value, key)
 
     def run(self):
         muted = self._module.muted        
@@ -693,9 +728,11 @@ def getModuleDefaultEnv():
 
     def exitModule():
         raise ExitModuleException()
-
+    
     env = {"module":None, # setup in Module.run
            "Module": ModuleWrapper,
+           "ch": None, # setup in Module.run
+           "chset": None, # setup in Module.run
            "copyJson": copyJson,
            "exit": exitModule,
            "error": printError,

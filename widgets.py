@@ -48,7 +48,7 @@ class TemplateWidget(QWidget):
         raise Exception("setJsonData must be implemented")
 
 class EditTextDialog(QDialog):
-    def __init__(self, text="", title="Edit text", **kwargs):
+    def __init__(self, text="", *, title="Edit", placeholder="", **kwargs):
         super(EditTextDialog, self).__init__(**kwargs)
 
         self.outputText = text
@@ -63,6 +63,7 @@ class EditTextDialog(QDialog):
         self.textWidget.setTabStopWidth(16)
         self.textWidget.setAcceptRichText(False)
         self.textWidget.setWordWrapMode(QTextOption.NoWrap)
+        self.textWidget.setPlaceholderText(placeholder)
 
         okBtn = QPushButton("OK")
         okBtn.clicked.connect(self.okBtnClicked)
@@ -97,7 +98,7 @@ class LabelTemplateWidget(TemplateWidget):
         self.label.setText(self.actualText.replace("$ROOT", RootPath))
 
     def labelDoubleClickEvent(self, event):
-        editTextDialog = EditTextDialog(self.actualText, parent=QApplication.activeWindow())
+        editTextDialog = EditTextDialog(self.actualText, title="Edit text", placeholder="You can use HTML here...", parent=QApplication.activeWindow())
         editTextDialog.exec_()
 
         if editTextDialog.result():
@@ -144,7 +145,7 @@ class ButtonTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def editCommand(self):
-        editText = EditTextDialog(self.buttonCommand, parent=QApplication.activeWindow())
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", parent=QApplication.activeWindow())
         editText.exec_()
         self.buttonCommand = editText.outputText
         self.somethingChanged.emit()
@@ -157,7 +158,8 @@ class ButtonTemplateWidget(TemplateWidget):
                 exec(self.buttonCommand, localEnv)
                 self.needUpdateUI.emit() # update UI
 
-            f()
+            else:
+                f()
 
     def getDefaultData(self):
         return {"command": "module.attr.someAttr.set(1)",
@@ -420,8 +422,8 @@ value = path or value'''
     def buttonContextMenuEvent(self, event):
         menu = QMenu(self)
 
-        menu.addAction("Edit label", self.editLabelActionClicked)
-        menu.addAction("Edit command", self.editActionClicked)
+        menu.addAction("Edit label", self.editLabel)
+        menu.addAction("Edit command", self.editCommand)
 
         if self.templates:
             def setText(cmd):
@@ -435,14 +437,14 @@ value = path or value'''
 
         menu.popup(event.globalPos())
 
-    def editLabelActionClicked(self):
+    def editLabel(self):
         newName, ok = QInputDialog.getText(self, "Rename", "New label", QLineEdit.Normal, self.buttonWidget.text())
         if ok:
             self.buttonWidget.setText(newName)
             self.somethingChanged.emit()
 
-    def editActionClicked(self):
-        editText = EditTextDialog(self.buttonCommand, parent=QApplication.activeWindow())
+    def editCommand(self):
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", parent=QApplication.activeWindow())
         editText.exec_()
         self.buttonCommand = editText.outputText
         self.somethingChanged.emit()
