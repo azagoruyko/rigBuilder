@@ -1704,6 +1704,7 @@ def RigBuilderTool(spec, child=None): # spec can be full path, relative path, ui
             return
 
     w = RigBuilderWindow()
+    w.menuBar.hide()
     w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
     w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
     w.setWindowTitle("Rig Builder Tool - {}".format(module.getPath()))
