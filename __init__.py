@@ -25,6 +25,9 @@ if DCC == "maya":
     from shiboken2 import wrapInstance
     ParentWindow = wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
 
+def sendToServer(module):
+    module.sendToServer()
+
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
     attr.data = data
@@ -699,7 +702,8 @@ class TreeWidget(QTreeWidget):
 
         for item in selectedItems:
             if item.module.isLoadedFromLocal():
-                item.module.sendToServer()
+                sendToServer(item.module)
+
             else:
                 QMessageBox.warning(self, "Rig Builder", "Can't send '%s' to server.\nIt works for local modules only!"%item.module.name)
 
@@ -1562,7 +1566,7 @@ class RigBuilderWindow(QFrame):
 
         for m in self.infoWidget.recentModules:
             prefix = "local" if m.isLoadedFromLocal() else "server"
-            relPath = Module.calculateRelativePath(m.loadedFrom).replace(".xml","").replace("\\", "/")
+            relPath = m.getRelativePath().replace(".xml","").replace("\\", "/")
             template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
 
         # recent updates
@@ -1577,8 +1581,9 @@ class RigBuilderWindow(QFrame):
 
                 if v:
                     template.append("<h3 style='background-color: #393939'>%s</h3>"%escape(k))
+                    root = RigBuilderLocalPath+"/modules" if local else RigBuilderPath+"/modules"
                     for file in v:
-                        relPath = Module.calculateRelativePath(file).replace(".xml", "").replace("\\", "/")
+                        relPath = calculateRelativePath(file, root).replace(".xml", "").replace("\\", "/")
                         template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
 
         files, count = categorizeFilesByModTime(Module.LocalUids.values())

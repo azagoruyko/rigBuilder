@@ -54,6 +54,11 @@ def copyJson(data):
     else:
         raise TypeError("Data of %s type is not JSON compatible: %s"%(type(data), str(data)))
 
+def calculateRelativePath(path, root):
+    path = os.path.normpath(path)
+    path = path.replace(os.path.normpath(root)+"\\", "")
+    return path
+
 def categorizeFilesByModTime(files):
     from datetime import datetime, timedelta
     now = datetime.now()
@@ -104,14 +109,14 @@ class Attribute(object):
                self.data == other.data and\
                self.category == other.category and\
                self.template == other.template # don't compare connections
-    
+
     def hasDefault(self):
         return "default" in self.data
-    
+
     def getDefaultValue(self):
         if self.hasDefault():
             return self.data[self.data["default"]]
-    
+
     def setDefaultValue(self, v):
         if self.hasDefault():
             self.data[self.data["default"]] = v
@@ -121,7 +126,7 @@ class Attribute(object):
         if self.hasDefault() and otherAttr.hasDefault():
             self.setDefaultValue(copyJson(otherAttr.getDefaultValue()))
         else:
-            self.data = copyJson(otherAttr.data)        
+            self.data = copyJson(otherAttr.data)
 
     def toXml(self, *, keepConnection=True):
         attrs = [("name", self.name),
@@ -281,14 +286,14 @@ class Module(object):
         path = Module.LocalUids.get(self.uid) or Module.ServerUids.get(self.uid)
         if path and os.path.exists(path):
             return path
-
-    @staticmethod
-    def calculateRelativePath(path, *, relativeTo="modules"):
-        norm = os.path.normpath
-        path = norm(path)
-        path = path.replace(norm(RigBuilderLocalPath+"\\"+relativeTo)+"\\", "")
-        path = path.replace(norm(RigBuilderPath+"\\"+relativeTo)+"\\", "")
-        return path
+        
+    def getRelativePath(self):
+        if self.isLoadedFromServer():
+            return calculateRelativePath(self.loadedFrom, RigBuilderPath+"/modules")
+        elif self.isLoadedFromLocal():
+            return calculateRelativePath(self.loadedFrom, RigBuilderLocalPath+"/modules")
+        else:
+            return self.loadedFrom
 
     def getRelativeLoadedPathString(self): # relative loaded path or ../folder/child/module.xml
         if not self.loadedFrom:
@@ -296,7 +301,7 @@ class Module(object):
 
         path = ""
         if self.isLoadedFromServer() or self.isLoadedFromLocal():
-            path = Module.calculateRelativePath(self.loadedFrom)
+            path = self.getRelativePath()
         else:
             normLoadedPath = self.loadedFrom.replace("\\", "/")
             items = normLoadedPath.split("/")
@@ -352,7 +357,7 @@ class Module(object):
 
     def sendToServer(self): # save the module on server, remove locally
         if self.isLoadedFromLocal():
-            savePath = os.path.normpath(RigBuilderPath+"/modules/"+self.getRelativeLoadedPathString()+".xml")
+            savePath = os.path.normpath(RigBuilderPath+"/modules/"+self.getRelativePath())
             if not os.path.exists(os.path.dirname(savePath)):
                 os.makedirs(os.path.dirname(savePath))
 
@@ -366,7 +371,7 @@ class Module(object):
     def saveToFile(self, fileName):
         if not self.uid:
             self.uid = generateUid()
-
+        
         with open(os.path.realpath(fileName), "w") as f: # resolve links
             f.write(self.toXml(keepConnections=False)) # don't keep outer connections
 
@@ -481,7 +486,7 @@ class Module(object):
     def resolveConnection(self, attr):
         if not attr.connect:
             return
-        
+
         srcAttr = self.findConnectionSourceForAttribute(attr)
         if srcAttr is not attr:
             if attr.template != srcAttr.template:
@@ -492,10 +497,10 @@ class Module(object):
 
             except TypeError:
                 raise AttributeResolverError("{}: '{}' data is not JSON serializable".format(self.name, attr.name))
-            
+
         else:
             raise AttributeResolverError("{}: cannot resolve connection for '{}' which is '{}'".format(self.name, attr.name, attr.connect))
-        
+
     def ch(self, path, key=None):
         mod, attr = self.findModuleAndAttributeByPath(path)
         if attr:
@@ -506,7 +511,7 @@ class Module(object):
                 return AttributeWrapper(self, attr).data().get(key)
         else:
             raise AttributeResolverError("Attribute '{}' not found".format(path))
-        
+
     def chset(self, path, value, key=None):
         mod, attr = self.findModuleAndAttributeByPath(path)
         if attr:
@@ -516,12 +521,12 @@ class Module(object):
             else:
                 AttributeWrapper(self, attr).data()[key] = value
         else:
-            raise AttributeResolverError("Attribute '{}' not found".format(path))        
+            raise AttributeResolverError("Attribute '{}' not found".format(path))
 
     def run(self, env, *, uiCallback=None):
         if self.muted:
             return
-        
+
         localEnv = {
             "module": ModuleWrapper(self),
             "ch": self.ch,
@@ -693,7 +698,7 @@ class ModuleWrapper(object):
 
     def muted(self):
         return self._module.muted
-    
+
     def mute(self):
         self._module.muted = True
 
@@ -702,21 +707,21 @@ class ModuleWrapper(object):
 
     def path(self):
         return self._module.getPath()
-    
+
     def ch(self, path, key=None):
         return self._module.ch(path, key)
-    
+
     def chset(self, path, value, key=None):
         self._module.chset(path, value, key)
 
     def run(self):
-        muted = self._module.muted        
+        muted = self._module.muted
         self._module.muted = False
         try:
             self._module.run(ModuleWrapper.env)
         except:
             raise
-        finally:            
+        finally:
             self._module.muted = muted
 
 def getModuleDefaultEnv():
@@ -728,7 +733,7 @@ def getModuleDefaultEnv():
 
     def exitModule():
         raise ExitModuleException()
-    
+
     env = {"module":None, # setup in Module.run
            "Module": ModuleWrapper,
            "ch": None, # setup in Module.run
