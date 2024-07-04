@@ -283,10 +283,11 @@ class Module(object):
         return True if self.getReferenceFile() else False
 
     def getReferenceFile(self):
-        path = Module.LocalUids.get(self.uid) or Module.ServerUids.get(self.uid)
-        if path and os.path.exists(path):
-            return path
-        
+        local = Module.LocalUids.get(self.uid)
+        server = Module.ServerUids.get(self.uid)
+        path = {"all": local or server, "server": server, "local": local, "":self.loadedFrom}.get(Module.UpdateSource)
+        return path
+
     def getRelativePath(self):
         if self.isLoadedFromServer():
             return calculateRelativePath(self.loadedFrom, RigBuilderPath+"/modules")
@@ -322,7 +323,7 @@ class Module(object):
             return self.loadedFrom
 
     def update(self):
-        origPath = self.getReferenceFile() or self.loadedFrom
+        origPath = self.getReferenceFile()
         if origPath:
             origModule = Module.loadFromFile(origPath)
 
@@ -564,12 +565,9 @@ class Module(object):
         return localEnv
 
     @staticmethod
-    def updateUidsCache(updateSource=None):
-        if updateSource is not None:
-            Module.UpdateSource = updateSource
-
-        Module.ServerUids = Module.findUids(RigBuilderPath + "/modules") if Module.UpdateSource in ["all", "server"] else {}
-        Module.LocalUids = Module.findUids(RigBuilderLocalPath + "/modules") if Module.UpdateSource in ["all", "local"] else {}
+    def updateUidsCache():
+        Module.ServerUids = Module.findUids(RigBuilderPath + "/modules")
+        Module.LocalUids = Module.findUids(RigBuilderLocalPath + "/modules")
 
     @staticmethod
     def findUids(path):

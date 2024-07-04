@@ -353,14 +353,14 @@ class ModuleListDialog(QDialog):
         self.updateSourceWidget = QComboBox()
         self.updateSourceWidget.addItems(["All", "Server", "Local", "None"])
         self.updateSourceWidget.setCurrentIndex({"all":0, "server": 1, "local": 2, "": 3}[Module.UpdateSource])
-        self.updateSourceWidget.currentIndexChanged.connect(lambda _=None: self.updateModules())
+        self.updateSourceWidget.currentIndexChanged.connect(lambda _=None: self.updateSource())
 
         self.modulesFromWidget = QComboBox()
         self.modulesFromWidget.addItems(["Server", "Local"])
-        self.modulesFromWidget.currentIndexChanged.connect(lambda _=None: self.updateModules())
+        self.modulesFromWidget.currentIndexChanged.connect(lambda _=None: self.maskChanged())
 
         self.maskWidget = QLineEdit()
-        self.maskWidget.textChanged.connect(self.updateModules)
+        self.maskWidget.textChanged.connect(self.maskChanged)
 
         gridLayout.addWidget(QLabel("Update source"))
         gridLayout.addWidget(self.updateSourceWidget)
@@ -390,7 +390,7 @@ class ModuleListDialog(QDialog):
         self.setGeometry(pos.x(), pos.y(), 600, 400)
 
         self.selectedFileName = ""
-        self.updateModules()
+        Module.updateUidsCache()
         self.maskWidget.setFocus()
 
     def treeContextMenuEvent(self, event):
@@ -408,16 +408,17 @@ class ModuleListDialog(QDialog):
             self.selectedFileName = item.filePath
             self.done(0)
 
-    def updateModules(self):
+    def updateSource(self):
+        updateSource = self.updateSourceWidget.currentIndex()
+        UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
+        Module.UpdateSource = UpdateSourceFromInt[updateSource]
+
+    def maskChanged(self):
         def findChildByText(text, parent, column=0):
             for i in range(parent.childCount()):
                 ch = parent.child(i)
                 if text == ch.text(column):
                     return ch
-
-        updateSource = self.updateSourceWidget.currentIndex()
-        UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
-        Module.updateUidsCache(UpdateSourceFromInt[updateSource])
 
         modulesFrom = self.modulesFromWidget.currentIndex()
         modulesDirectory = RigBuilderPath+"\\modules" if modulesFrom == 0 else RigBuilderLocalPath+"\\modules"
@@ -880,8 +881,6 @@ class TreeWidget(QTreeWidget):
                 self.invisibleRootItem().removeChild(item)
 
     def browseModuleSelector(self, *, mask=None, updateSource=None, modulesFrom=None):
-        Module.updateUidsCache()
-
         if mask:
             self.moduleListDialog.maskWidget.setText(mask)
 
