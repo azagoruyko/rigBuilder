@@ -52,7 +52,7 @@ def copyJson(data):
         return data
 
     else:
-        raise TypeError("Data of %s type is not JSON compatible: %s"%(type(data), str(data)))
+        raise TypeError("Data of {} type is not JSON compatible: {}".format(type(data), str(data)))
 
 def calculateRelativePath(path, root):
     path = os.path.normpath(path)
@@ -238,8 +238,8 @@ class Module(object):
                  ("muted", int(self.muted)),
                  ("uid", self.uid)]
 
-        attrsStr = " ".join(["%s=\"%s\""%(k,v) for k, v in attrs])
-        template = ["<module %s>"%attrsStr]
+        attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
+        template = ["<module {}>".format(attrsStr)]
 
         template.append("".join(["<run>",
                                  "<![CDATA[", self.runCode, "]]>",
@@ -367,6 +367,7 @@ class Module(object):
             os.unlink(oldPath) # remove local file
 
             Module.ServerUids[self.uid] = savePath
+            del Module.LocalUids[self.uid]
             return savePath
 
     def saveToFile(self, fileName):
@@ -549,7 +550,7 @@ class Module(object):
             localEnv[attrPrefix+"set_"+attr.name] = attrWrapper.set
             localEnv[attrPrefix+attr.name+"_data"] = attrWrapper.data()
 
-        print("%s is running..."%self.getPath())
+        print("{} is running...".format(self.getPath()))
 
         if callable(uiCallback):
             uiCallback(self)
@@ -635,7 +636,7 @@ class AttrsWrapper(object): # attributes getter/setter
         if attr:
             return AttributeWrapper(self._module, attr)
         else:
-            raise AttributeError("Attribute '%s' not found"%name)
+            raise AttributeError("Attribute '{}' not found".format(name))
 
     def __setattr__(self, name, value):
         if name == "_module":
@@ -646,7 +647,7 @@ class AttrsWrapper(object): # attributes getter/setter
             if attr:
                 AttributeWrapper(self._module, attr).set(value)
             else:
-                raise AttributeError("Attribute '%s' not found"%name)
+                raise AttributeError("Attribute '{}' not found".format(name))
 
 '''
 How to use wrappers inside scripts.
@@ -686,7 +687,7 @@ class ModuleWrapper(object):
             if m:
                 return ModuleWrapper(m)
             else:
-                raise ModuleNotFoundError("Child module '%s' not found"%nameOrIndex)
+                raise ModuleNotFoundError("Child module '{}' not found".format(nameOrIndex))
 
     def children(self):
         return [ModuleWrapper(ch) for ch in self._module.getChildren()]

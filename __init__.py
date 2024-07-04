@@ -27,6 +27,7 @@ if DCC == "maya":
 
 def sendToServer(module):
     module.sendToServer()
+    return True
 
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
@@ -70,7 +71,7 @@ class TabAttributesWidget(QWidget):
                 try:
                     templateWidget.setJsonData(a.data)
                 except:
-                    print("Error: invalid json data for attribute '%s'"%a.name)
+                    print("Error: invalid JSON data for attribute '{}'".format(a.name))
                     a.data = templateWidget.getDefaultData()
                     self.mainWindow.showLog()
                     self.mainWindow.logWidget.ensureCursorVisible()                    
@@ -170,7 +171,7 @@ class TabAttributesWidget(QWidget):
                     tmp.setJsonData(data)
 
                 except:
-                    print("Error: invalid or incompatible json data")
+                    print("Error: invalid or incompatible JSON data")
                     self.mainWindow.showLog()
                     self.mainWindow.logWidget.ensureCursorVisible()
 
@@ -621,7 +622,7 @@ class TreeWidget(QTreeWidget):
 
                     except ET.ParseError as e:
                         print(e)
-                        print("Error '%s': invalid module"%path)
+                        print("Error '{}': invalid module".format(path))
                         self.mainWindow.showLog()
                         self.mainWindow.logWidget.ensureCursorVisible()
 
@@ -703,10 +704,11 @@ class TreeWidget(QTreeWidget):
 
         for item in selectedItems:
             if item.module.isLoadedFromLocal():
-                sendToServer(item.module)
+                if sendToServer(item.module):
+                    QMessageBox.information(self, "Rig Builder", "Module '{}' has successfully been sent to server".format(item.module.name))
 
             else:
-                QMessageBox.warning(self, "Rig Builder", "Can't send '%s' to server.\nIt works for local modules only!"%item.module.name)
+                QMessageBox.warning(self, "Rig Builder", "Can't send '{}' to server.\nIt works for local modules only!".format(item.module.name))
 
     def insertModule(self):
         item = self.makeItemFromModule(Module("module"))
@@ -739,7 +741,7 @@ class TreeWidget(QTreeWidget):
             self.addTopLevelItem(item)
 
         except ET.ParseError:
-            print("Error '%s': invalid module"%path)
+            print("Error '{}': invalid module".format(path))
             self.mainWindow.showLog()
             self.mainWindow.logWidget.ensureCursorVisible()
 
@@ -754,7 +756,7 @@ class TreeWidget(QTreeWidget):
         if not selectedItems:
             return
 
-        msg = "\n".join(["%s -> %s"%(item.module.name, item.module.getSavePath() or "N/A") for item in selectedItems])
+        msg = "\n".join(["{} -> {}".format(item.module.name, item.module.getSavePath() or "N/A") for item in selectedItems])
 
         if QMessageBox.question(self, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
@@ -1039,7 +1041,7 @@ class EditTemplateWidget(QWidget):
             self.nameChanged.emit(oldName, newName)
 
     def removeBtnClicked(self):
-        if QMessageBox.question(self, "Rig Builder", "Remove '%s' attribute?"%self.nameWidget.text(), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        if QMessageBox.question(self, "Rig Builder", "Remove '{}' attribute?".format(self.nameWidget.text()), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.copyTemplate()
             self.deleteLater()
 
@@ -1125,7 +1127,7 @@ class EditAttributesWidget(QWidget):
             return
 
         row = self.attributesLayout.count() if row is None else row
-        w = EditTemplateWidget("attr%d"%(row+1), template)
+        w = EditTemplateWidget("attr{}".format(row+1), template)
         w.templateWidget.setJsonData(w.templateWidget.getDefaultData())
         w.nameChanged.connect(self.nameChanged.emit)
         self.attributesLayout.insertWidget(row, w)
@@ -1176,9 +1178,9 @@ class EditAttributesTabWidget(QTabWidget):
 
     def nameChangedCallback(self, oldName, newName):
         if oldName.strip():
-            pairs = [("@\\b%s\\b"%oldName, "@"+newName),
-                     ("@\\bset_%s\\b"%oldName, "@set_"+newName),
-                     ("@\\b%s_data\\b"%oldName, "@"+newName+"_data")]
+            pairs = [("@\\b{}\\b".format(oldName), "@"+newName),
+                     ("@\\bset_{}\\b".format(oldName), "@set_"+newName),
+                     ("@\\b{}_data\\b".format(oldName), "@"+newName+"_data")]
 
             self.tempRunCode = replacePairs(pairs, self.tempRunCode)
 
@@ -1195,7 +1197,7 @@ class EditAttributesTabWidget(QTabWidget):
             self.setTabText(idx, newName)
 
     def tabCloseRequest(self, i):
-        if QMessageBox.question(self, "Rig Builder", "Remove '%s' tab?"%self.tabText(i), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        if QMessageBox.question(self, "Rig Builder", "Remove '{}' tab?".format(self.tabText(i)), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.setCurrentIndex(i-1)
             self.clearTab(i)
 
@@ -1579,7 +1581,7 @@ class RigBuilderWindow(QFrame):
                     continue
 
                 if v:
-                    template.append("<h3 style='background-color: #393939'>%s</h3>"%escape(k))
+                    template.append("<h3 style='background-color: #393939'>{}</h3>".format(escape(k)))
                     root = RigBuilderLocalPath+"/modules" if local else RigBuilderPath+"/modules"
                     for file in v:
                         relPath = calculateRelativePath(file, root).replace(".xml", "").replace("\\", "/")
