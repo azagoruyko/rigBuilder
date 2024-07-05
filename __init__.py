@@ -406,8 +406,12 @@ class ModuleListDialog(QDialog):
         self.treeWidget.sortItems(1, Qt.AscendingOrder)
         self.treeWidget.contextMenuEvent = self.treeContextMenuEvent
 
+        self.loadingLabel = QLabel("Pulling modules from server...")
+        self.loadingLabel.hide()
+
         layout.addLayout(gridLayout)
         layout.addWidget(self.treeWidget)
+        layout.addWidget(self.loadingLabel)
 
         self.maskWidget.setFocus()
 
@@ -416,11 +420,13 @@ class ModuleListDialog(QDialog):
         self.setGeometry(pos.x(), pos.y(), 600, 400)
 
         self.selectedFileName = ""
-        Module.updateUidsCache()
+
         # update files from server
+        self.loadingLabel.show()
         updateFilesFromServer()
         def f():
             Module.updateUidsCache()
+            self.loadingLabel.hide()
             self.maskChanged()
         updateFilesThread.finished.connect(f)
 
