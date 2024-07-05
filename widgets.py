@@ -158,8 +158,7 @@ class ButtonTemplateWidget(TemplateWidget):
                 exec(self.buttonCommand, localEnv)
                 self.needUpdateUI.emit() # update UI
 
-            else:
-                f()
+            f()
 
     def getDefaultData(self):
         return {"command": "module.attr.someAttr.set(1)",
