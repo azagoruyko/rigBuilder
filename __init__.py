@@ -25,9 +25,26 @@ if DCC == "maya":
     from shiboken2 import wrapInstance
     ParentWindow = wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
 
+updateFilesThread = None
+
 def sendToServer(module):
+    '''
+    Send module to server with SVN, Git, Perforce or other VCS.
+    '''
     module.sendToServer()
     return True
+ 
+def updateFilesFromServer():
+    def update():
+        '''
+        Update files from server with SVN, Git, Perforce or other VCS.
+        '''
+        pass
+    
+    global updateFilesThread
+    if not updateFilesThread or not updateFilesThread.isRunning():
+        updateFilesThread = MyThread(update)
+        updateFilesThread.start()
 
 def widgetOnChange(widget, module, attr):
     data = widget.getJsonData()
@@ -37,6 +54,14 @@ def widgetOnChange(widget, module, attr):
         srcAttr = module.findConnectionSourceForAttribute(attr)
         if srcAttr:
             srcAttr.updateFromAttribute(attr)
+
+class MyThread(QThread):
+    def __init__(self, runFunction):
+        super().__init__()
+        self.runFunction = runFunction
+
+    def run(self):
+        self.runFunction()
 
 class TabAttributesWidget(QWidget):
     needUpdateUI = Signal()
@@ -392,6 +417,13 @@ class ModuleListDialog(QDialog):
 
         self.selectedFileName = ""
         Module.updateUidsCache()
+        # update files from server
+        updateFilesFromServer()
+        def f():
+            Module.updateUidsCache()
+            self.maskChanged()
+        updateFilesThread.finished.connect(f)
+
         self.maskWidget.setFocus()
 
     def treeContextMenuEvent(self, event):
