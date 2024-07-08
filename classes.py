@@ -367,7 +367,7 @@ class Module(object):
             os.unlink(oldPath) # remove local file
 
             Module.ServerUids[self.uid] = savePath
-            del Module.LocalUids[self.uid]
+            Module.LocalUids.pop(self.uid, None) # remove from local uids
             return savePath
 
     def saveToFile(self, fileName):
@@ -388,15 +388,9 @@ class Module(object):
 
     @staticmethod
     def loadModule(spec): # spec can be full path, relative path or uid
-        modulePath = None
-
-        if Module.LocalUids.get(spec): # check local uid
-            modulePath = Module.LocalUids[spec]
-
-        elif Module.ServerUids.get(spec): # check server uid
-            modulePath = Module.ServerUids[spec]
-
-        else:
+        modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec) # check local, then server uids
+        
+        if not modulePath: # otherwise, find by name
             specPath = os.path.expandvars(spec)
 
             for path in [specPath,
