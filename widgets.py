@@ -1088,23 +1088,36 @@ class CurveScene(QGraphicsScene):
         items = sorted(self.items(), key=lambda item: item.pos().x()) # sorted by x position
 
         tangents = []
-        for i, item in enumerate(items): # calculate tangents
+        for i, _ in enumerate(items): # calculate tangents
             if i == 0:
-                tangents.append(QVector2D(items[i+1].pos() - items[i].pos()).normalized())
+                tg = QVector2D(items[i+1].pos() - items[i].pos()).normalized()
             elif i == len(items) - 1:
-                tangents.append(QVector2D(items[i].pos() - items[i-1].pos()).normalized())
+                tg = QVector2D(items[i].pos() - items[i-1].pos()).normalized()
             else:
-                tg = (QVector2D(items[i+1].pos() - items[i].pos()) / (items[i+1].pos().x() - items[i].pos().x()) +
-                      QVector2D(items[i].pos() - items[i-1].pos()) / (items[i].pos().x() - items[i-1].pos().x())) / 2.0
+                prevy = items[i-1].pos().y()
+                nexty = items[i+1].pos().y()
+                y = items[i].pos().y()
+                if (y > prevy and y > nexty) or (y < prevy and y < nexty):
+                    w = 1
+                else:
+                    d1 = abs(y - prevy)
+                    d2 = abs(y - nexty)
+                    s = d1 + d2
+                    w1 = d1 / s
+                    w2 = d2 / s
+                    w = max(w1, w2)*2 - 1 # from 0 to 1, because max(w1,w2) is always >= 0.5
+                    w = w ** 4
+                tg = QVector2D(items[i+1].pos() - items[i-1].pos()).normalized() * (1-w) + QVector2D(1, 0) * w
+                
+            tangents.append(tg)
 
-                tangents.append(tg)
-
-        for i, item in enumerate(items):
+        for i, _ in enumerate(items):
             if i == 0:
                 continue
 
             p1 = items[i-1].pos()
             p4 = items[i].pos()
+
             d = (p4.x() - p1.x()) / 3
             p2 = p1 + tangents[i-1].toPointF() * d
             p3 = p4 - tangents[i].toPointF() * d
@@ -1123,9 +1136,10 @@ class CurveScene(QGraphicsScene):
         self.calculateCVs()
 
         font = painter.font()
-        if font.pointSize() > 2:
-            font.setPointSize(font.pointSize()-2)
-            painter.setFont(font)
+        font.setPointSize(font.pointSize() - 4)
+        font.setPixelSize(font.pixelSize() - 4)
+        font.setPointSizeF(font.pointSizeF() - 4)
+        painter.setFont(font)
 
         GridSize = 4
         TextOffset = 3
@@ -1133,7 +1147,7 @@ class CurveScene(QGraphicsScene):
         ystep = CurveScene.MaxY / GridSize
 
         for i in range(GridSize):
-            painter.setPen(QColor(40,40,40, 50))
+            painter.setPen(QColor(40,40,40, 70))
             painter.drawLine(i*xstep, 0, i*xstep, CurveScene.MaxY)
             painter.drawLine(0, i*ystep, CurveScene.MaxX, i*ystep)
 
@@ -1182,8 +1196,6 @@ class CurveView(QGraphicsView):
 
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.TextAntialiasing, True)
-        #self.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        #self.setRenderHint(QPainter.NonCosmeticDefaultPen, True)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
