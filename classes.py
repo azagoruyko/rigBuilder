@@ -710,12 +710,15 @@ class ModuleWrapper(object):
     def run(self):
         muted = self._module.muted
         self._module.muted = False
+
+        env = {}
         try:
-            self._module.run(ModuleWrapper.env)
+            env = self._module.run(ModuleWrapper.env)
         except:
             raise
         finally:
             self._module.muted = muted
+        return env
 
 def getModuleDefaultEnv():
     def printError(msg):
