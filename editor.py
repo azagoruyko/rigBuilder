@@ -3,11 +3,11 @@ from PySide2.QtCore import *
 from PySide2.QtWidgets import *
 
 import re
-from .utils import clamp
+from .utils import clamp, getActions, setActionsLocalShortcut, wordAtCursor, findBracketSpans
 
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):
-        super(PythonHighlighter, self).__init__(parent)
+        super().__init__(parent)
 
         self.highlightingRules = []
 
@@ -127,6 +127,8 @@ class PythonHighlighter(QSyntaxHighlighter):
         else:
            return False
 
+
+
 def fontSize(font):
     return font.pixelSize() if font.pixelSize() > 0 else font.pointSize()
 
@@ -159,7 +161,7 @@ def highlightLine(widget, line=None, *, clear=False):
 
 class SwoopHighligher(QSyntaxHighlighter):
     def __init__(self, parent):
-        super(SwoopHighligher, self).__init__(parent)
+        super().__init__(parent)
 
         self.highlightingRules = []
 
@@ -200,18 +202,12 @@ class SwoopHighligher(QSyntaxHighlighter):
         self.setCurrentBlockState(0)
 
 class SwoopSearchDialog(QDialog):
-    def __init__(self, edit, **kwargs):
-        super(SwoopSearchDialog, self).__init__(**kwargs)
+    def __init__(self, textWidget, **kwargs):
+        super().__init__(**kwargs)
 
-        self.edit = edit
-
-        self.useWordBoundary = False
-        self.findInsideBrackets = False
-        self.caseSensitive = True
-        self.downOnly = False
+        self.textWidget = textWidget
 
         self.replaceMode = False
-
         self.replacePattern = None
         self.previousLines = []
 
@@ -224,9 +220,27 @@ class SwoopSearchDialog(QDialog):
         self.setLayout(layout)
 
         self.filterWidget = QLineEdit()
-        self.filterWidget.setToolTip("Ctrl-C - case sensitive<br>Ctrl-W - word boundary<br>Ctrl-B - find inside brackets<br>Ctrl-D - down only<br>Ctrl-R - replace mode")
         self.filterWidget.textChanged.connect(self.filterTextChanged)
         self.filterWidget.keyPressEvent = self.filterKeyPressEvent
+
+        self.replaceModeBtn = QPushButton("Replace")
+        self.replaceModeBtn.clicked.connect(lambda _:self.switchReplaceMode())
+        
+        filterLayout = QHBoxLayout()
+        filterLayout.addWidget(self.filterWidget)
+        filterLayout.addWidget(self.replaceModeBtn)
+
+        settingsLayout = QHBoxLayout()
+        self.caseSensitiveWidget = QCheckBox("Case sensitive")
+        self.caseSensitiveWidget.setChecked(True)
+        self.caseSensitiveWidget.stateChanged.connect(self.filterTextChanged)
+        self.wholeWordWidget = QCheckBox("Whole word")
+        self.wholeWordWidget.stateChanged.connect(self.filterTextChanged)
+        self.indentDeeperWidget = QCheckBox("Indent deeper")
+        self.indentDeeperWidget.stateChanged.connect(self.filterTextChanged)
+        settingsLayout.addWidget(self.caseSensitiveWidget)
+        settingsLayout.addWidget(self.wholeWordWidget)
+        settingsLayout.addWidget(self.indentDeeperWidget)
 
         self.resultsWidget = QTextEdit()
         self.resultsWidget.setReadOnly(True)
@@ -235,41 +249,30 @@ class SwoopSearchDialog(QDialog):
         self.resultsWidget.mousePressEvent = self.resultsMousePressEvent
         self.resultsWidget.keyPressEvent = self.filterWidget.keyPressEvent
 
-        self.statusWidget = QLabel()
-        self.statusWidget.hide()
-
-        layout.addWidget(self.filterWidget)
+        layout.addLayout(filterLayout)
+        layout.addLayout(settingsLayout)
         layout.addWidget(self.resultsWidget)
-        layout.addWidget(self.statusWidget)
         self.rejected.connect(self.whenRejected)
 
-        # save initial state
-        self.text = self.edit.toPlainText()
-        cursor = self.edit.textCursor()
+    def showEvent(self, event):
+        cursor = self.textWidget.textCursor()
+        text = self.textWidget.toPlainText()
 
-        self.updateSavedCursor()
-
-        self.savedSettings["lines"] = self.text.split("\n")
+        self.savedSettings["cursor"] = cursor
+        self.savedSettings["scroll"] = self.textWidget.verticalScrollBar().value()
+        self.savedSettings["lines"] = text.split("\n")        
 
         findText = cursor.selectedText()
         if not findText:
             findText = wordAtCursor(cursor)[0]
 
-        self.filterWidget.setText(findText)
+        if findText == self.filterWidget.text():
+            self.filterTextChanged()
+        else:
+            self.filterWidget.setText(findText)
 
-    def updateSavedCursor(self):
-        cursor = self.edit.textCursor()
-        brackets = findBracketSpans(self.text, cursor.position())
-        self.savedSettings["cursor"] = cursor
-        self.savedSettings["scroll"] = self.edit.verticalScrollBar().value()
-        self.savedSettings["brackets"] = brackets
-
-        self.findInsideBrackets = brackets[0]!=brackets[1] and self.findInsideBrackets
-
-    def showEvent(self, event):
-        self.updateSavedCursor()
+        self.switchReplaceMode(False)
         self.reposition()
-        self.updateStatus()
 
     def resultsMousePressEvent(self, event):
         cursor = self.resultsWidget.cursorForPosition(event.pos())
@@ -278,73 +281,66 @@ class SwoopSearchDialog(QDialog):
         self.resultsLineChanged()
 
     def reposition(self):
-        c = self.edit.mapToGlobal(self.edit.cursorRect().topLeft())
+        c = self.textWidget.mapToGlobal(self.textWidget.cursorRect().topLeft())
         w = self.resultsWidget.document().idealWidth() + 30
         h = self.resultsWidget.document().blockCount()*self.resultsWidget.cursorRect().height() + 110
-        self.setGeometry(c.x(), c.y() + fontSize(self.edit.font())+5, clamp(w, 0, 500), clamp(h, 0, 400))
+        self.setGeometry(c.x(), c.y() + fontSize(self.textWidget.font())+5, clamp(w, 0, 500), clamp(h, 0, 400))
+
+    def switchReplaceMode(self, value=None):
+        self.replaceMode = not self.replaceMode if value is None else value
+        
+        if self.replaceMode:            
+            self.filterWidget.setStyleSheet("background-color: #433567")
+            self.replacePattern = self.getFilterPattern()
+            self.replaceModeBtn.setText("Cancel")            
+        else:
+            self.filterWidget.setStyleSheet("")
+            self.replaceModeBtn.setText("Replace")
+            self.filterTextChanged()
+
+        self.caseSensitiveWidget.setEnabled(not self.replaceMode)
+        self.wholeWordWidget.setEnabled(not self.replaceMode)
+        self.indentDeeperWidget.setEnabled(not self.replaceMode)
 
     def resultsLineChanged(self):
         if self.replaceMode:
             return
+        
+        caseSensitive = self.caseSensitiveWidget.isChecked()
 
         resultsLine = self.resultsWidget.textCursor().block().text()
         if not resultsLine:
             return
 
         lineNumber = re.search("^(\\d+)", resultsLine).group()
-        self.edit.gotoLine(int(lineNumber))
+        self.textWidget.gotoLine(int(lineNumber))
 
         currentFilter = self.getFilterPattern()
+        cursor = self.textWidget.textCursor()
+        currentLine = cursor.block().text()
 
-        currentLine = self.edit.textCursor().block().text()
-
-        r = re.search(currentFilter, currentLine, re.IGNORECASE if not self.caseSensitive else 0)
+        r = re.search(currentFilter, currentLine, re.IGNORECASE if not caseSensitive else 0)
 
         if r:
-            cursor = self.edit.textCursor()
             pos = cursor.block().position() + r.start()
             if pos > 0:
                 cursor.setPosition(pos)
-                self.edit.setTextCursor(cursor)
+                self.textWidget.setTextCursor(cursor)
 
-            cursorY = self.edit.cursorRect().top()
-            scrollBar = self.edit.verticalScrollBar()
-            scrollBar.setValue(scrollBar.value() + cursorY - self.edit.geometry().height()/2)
+            cursorY = self.textWidget.cursorRect().top()
+            scrollBar = self.textWidget.verticalScrollBar()
+            scrollBar.setValue(scrollBar.value() + cursorY - self.textWidget.geometry().height()/2)
 
         self.reposition()
-
-    def updateStatus(self):
-        items = []
-
-        if self.useWordBoundary:
-            items.append("[word]")
-
-        if self.caseSensitive:
-            items.append("[case]")
-
-        if self.findInsideBrackets:
-            items.append("[brackets]")
-
-        if self.downOnly:
-            items.append("[down]")
-
-        if self.replaceMode:
-            items.append("[REPLACE '%s']"%self.replacePattern)
-
-        if items:
-            self.statusWidget.setText(" ".join(items))
-            self.statusWidget.show()
-        else:
-            self.statusWidget.hide()
 
     def filterKeyPressEvent(self, event):
         ctrl = event.modifiers() & Qt.ControlModifier
 
-        rw = self.resultsWidget
-        line = rw.textCursor().block().blockNumber()
-        lineCount = rw.document().blockCount()-1
-
         if event.key() in [Qt.Key_Down, Qt.Key_Up, Qt.Key_PageDown, Qt.Key_PageUp]:
+            rw = self.resultsWidget
+            line = rw.textCursor().block().blockNumber()
+            lineCount = rw.document().blockCount()-1
+
             highlightLine(rw, clamp(line, 0, lineCount), clear=True)
             if event.key() == Qt.Key_Down:
                 highlightLine(rw, clamp(line+1, 0, lineCount))
@@ -359,57 +355,14 @@ class SwoopSearchDialog(QDialog):
 
             self.resultsLineChanged()
 
-        elif ctrl and event.key() == Qt.Key_W: # use word boundary
-            if not self.replaceMode:
-                self.useWordBoundary = not self.useWordBoundary
-                self.updateStatus()
-                self.filterTextChanged()
-
-        elif ctrl and event.key() == Qt.Key_B: # find inside brackets
-            if not self.replaceMode:
-                self.findInsideBrackets = not self.findInsideBrackets
-                self.updateSavedCursor()
-                self.updateStatus()
-                self.filterTextChanged()
-
-        elif ctrl and event.key() == Qt.Key_D: # down only
-            if not self.replaceMode:
-                self.downOnly = not self.downOnly
-                self.updateSavedCursor()
-                self.updateStatus()
-                self.filterTextChanged()
-
-        elif ctrl and event.key() == Qt.Key_C: # case sensitive
-            if self.filterWidget.selectedText():
-                self.filterWidget.copy()
-            else:
-                if not self.replaceMode:
-                    self.caseSensitive = not self.caseSensitive
-                    self.updateStatus()
-                    self.filterTextChanged()
-
-        elif ctrl and event.key() == Qt.Key_R: # replace mode
-            self.replaceMode = not self.replaceMode
-            if self.replaceMode:
-                self.filterWidget.setStyleSheet("background-color: #433567")
-                self.replacePattern = self.getFilterPattern()
-            else:
-                self.filterWidget.setStyleSheet("")
-                self.filterTextChanged()
-
-            self.updateStatus()
-
-        elif event.key() == Qt.Key_F3:
-            self.accept()
-
         elif event.key() == Qt.Key_Return: # accept
             if self.replaceMode:
-                cursor = self.edit.textCursor()
+                cursor = self.textWidget.textCursor()
 
                 savedBlock = self.savedSettings["cursor"].block()
                 savedColumn = self.savedSettings["cursor"].positionInBlock()
 
-                doc = self.edit.document()
+                doc = self.textWidget.document()
 
                 getIndent = lambda s: s[:len(s) - len(s.lstrip())]
 
@@ -432,26 +385,28 @@ class SwoopSearchDialog(QDialog):
                 cursor.endEditBlock()
 
                 cursor.setPosition(savedBlock.position() + savedColumn)
-                self.edit.setTextCursor(cursor)
-                self.edit.verticalScrollBar().setValue(self.savedSettings["scroll"])
+                self.textWidget.setTextCursor(cursor)
+                self.textWidget.verticalScrollBar().setValue(self.savedSettings["scroll"])
 
-            self.edit.setFocus()
+            self.textWidget.setFocus()
             self.accept()
 
         else:
             QLineEdit.keyPressEvent(self.filterWidget, event)
 
     def whenRejected(self):
-        self.edit.setTextCursor(self.savedSettings["cursor"])
-        self.edit.verticalScrollBar().setValue(self.savedSettings["scroll"])
-        self.edit.setFocus()
+        self.textWidget.setTextCursor(self.savedSettings["cursor"])
+        self.textWidget.verticalScrollBar().setValue(self.savedSettings["scroll"])
+        self.textWidget.setFocus()
 
     def getFilterPattern(self):
         currentFilter = re.escape(self.filterWidget.text())
+        useWordBoundary = self.wholeWordWidget.isChecked()
+
         if not currentFilter:
             return ""
 
-        if self.useWordBoundary:
+        if useWordBoundary:
             currentFilter = "\\b" + currentFilter + "\\b"
 
         return currentFilter
@@ -460,6 +415,11 @@ class SwoopSearchDialog(QDialog):
         self.resultsWidget.clear()
         self.resultsWidget.setCurrentCharFormat(QTextCharFormat())
 
+        caseSensitive = self.caseSensitiveWidget.isChecked()
+        deeperOnly = self.indentDeeperWidget.isChecked()
+
+        getIndent = lambda s: s[:len(s) - len(s.lstrip())]
+
         if self.replaceMode: # replace mode
             replaceString = self.filterWidget.text()
             pattern = self.getFilterPattern()
@@ -467,8 +427,7 @@ class SwoopSearchDialog(QDialog):
             lines = []
             for line in self.previousLines:
                 n, text = re.search("^(\\d+)\\s*(.*)$", line).groups()
-
-                text = re.sub(self.replacePattern, replaceString, text, 0, re.IGNORECASE if not self.caseSensitive else 0)
+                text = re.sub(self.replacePattern, replaceString, text, 0, re.IGNORECASE if not caseSensitive else 0)
                 lines.append("{0:<5} {1}".format(n, text.strip()))
 
             self.resultsWidget.setText("\n".join(lines))
@@ -476,41 +435,30 @@ class SwoopSearchDialog(QDialog):
             self.resultsWidget.syntax.rehighlight()
 
         else: # search mode
-            startBlock, endBlock = 0, 0
-
-            if self.findInsideBrackets:
-                cursor = QTextCursor(self.savedSettings["cursor"])
-                cursor.setPosition(self.savedSettings["brackets"][0])
-                startBlock = cursor.block().blockNumber()
-                cursor.setPosition(self.savedSettings["brackets"][1])
-                endBlock = cursor.block().blockNumber()
-
-            if self.downOnly:
-                cursor = QTextCursor(self.savedSettings["cursor"])
-                startBlock = cursor.block().blockNumber()
-
             currentFilter = self.getFilterPattern()
-            currentBlock = self.edit.textCursor().block().blockNumber()
+            currentBlockNumber = self.savedSettings["cursor"].block().blockNumber()
 
-            self.previousLines = []
+            indent = getIndent(self.savedSettings["cursor"].block().text())
 
             counter = 0
             currentIndex = 0
 
+            self.previousLines = []
             for i, line in enumerate(self.savedSettings["lines"]):
                 if not line.strip():
                     continue
 
-                if self.findInsideBrackets and (i < startBlock or i > endBlock):
-                    continue
+                if deeperOnly: # works down and indent deeper only
+                    if i < currentBlockNumber: # skip previous lines
+                        continue
 
-                if self.downOnly and i < startBlock:
-                    continue
+                    elif getIndent(line) < indent:
+                        break
 
-                if i == currentBlock:
+                if i == currentBlockNumber:
                     currentIndex = counter
 
-                r = re.search(currentFilter, line, re.IGNORECASE if not self.caseSensitive else 0)
+                r = re.search(currentFilter, line, re.IGNORECASE if not caseSensitive else 0)
                 if r:
                     self.previousLines.append("{0:<5} {1}".format(i+1, line.strip()))
                     counter += 1
@@ -523,16 +471,89 @@ class SwoopSearchDialog(QDialog):
             highlightLine(self.resultsWidget, currentIndex)
             self.resultsLineChanged()
 
+class CompletionWidget(QTextEdit):
+    def __init__(self, items, **kwargs):
+        super().__init__(**kwargs)
+
+        self._prevLine = 0
+
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+
+        self.setReadOnly(True)
+        self.setWordWrapMode(QTextOption.NoWrap)
+
+        self.updateItems([])
+
+    def currentLine(self):
+        return self.textCursor().block().blockNumber()
+
+    def lineCount(self):
+        return self.document().blockCount()
+
+    def gotoLine(self, line):
+        line = clamp(line, 0, self.lineCount()-1)        
+        highlightLine(self, self._prevLine, clear=True)
+        self._prevLine = line
+        highlightLine(self, self._prevLine)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.gotoLine(self.currentLine())
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Return:
+            super().keyPressEvent(event)
+        else:
+            lineCount = self.lineCount()
+
+            keyMove = {Qt.Key_Down: 1, Qt.Key_Up: -1, Qt.Key_PageDown: 10, Qt.Key_PageUp: -10}
+            offset = keyMove.get(event.key(), 0)
+            if offset != 0:
+                self.gotoLine(clamp(self._prevLine+offset, 0, lineCount))
+
+    def updateItems(self, items):
+        if not items:
+            return
+
+        self.clear()
+        self.setCurrentCharFormat(QTextCharFormat())
+
+        lines = []
+        for line in items:
+            lines.append(line)
+
+        self.setText("\n".join(lines))
+
+        highlightLine(self, 0)
+        self._prevLine = 0
+
+        self.autoResize()
+
+    def autoResize(self):
+        w = self.document().idealWidth() + 10
+        h = self.document().blockCount()*self.cursorRect().height() + 30
+
+        maxWidth = self.parent().width() - self.parent().cursorRect().left() - 30
+        maxHeight = self.parent().height() - self.parent().cursorRect().top() - 30
+
+        self.setFixedSize(clamp(w, 0,maxWidth), clamp(h, 0, maxHeight))
+
+    def showEvent(self, event):
+        self.autoResize()
+
 class CodeEditorWidget(QTextEdit):
     editorState = {}
     TabSpaces = 4
 
     def __init__(self, **kwargs):
-        super(CodeEditorWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.preset = "default"
         self.commentChar = "#"
         self.ignoreStates = False # don't save/load states
+
+        self.syntax = PythonHighlighter(self.document())
 
         self._editorState = {}
 
@@ -543,6 +564,7 @@ class CodeEditorWidget(QTextEdit):
 
         self._searchStartWord = ("", 0, 0)
         self._prevCursorPosition = 0
+        self.swoopSearchDialog = SwoopSearchDialog(self, parent=self)
 
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
@@ -552,8 +574,11 @@ class CodeEditorWidget(QTextEdit):
         self.setWordWrapMode(QTextOption.NoWrap)
 
         self.cursorPositionChanged.connect(self.editorCursorPositionChanged)
-        self.verticalScrollBar().valueChanged.connect(lambda _: self.saveState(cursor=False, scroll=True, bookmarks=False))
+        self.verticalScrollBar().valueChanged.connect(self.scrollBarChanged)
         self.textChanged.connect(self.editorTextChanged)
+
+        self.addActions(getActions(self.getMenu()))
+        setActionsLocalShortcut(self)
 
     def event(self, event):
         if event.type() == QEvent.KeyPress:
@@ -582,7 +607,12 @@ class CodeEditorWidget(QTextEdit):
                 event.accept()
                 return True
 
-        return super(CodeEditorWidget, self).event(event)
+        return super().event(event)
+    
+    def scrollBarChanged(self, _):
+        self.saveState(cursor=False, scroll=True, bookmarks=False)
+        if self.completionWidget.isVisible():
+            self.completionWidget.hide()
 
     def setBookmark(self, line=-1):
         if line == -1:
@@ -604,20 +634,24 @@ class CodeEditorWidget(QTextEdit):
         block.setUserData(blockData)
         self.saveState(cursor=False, scroll=False, bookmarks=True)
 
-    def gotoNextBookmark(self, start=-1):
+    def gotoNextBookmark(self):
         doc = self.document()
 
-        if start == -1:
-            start =  self.textCursor().block().blockNumber()+1
+        def gotoBookmark(startLine):
+            for i in range(startLine, doc.blockCount()):
+                b = doc.findBlockByNumber(i)
 
-        for i in range(start, doc.blockCount()):
-            b = doc.findBlockByNumber(i)
+                blockData = b.userData()
+                if blockData and blockData.hasBookmark:
+                    self.setTextCursor(QTextCursor(b))
+                    self.centerLine()
+                    break
 
-            blockData = b.userData()
-            if blockData and blockData.hasBookmark:
-                self.setTextCursor(QTextCursor(b))
-                self.centerLine()
-                break
+        startLine = self.textCursor().block().blockNumber()
+        gotoBookmark(startLine + 1)
+
+        if startLine == self.textCursor().block().blockNumber():        
+            gotoBookmark(0)
 
     def loadState(self, cursor=True, scroll=True, bookmarks=True):
         if self.ignoreStates:
@@ -672,14 +706,16 @@ class CodeEditorWidget(QTextEdit):
                 data = b.userData()
                 if data and data.hasBookmark:
                     state["bookmarks"].append(i)
-
-    def contextMenuEvent(self, event):
+    
+    def getMenu(self):
         menu = QMenu(self)
-
         menu.addAction("Swoop search", self.swoopSearch, "F3")
         menu.addAction("Highlight selected", self.highlightSelected, "Ctrl+H")
         menu.addSeparator()
         menu.addAction("Goto line", self.gotoLine, "Ctrl+G")
+        menu.addAction("Duplicate line", self.duplicateLine, "Ctrl+D")
+        menu.addAction("Move line up", lambda: self.moveLine("up"), "Alt+Up")
+        menu.addAction("Move line down", lambda: self.moveLine("down"), "Alt+Down")
         menu.addAction("Remove line", self.removeLines, "Ctrl+K")
         menu.addAction("Comment line", self.toggleCommentBlock, "Ctrl+;")
         menu.addSeparator()
@@ -687,7 +723,10 @@ class CodeEditorWidget(QTextEdit):
         menu.addAction("Next bookmark", self.gotoNextBookmark, "F2")
         menu.addSeparator()
         menu.addAction("Select All", self.selectAll, "Ctrl+A")
+        return menu
 
+    def contextMenuEvent(self, event):
+        menu = self.getMenu()
         menu.popup(event.globalPos())
 
     def wheelEvent(self, event):
@@ -704,7 +743,7 @@ class CodeEditorWidget(QTextEdit):
             self.parent().numberBarWidget.updateState()
 
         else:
-            QTextEdit.wheelEvent(self, event)
+            super().wheelEvent(event)
 
     def keyPressEvent(self, event):
         shift = event.modifiers() & Qt.ShiftModifier
@@ -713,32 +752,11 @@ class CodeEditorWidget(QTextEdit):
         key = event.key()
 
         if ctrl and alt and key == Qt.Key_Space:
-            cursor = self.textCursor()
-            pos = cursor.position()
-            start, end = findBracketSpans(self.toPlainText(), pos)
-            if start is not None and end is not None:
-                cursor.setPosition(start+1)
-                cursor.setPosition(end, QTextCursor.KeepAnchor)
-                self.setTextCursor(cursor)
+            self.selectInBracket()
 
         elif key in [Qt.Key_Left, Qt.Key_Right]:
-            QTextEdit.keyPressEvent(self, event)
+            super().keyPressEvent(event)
             self.completionWidget.hide()
-
-        elif alt and key == Qt.Key_F2: # set bookmark
-            self.setBookmark()
-
-        elif key == Qt.Key_F2: # next bookmark
-            n = self.textCursor().block().blockNumber()
-            self.gotoNextBookmark()
-            if self.textCursor().block().blockNumber() == n:
-                self.gotoNextBookmark(0)
-
-        elif key == Qt.Key_F3: # emacs swoop
-            self.swoopSearch()
-
-        elif ctrl and key == Qt.Key_G: # goto line
-            self.gotoLine()
 
         elif key == Qt.Key_Escape:
             self.completionWidget.hide()
@@ -753,42 +771,14 @@ class CodeEditorWidget(QTextEdit):
                 block = cursor.block().text()
                 spc = re.search("^(\\s*)", block).groups("")[0]
 
-                QTextEdit.keyPressEvent(self, event)
+                super().keyPressEvent(event)
 
                 if spc:
                     cursor.insertText(spc)
                     self.setTextCursor(cursor)
 
         elif key == Qt.Key_Backtab:
-            cursor = self.textCursor()
-            tabSpaces = " "*CodeEditorWidget.TabSpaces
-            start, end = cursor.selectionStart(), cursor.selectionEnd()
-            cursor.clearSelection()
-
-            cursor.setPosition(start)
-
-            cursor.beginEditBlock()
-            while cursor.position() < end:
-                cursor.movePosition(QTextCursor.StartOfLine)
-                cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
-                selText = cursor.selectedText()
-
-                # if the text starts with the tab_char, replace it
-                if selText.startswith(tabSpaces):
-                    text = selText.replace(tabSpaces, "", 1)
-                    end -= len(tabSpaces)
-                    cursor.insertText(text)
-
-                if not cursor.movePosition(QTextCursor.Down):
-                    break
-
-            cursor.endEditBlock()
-
-        elif alt and key == Qt.Key_Up: # move line up
-            self.moveLineUp()
-
-        elif alt and key == Qt.Key_Down: # move line down
-            self.moveLineDown()
+            self.decreaseIndent()
 
         elif key in [Qt.Key_Up, Qt.Key_Down, Qt.Key_PageDown, Qt.Key_PageUp]:
             if self.completionWidget.isVisible():
@@ -799,64 +789,81 @@ class CodeEditorWidget(QTextEdit):
             else:
                 super().keyPressEvent(event)
 
-        elif ctrl and key == Qt.Key_H: # highlight selected
-            self.highlightSelected()
-
-        elif ctrl and key == Qt.Key_K: # remove line
-            self.removeLines()
-
-        elif ctrl and key == Qt.Key_Semicolon: # comment
-            self.toggleCommentBlock()
-
         else:
-            QTextEdit.keyPressEvent(self, event)
+            super().keyPressEvent(event)
 
-    def swoopSearch(self):
-        swoopSearchDialog = SwoopSearchDialog(self, parent=self)
-        swoopSearchDialog.exec_()
-
-    def moveLineUp(self):
+    def decreaseIndent(self):
         cursor = self.textCursor()
-        if not cursor.block().previous().isValid() or cursor.selectedText():
-            return
+        tabSpaces = " "*CodeEditorWidget.TabSpaces
+        start, end = cursor.selectionStart(), cursor.selectionEnd()
+        cursor.clearSelection()
 
-        text = cursor.block().text()
-        pos = cursor.positionInBlock()
+        cursor.setPosition(start)
 
         cursor.beginEditBlock()
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
-        cursor.removeSelectedText()
-        cursor.deletePreviousChar()
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        cursor.insertText(text)
-        cursor.insertBlock()
+        while cursor.position() < end:
+            cursor.movePosition(QTextCursor.StartOfLine)
+            cursor.movePosition(QTextCursor.NextWord, QTextCursor.KeepAnchor)
+            selText = cursor.selectedText()
+
+            # if the text starts with the tab_char, replace it
+            if selText.startswith(tabSpaces):
+                text = selText.replace(tabSpaces, "", 1)
+                end -= len(tabSpaces)
+                cursor.insertText(text)
+
+            if not cursor.movePosition(QTextCursor.Down):
+                break
+
         cursor.endEditBlock()
 
-        cursor.movePosition(QTextCursor.Up)
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        cursor.movePosition(QTextCursor.Right, n=pos)
-
-        self.setTextCursor(cursor)
-
-    def moveLineDown(self):
+    def selectInBracket(self):
         cursor = self.textCursor()
-        if not cursor.block().next().isValid() or cursor.selectedText():
-            return
+        pos = cursor.position()
+        start, end = findBracketSpans(self.toPlainText(), pos)
+        if start is not None and end is not None:
+            cursor.setPosition(start+1)
+            cursor.setPosition(end, QTextCursor.KeepAnchor)
+            self.setTextCursor(cursor)
 
-        text = cursor.block().text()
-        pos = cursor.positionInBlock()
+    def swoopSearch(self):        
+        self.swoopSearchDialog.exec_()
 
-        cursor.beginEditBlock()
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
-        cursor.removeSelectedText()
-        cursor.deleteChar()
+    def duplicateLine(self):
+        cursor = self.textCursor()
+        line = cursor.block().text()
         cursor.movePosition(QTextCursor.EndOfBlock)
+        cursor.beginEditBlock()
         cursor.insertBlock()
-        cursor.insertText(text)
+        cursor.insertText(line)
         cursor.endEditBlock()
+        self.setTextCursor(cursor)        
 
+    def moveLine(self, direction):
+        cursor = self.textCursor()
+
+        text = cursor.block().text()
+        pos = cursor.positionInBlock()
+
+        cursor.beginEditBlock()
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+
+        if direction == "up":
+            cursor.deletePreviousChar()
+            cursor.movePosition(QTextCursor.StartOfBlock)
+            cursor.insertText(text)
+            cursor.insertBlock()
+            cursor.movePosition(QTextCursor.Up)
+
+        elif direction == "down":
+            cursor.deleteChar()
+            cursor.movePosition(QTextCursor.EndOfBlock)
+            cursor.insertBlock()
+            cursor.insertText(text)
+
+        cursor.endEditBlock()        
         cursor.movePosition(QTextCursor.StartOfBlock)
         cursor.movePosition(QTextCursor.Right, n=pos)
 
@@ -1078,186 +1085,35 @@ class CodeEditorWidget(QTextEdit):
 
         self.completionWidget.show()
 
-def findOpeningBracketPosition(text, offset, brackets="{(["):
-    openingBrackets = "{(["
-    closingBrackets = "})]"
-    stack = [0 for i in range(len(openingBrackets))] # for each bracket set 0 as default
-
-    if offset < 0 or offset >= len(text):
-        return None
-
-    if text[offset] in closingBrackets:
-        offset -= 1
-
-    for i in range(offset, -1, -1):
-        c = text[i]
-
-        if c in brackets and c in openingBrackets and stack[openingBrackets.index(c)] == 0:
-            return i
-
-        elif c in openingBrackets:
-            stack[openingBrackets.index(c)] += 1
-
-        elif c in closingBrackets:
-            stack[closingBrackets.index(c)] -= 1
-
-def findClosingBracketPosition(text, offset, brackets="})]"):
-    openingBrackets = "{(["
-    closingBrackets = "})]"
-    stack = [0 for i in range(len(openingBrackets))] # for each bracket set 0 as default
-
-    if offset < 0 or offset >= len(text):
-        return None
-
-    if text[offset] in openingBrackets:
-        offset += 1
-
-    for i in range(offset, len(text)):
-        c = text[i]
-
-        if c in brackets and c in closingBrackets and stack[closingBrackets.index(c)] == 0:
-            return i
-
-        elif c in openingBrackets:
-            stack[openingBrackets.index(c)] += 1
-
-        elif c in closingBrackets:
-            stack[closingBrackets.index(c)] -= 1
-
-def findBracketSpans(text, offset):
-    s = findOpeningBracketPosition(text, offset, "{([")
-    if s is not None:
-        matchingClosingBracket = {"{":"}", "(":")", "[":"]"}[text[s]]
-        e = findClosingBracketPosition(text, offset, matchingClosingBracket)
-    else:
-        e = findClosingBracketPosition(text, offset, "})]")
-    return (s,e)
-
-def wordAtCursor(cursor):
-    cursor = QTextCursor(cursor)
-    pos = cursor.position()
-
-    lpart = ""
-    start = pos-1
-    ch = cursor.document().characterAt(start)
-    while ch and re.match("[@\\w]", ch):
-        lpart += ch
-        start -= 1
-
-        if ch == "@": # @ can be the first character only
-            break
-
-        ch = cursor.document().characterAt(start)
-
-    rpart = ""
-    end = pos
-    ch = cursor.document().characterAt(end)
-    while ch and re.match("[\\w]", ch):
-        rpart += ch
-        end += 1
-        ch = cursor.document().characterAt(end)
-
-    return (lpart[::-1]+rpart, start+1, end)
-
-class CompletionWidget(QTextEdit):
-    def __init__(self, items, **kwargs):
-        super(CompletionWidget, self).__init__(**kwargs)
-
-        self._prevLine = 0
-
-        self.setWindowFlags(Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-
-        self.setReadOnly(True)
-        self.setWordWrapMode(QTextOption.NoWrap)
-
-        self.updateItems([])
-
-    def currentLine(self):
-        return self.textCursor().block().blockNumber()
-
-    def lineCount(self):
-        return self.document().blockCount()
-
-    def gotoLine(self, line):
-        highlightLine(self, self._prevLine, clear=True)
-        self._prevLine = line
-        highlightLine(self, self._prevLine)
-
-    def mousePressEvent(self, event):
-        super().mousePressEvent(event)
-        self.gotoLine(self.currentLine())
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Return:
-            super().keyPressEvent(event)
-        else:
-            lineCount = self.lineCount()
-
-            keyMove = {Qt.Key_Down: 1, Qt.Key_Up: -1, Qt.Key_PageDown: 10, Qt.Key_PageUp: -10}
-            offset = keyMove.get(event.key(), 0)
-            if offset != 0:
-                self.gotoLine(clamp(self._prevLine+offset, 0, lineCount))
-
-    def updateItems(self, items):
-        if not items:
-            return
-
-        self.clear()
-        self.setCurrentCharFormat(QTextCharFormat())
-
-        lines = []
-        for line in items:
-            lines.append(line)
-
-        self.setText("\n".join(lines))
-
-        highlightLine(self, 0)
-        self._prevLine = 0
-
-        self.autoResize()
-
-    def autoResize(self):
-        w = self.document().idealWidth() + 10
-        h = self.document().blockCount()*self.cursorRect().height() + 30
-
-        maxWidth = self.parent().width() - self.parent().cursorRect().left() - 30
-        maxHeight = self.parent().height() - self.parent().cursorRect().top() - 30
-
-        self.setFixedSize(clamp(w, 0,maxWidth), clamp(h, 0, maxHeight))
-
-    def showEvent(self, event):
-        self.autoResize()
-
 class NumberBarWidget(QWidget):
-    def __init__(self, edit, *kwargs):
-        super(NumberBarWidget, self).__init__(*kwargs)
-        self.edit = edit
+    def __init__(self, textWidget, *kwargs):
+        super().__init__(*kwargs)
+        self.textWidget = textWidget
         self.highest_line = 0
 
     def updateState(self, *args):
-        self.setFont(self.edit.font())
+        self.setFont(self.textWidget.font())
 
         width = self.fontMetrics().width(str(self.highest_line)) + 19
         self.setFixedWidth(width)
         self.update()
 
     def paintEvent(self, event):
-        contents_y = self.edit.verticalScrollBar().value()
-        page_bottom = contents_y + self.edit.viewport().height()
+        contents_y = self.textWidget.verticalScrollBar().value()
+        page_bottom = contents_y + self.textWidget.viewport().height()
         font_metrics = self.fontMetrics()
-        current_block = self.edit.document().findBlock(self.edit.textCursor().position())
+        current_block = self.textWidget.document().findBlock(self.textWidget.textCursor().position())
 
         painter = QPainter(self)
 
         line_count = 0
         # Iterate over all text blocks in the document.
-        block = self.edit.document().begin()
+        block = self.textWidget.document().begin()
         while block.isValid():
             line_count += 1
 
             # The top left position of the block in the document
-            position = self.edit.document().documentLayout().blockBoundingRect(block).topLeft()
+            position = self.textWidget.document().documentLayout().blockBoundingRect(block).topLeft()
 
             # Check if the position of the block is out side of the visible
             # area.
@@ -1273,19 +1129,19 @@ class NumberBarWidget(QWidget):
 
             block = block.next()
 
-        self.highest_line = self.edit.document().blockCount()
+        self.highest_line = self.textWidget.document().blockCount()
         painter.end()
 
         QWidget.paintEvent(self, event)
 
 class TextBlockData(QTextBlockUserData):
     def __init__(self):
-        super(TextBlockData, self).__init__()
+        super().__init__()
         self.hasBookmark = False
 
 class CodeEditorWithNumbersWidget(QWidget):
     def __init__(self, **kwargs):
-        super(CodeEditorWithNumbersWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.editorWidget = CodeEditorWidget()
 

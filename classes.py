@@ -87,19 +87,23 @@ def categorizeFilesByModTime(files):
 
 class ExitModuleException(Exception):pass
 class AttributeResolverError(Exception):pass
+class AttributeExpressionError(Exception):pass
 class ModuleNotFoundError(Exception):pass
 class CopyJsonError(Exception):pass
 
 class Attribute(object):
-    def __init__(self, name, data={}, category="", template="", connect=""):
+    def __init__(self, name, data={}, category="", template="", connect="", expression=""):
         self.name = name
         self.data = copyJson(data) # as json
         self.category = category
         self.template = template
         self.connect = connect # attribute connection, format: /a/b/c, where c is attr, a/b is a parent relative path
+        self.expression = expression # python code
+
+        self.modified = False # used by UI
 
     def copy(self):
-        return Attribute(self.name, copyJson(self.data), self.category, self.template, self.connect)
+        return Attribute(self.name, copyJson(self.data), self.category, self.template, self.connect, self.expression)
 
     def __eq__(self, other):
         if not isinstance(other, Attribute):
@@ -121,6 +125,18 @@ class Attribute(object):
         if self.hasDefault():
             self.data[self.data["default"]] = v
 
+    @staticmethod
+    def isDataSame(a, b):
+        a = dict(a)
+        b = dict(b)
+
+        if "default" in a and "default" in b:
+            a.pop(a["default"]) # remove default value
+            b.pop(b["default"])
+
+        if a == b:
+            return True       
+
     def updateFromAttribute(self, otherAttr):
         # copy default value if any
         if self.hasDefault() and otherAttr.hasDefault():
@@ -136,17 +152,24 @@ class Attribute(object):
 
         attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
 
-        header = "<attr {attribs}><![CDATA[{data}]]></attr>"
-        return header.format(attribs=attrsStr, data=json.dumps(self.data))
+        data = dict(self.data) # here data can have additional keys for storing custom data
+        if self.expression and keepConnection: # expressions are the part of neighbor modules, save them as connections
+            data["_expression"] = self.expression
 
+        header = "<attr {attribs}><![CDATA[{data}]]></attr>"
+        return header.format(attribs=attrsStr, data=json.dumps(data))
+    
     @staticmethod
     def fromXml(root):
         attr = Attribute("")
         attr.name = root.attrib["name"]
         attr.template = root.attrib["template"]
         attr.category = root.attrib["category"]
-        attr.connect = root.attrib["connect"]
+        attr.connect = root.attrib["connect"]        
         attr.data = json.loads(root.text)
+
+        # additional data
+        attr.expression = attr.data.pop("_expression", "")
         return attr
 
 class Module(object):
@@ -167,6 +190,8 @@ class Module(object):
 
         self.muted = False
         self.loadedFrom = ""
+
+        self.modified = False # used by UI
 
     def copy(self):
         module = Module(self.name)
@@ -450,7 +475,7 @@ class Module(object):
             if srcAttr:
                 return srcModule.findConnectionSourceForAttribute(srcAttr)
 
-        return attr
+        return self, attr
 
     def findModuleAndAttributeByPath(self, path):
         '''
@@ -483,12 +508,14 @@ class Module(object):
         if not attr.connect:
             return
 
-        srcAttr = self.findConnectionSourceForAttribute(attr)
+        srcMod, srcAttr = self.findConnectionSourceForAttribute(attr)
+        
         if srcAttr is not attr:
             if attr.template != srcAttr.template:
                 raise AttributeResolverError("{}: '{}' has incompatible connection template".format(self.name, attr.name))
 
             try:
+                srcMod.resolveExpression(srcAttr)
                 attr.updateFromAttribute(srcAttr)
 
             except TypeError:
@@ -497,10 +524,22 @@ class Module(object):
         else:
             raise AttributeResolverError("{}: cannot resolve connection for '{}' which is '{}'".format(self.name, attr.name, attr.connect))
 
+    def resolveExpression(self, attr):
+        if not attr.expression:
+            return
+        
+        env = {"module": ModuleWrapper(self), "ch": self.ch, "data": attr.data, "value": copyJson(attr.getDefaultValue())}
+        try:
+            exec(attr.expression, env)
+        except Exception as e:
+            raise AttributeExpressionError("{}: '{}' has invalid expression: {}".format(self.name, attr.name, str(e)))
+        else:
+            attr.setDefaultValue(env["value"])
+
     def ch(self, path, key=None):
         mod, attr = self.findModuleAndAttributeByPath(path)
         if attr:
-            attr = mod.findConnectionSourceForAttribute(attr)
+            _, attr = mod.findConnectionSourceForAttribute(attr)
             if not key:
                 return copyJson(attr.getDefaultValue())
             else:
@@ -511,7 +550,7 @@ class Module(object):
     def chset(self, path, value, key=None):
         mod, attr = self.findModuleAndAttributeByPath(path)
         if attr:
-            attr = mod.findConnectionSourceForAttribute(attr)
+            _, attr = mod.findConnectionSourceForAttribute(attr)
             if not key:
                 attr.setDefaultValue(value)
             else:
@@ -537,7 +576,8 @@ class Module(object):
 
         attrPrefix = "attr_"
         for attr in self._attributes:
-            self.resolveConnection(attr)
+            self.resolveExpression(attr)
+            self.resolveConnection(attr) # connection rewrites data
 
             attrWrapper = AttributeWrapper(self, attr)
             localEnv[attrPrefix+attr.name] = attrWrapper.get()
@@ -605,7 +645,7 @@ class AttributeWrapper(object):
 
         srcAttr = self._attr
         if self._attr.connect and self._module.parent:
-            srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
+            _, srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
 
         default = srcAttr.data.get("default")
         if default:

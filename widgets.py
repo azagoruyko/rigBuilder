@@ -7,6 +7,8 @@ import os
 import json
 import math
 from .utils import *
+from .editor import *
+from .jsonWidget import JsonWidget
 
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 
@@ -30,7 +32,7 @@ def fromSmartConversion(x):
     else:
         return json.dumps(x) if type(x) not in [str, unicode] else x
 
-class TemplateWidget(QWidget):
+class TemplateWidget(QFrame):
     somethingChanged = Signal()
     needUpdateUI = Signal()
 
@@ -46,83 +48,91 @@ class TemplateWidget(QWidget):
 
     def setJsonData(self, data):
         raise Exception("setJsonData must be implemented")
-
+    
 class EditTextDialog(QDialog):
-    def __init__(self, text="", *, title="Edit", placeholder="", **kwargs):
-        super(EditTextDialog, self).__init__(**kwargs)
+    saved = Signal(str) # emitted when user clicks OK
 
-        self.outputText = text
+    def __init__(self, text="", *, title="Edit", placeholder="", python=False):
+        super().__init__(parent=QApplication.activeWindow())
 
         self.setWindowTitle(title)
+        self.setGeometry(0, 0, 600, 400)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        self.textWidget = QTextEdit()
-        self.textWidget.setPlainText(text)
-        self.textWidget.setTabStopWidth(16)
-        self.textWidget.setAcceptRichText(False)
-        self.textWidget.setWordWrapMode(QTextOption.NoWrap)
+        if not python:
+            self.textWidget = QTextEdit()            
+            self.textWidget.setTabStopWidth(16)
+            self.textWidget.setAcceptRichText(False)
+            self.textWidget.setWordWrapMode(QTextOption.NoWrap)            
+        else:
+            self.textWidget = CodeEditorWidget()
+        
         self.textWidget.setPlaceholderText(placeholder)
+        self.textWidget.setPlainText(text)
 
         okBtn = QPushButton("OK")
-        okBtn.clicked.connect(self.okBtnClicked)
+        okBtn.clicked.connect(self.saveAndClose)
 
         layout.addWidget(self.textWidget)
         layout.addWidget(okBtn)
 
-    def okBtnClicked(self):
-        self.outputText = self.textWidget.toPlainText()
+        centerWindow(self)
+
+    def saveAndClose(self):
+        self.saved.emit(self.textWidget.toPlainText())
         self.accept()
 
 class LabelTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(LabelTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
-        self.actualText = ""
+        self._actualText = ""
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        #layout.setContentsMargins(QMargins())
 
         self.label = QLabel()
         self.label.setCursor(Qt.PointingHandCursor)
         self.label.setWordWrap(True)
-        self.label.setToolTip("You can use $ROOT as a path to Rig Builder's root directory, like $ROOT/images/icons")
         self.label.mouseDoubleClickEvent = self.labelDoubleClickEvent
 
         layout.addWidget(self.label)
 
-    def setText(self, text):
-        self.actualText = text
-        self.label.setText(self.actualText.replace("$ROOT", RootPath))
+    def setLabelText(self, text):
+        self._actualText = text
+        self.label.setText(self._actualText.replace("$ROOT", RootPath))
 
     def labelDoubleClickEvent(self, event):
-        editTextDialog = EditTextDialog(self.actualText, title="Edit text", placeholder="You can use HTML here...", parent=QApplication.activeWindow())
-        editTextDialog.exec_()
-
-        if editTextDialog.result():
-            self.setText(editTextDialog.outputText)
+        def save(text):
+            self.setLabelText(text)
             self.somethingChanged.emit()
+
+        placeholder = '<img src="$ROOT/images/icons/info.png">Description'
+        editTextDialog = EditTextDialog(self._actualText, title="Edit text", placeholder=placeholder)
+        editTextDialog.saved.connect(save)
+        editTextDialog.show()        
 
     def getDefaultData(self):
         return {"text": "Description", "default": "text"}
 
     def getJsonData(self):
-        return {"text": self.actualText, "default": "text"}
+        return {"text": self._actualText, "default": "text"}
 
     def setJsonData(self, value):
-        self.setText(value["text"])
+        self.setLabelText(value["text"])
 
 class ButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(ButtonTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
-        self.buttonCommand = "module.attr.someAttr.set(1)"
+        self.buttonCommand = ""
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.buttonWidget = QPushButton("Press me")
         self.buttonWidget.clicked.connect(self.buttonClicked)
@@ -145,10 +155,13 @@ class ButtonTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def editCommand(self):
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", parent=QApplication.activeWindow())
-        editText.exec_()
-        self.buttonCommand = editText.outputText
-        self.somethingChanged.emit()
+        def save(text):
+            self.buttonCommand = text
+            self.somethingChanged.emit()
+
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder='chset("/someAttr", 1)', python=True)
+        editText.saved.connect(save)
+        editText.show()
 
     def buttonClicked(self):
         if self.buttonCommand:
@@ -176,11 +189,11 @@ class ButtonTemplateWidget(TemplateWidget):
 
 class CheckBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(CheckBoxTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.checkBox = QCheckBox()
         self.checkBox.stateChanged.connect(self.somethingChanged)
@@ -194,11 +207,11 @@ class CheckBoxTemplateWidget(TemplateWidget):
 
 class ComboBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(ComboBoxTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.comboBox = QComboBox()
         self.comboBox.currentIndexChanged.connect(self.somethingChanged)
@@ -257,17 +270,14 @@ class ComboBoxTemplateWidget(TemplateWidget):
 
 class LineEditOptionsDialog(QDialog):
     def __init__(self, **kwargs):
-        super(LineEditOptionsDialog, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.setWindowTitle("Edit options")
 
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        glayout = QGridLayout()
-        glayout.setDefaultPositioning(2, Qt.Horizontal)
-        glayout.setColumnStretch(1, 1)
-
+        formLayout = QFormLayout()
         self.validatorWidget = QComboBox()
         self.validatorWidget.addItems(["Default", "Int", "Double"])
         self.validatorWidget.currentIndexChanged.connect(self.validatorIndexChanged)
@@ -283,16 +293,11 @@ class LineEditOptionsDialog(QDialog):
         okBtn.clicked.connect(self.accept)
         okBtn.setAutoDefault(False)
 
-        glayout.addWidget(QLabel("Validator"))
-        glayout.addWidget(self.validatorWidget)
+        formLayout.addRow("Validator", self.validatorWidget)
+        formLayout.addRow("Min", self.minWidget)
+        formLayout.addRow("Max", self.maxWidget)
 
-        glayout.addWidget(QLabel("Min"))
-        glayout.addWidget(self.minWidget)
-
-        glayout.addWidget(QLabel("Max"))
-        glayout.addWidget(self.maxWidget)
-
-        layout.addLayout(glayout)
+        layout.addLayout(formLayout)
         layout.addWidget(okBtn)
 
     def validatorIndexChanged(self, idx):
@@ -300,17 +305,20 @@ class LineEditOptionsDialog(QDialog):
         self.maxWidget.setEnabled(idx!=0)
 
 class LineEditTemplateWidget(TemplateWidget):
+    defaultMin = 0
+    defaultMax = 100
+
     def __init__(self, **kwargs):
-        super(LineEditTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.optionsDialog = LineEditOptionsDialog(parent=self)
-        self.minValue = ""
-        self.maxValue = ""
+        self.minValue = 0
+        self.maxValue = 100
         self.validator = 0
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.textWidget = QLineEdit()
         self.textWidget.editingFinished.connect(self.textChanged)
@@ -343,12 +351,12 @@ class LineEditTemplateWidget(TemplateWidget):
         menu.popup(event.globalPos())
 
     def optionsClicked(self):
-        self.optionsDialog.minWidget.setText(self.minValue)
-        self.optionsDialog.maxWidget.setText(self.maxValue)
+        self.optionsDialog.minWidget.setText(str(self.minValue))
+        self.optionsDialog.maxWidget.setText(str(self.maxValue))
         self.optionsDialog.validatorWidget.setCurrentIndex(self.validator)
         self.optionsDialog.exec_()
-        self.minValue = self.optionsDialog.minWidget.text()
-        self.maxValue = self.optionsDialog.maxWidget.text()
+        self.minValue = int(self.optionsDialog.minWidget.text() or LineEditTemplateWidget.defaultMin)
+        self.maxValue = int(self.optionsDialog.maxWidget.text() or LineEditTemplateWidget.defaultMax)
         self.validator = self.optionsDialog.validatorWidget.currentIndex()
         self.setJsonData(self.getJsonData())
 
@@ -360,58 +368,61 @@ class LineEditTemplateWidget(TemplateWidget):
                 "validator": self.validator}
 
     def setJsonData(self, data):
-        self.textWidget.setText(fromSmartConversion(data["value"]))
-
         self.validator = data.get("validator", 0)
-        self.minValue = data.get("min")
-        self.maxValue = data.get("max")
+        self.minValue = int(data.get("min") or LineEditTemplateWidget.defaultMin)
+        self.maxValue = int(data.get("max") or LineEditTemplateWidget.defaultMax)
 
         if self.validator == 1:
             self.textWidget.setValidator(QIntValidator())
         elif self.validator == 2:
             self.textWidget.setValidator(QDoubleValidator())
 
-        if self.validator and self.minValue and self.maxValue:
+        if self.validator:
             self.sliderWidget.show()
-
-            self.sliderWidget.setMinimum(int(self.minValue)*100) # slider values are int, so mult by 100
-            self.sliderWidget.setMaximum(int(self.maxValue)*100)
+            if self.minValue:
+                self.sliderWidget.setMinimum(self.minValue*100) # slider values are int, so mult by 100
+            if self.maxValue:
+                self.sliderWidget.setMaximum(self.maxValue*100)
 
             if data["value"]:
                 self.sliderWidget.setValue(float(data["value"])*100)
         else:
             self.sliderWidget.hide()
 
+        self.textWidget.setText(fromSmartConversion(data["value"]))
+
 class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(LineEditAndButtonTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.templates = {}
         if DCC == "maya":
-            self.templates["Get selected"] = "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"
+            self.templates["Get selected"] = {"label": "<", "command":"import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"}
 
-        self.templates["Get open file"] = '''from PySide2.QtWidgets import QFileDialog;import os
+        self.templates["Get open file"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
 path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
-value = path or value'''
+value = path or value'''}
 
-        self.templates["Get save file"] = '''from PySide2.QtWidgets import QFileDialog;import os
+        self.templates["Get save file"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
 path,_ = QFileDialog.getSaveFileName(None, "Save file", os.path.expandvars(value))
-value = path or value'''
+value = path or value'''}
 
-        self.templates["Get existing directory"] = '''from PySide2.QtWidgets import QFileDialog;import os
+        self.templates["Get existing directory"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
 path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
-value = path or value'''
+value = path or value'''}
 
-        self.buttonCommand = self.templates.get("Get selected", "value = 'something'")
+        defaultCmd = self.templates["Get selected"]
+
+        self.buttonCommand = defaultCmd["command"]
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.textWidget = QLineEdit()
         self.textWidget.editingFinished.connect(self.somethingChanged)
 
-        self.buttonWidget = QPushButton("<")
+        self.buttonWidget = QPushButton(defaultCmd["label"])
         self.buttonWidget.clicked.connect(self.buttonClicked)
         self.buttonWidget.contextMenuEvent = self.buttonContextMenuEvent
 
@@ -425,13 +436,14 @@ value = path or value'''
         menu.addAction("Edit command", self.editCommand)
 
         if self.templates:
-            def setText(cmd):
-                self.buttonCommand = cmd
+            def setCommand(cmd):
+                self.buttonWidget.setText(cmd["label"])
+                self.buttonCommand = cmd["command"]
                 self.somethingChanged.emit()
 
             templatesMenu = QMenu("Templates", self)
-            for k in self.templates:
-                templatesMenu.addAction(k, lambda cmd=self.templates[k]:setText(cmd))
+            for k, cmd in self.templates.items():
+                templatesMenu.addAction(k, lambda cmd=cmd:setCommand(cmd))
             menu.addMenu(templatesMenu)
 
         menu.popup(event.globalPos())
@@ -443,10 +455,13 @@ value = path or value'''
             self.somethingChanged.emit()
 
     def editCommand(self):
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", parent=QApplication.activeWindow())
-        editText.exec_()
-        self.buttonCommand = editText.outputText
-        self.somethingChanged.emit()
+        def save(text):
+            self.buttonCommand = text
+            self.somethingChanged.emit()
+            
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", python=True)
+        editText.saved.connect(save)
+        editText.show()
 
     def buttonClicked(self):
         if self.buttonCommand:
@@ -476,11 +491,11 @@ value = path or value'''
 
 class ListBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(ListBoxTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.listWidget = QListWidget()
         self.listWidget.itemDoubleClicked.connect(self.itemDoubleClicked)
@@ -504,11 +519,11 @@ class ListBoxTemplateWidget(TemplateWidget):
         menu.popup(event.globalPos())
 
     def resizeWidget(self):
-        width = self.listWidget.sizeHintForColumn(0) + 25
+        width = self.listWidget.sizeHintForColumn(0) + 50
         height = 0
         for i in range(self.listWidget.count()):
             height += self.listWidget.sizeHintForRow(i)
-        height += 2*self.listWidget.frameWidth() + 25
+        height += 2*self.listWidget.frameWidth() + 50
         self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 500))
 
     def editItem(self):
@@ -577,11 +592,13 @@ class RadioButtonTemplateWidget(TemplateWidget):
     Columns = [2,3,4,5]
 
     def __init__(self, **kwargs):
-        super(RadioButtonTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
+
+        self.numColumns = 3
 
         layout = QGridLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.buttonsGroupWidget = QButtonGroup()
         self.buttonsGroupWidget.buttonClicked.connect(self.buttonClicked)
@@ -615,8 +632,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
 
     def clearButtons(self):
-        gridLayout = self.layout()
-        clearLayout(gridLayout)
+        clearLayout(self.layout())
 
         for b in self.buttonsGroupWidget.buttons():
             self.buttonsGroupWidget.removeButton(b)
@@ -631,12 +647,12 @@ class RadioButtonTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def getDefaultData(self):
-        return {"items": ["Helpers", "Run"], "current": 0, "default": "current", "columns":3}
+        return {"items": ["Helpers", "Run"], "current": 0, "default": "current", "columns": self.numColumns}
 
     def getJsonData(self):
         return {"items": [b.text() for b in self.buttonsGroupWidget.buttons()],
                 "current": self.buttonsGroupWidget.checkedId(),
-                "columns": self.layout().columnCount(),
+                "columns": self.numColumns,
                 "default": "current"}
 
     def setJsonData(self, value):
@@ -644,13 +660,13 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
         self.clearButtons()
 
-        columns = value.get("columns", 3)
-        gridLayout.setDefaultPositioning(columns, Qt.Horizontal)
+        self.numColumns = value["columns"]
+        gridLayout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
 
         row = 0
         column = 0
         for i, item in enumerate(value["items"]):
-            if i % columns == 0 and i > 0:
+            if i % self.numColumns == 0 and i > 0:
                 row += 1
                 column = 0
 
@@ -666,11 +682,11 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
 class TableTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(TableTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.tableWidget = QTableWidget()
         self.tableWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -832,51 +848,77 @@ class TableTemplateWidget(TemplateWidget):
 
 class TextTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(TextTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
         self.textWidget = QTextEdit()
         self.textWidget.textChanged.connect(self.somethingChanged)
 
+        incSizeBtn = QPushButton("+")
+        incSizeBtn.setFixedSize(25, 25)
+        incSizeBtn.clicked.connect(self.incSize)
+        decSizeBtn = QPushButton("-")
+        decSizeBtn.setFixedSize(25, 25)
+        decSizeBtn.clicked.connect(self.decSize)
+
+        hlayout = QHBoxLayout()
+        hlayout.addWidget(decSizeBtn)
+        hlayout.addWidget(incSizeBtn)
+        hlayout.addStretch()
+
+        layout.addLayout(hlayout)
         layout.addWidget(self.textWidget)
+        layout.addStretch()
+
+    def incSize(self):
+        self.textWidget.setFixedHeight(self.textWidget.height() + 50)
+        self.somethingChanged.emit()
+
+    def decSize(self):
+        self.textWidget.setFixedHeight(self.textWidget.height() - 50)
+        self.somethingChanged.emit()
+
+    def getDefaultData(self):
+        return {"text": "", "height": 200, "default": "text"}
 
     def getJsonData(self):
         return {"text": self.textWidget.toPlainText().strip(),
+                "height": self.textWidget.height(),
                 "default": "text"}
 
     def setJsonData(self, data):
         self.textWidget.setPlainText(data["text"])
+        self.textWidget.setFixedHeight(data.get("height", self.getDefaultData()["height"]))
 
 class VectorTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(VectorTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QHBoxLayout()
         self.setLayout(layout)
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
 
-        self.xWidget = QLineEdit("0")
+        self.xWidget = QLineEdit()
         self.xWidget.setValidator(QDoubleValidator())
-        self.xWidget.editingFinished.connect(self.somethingChanged)
-
-        self.yWidget = QLineEdit("0")
+        self.xWidget.editingFinished.connect(self.somethingChanged.emit)
+        
+        self.yWidget = QLineEdit()
         self.yWidget.setValidator(QDoubleValidator())
-        self.yWidget.editingFinished.connect(self.somethingChanged)
+        self.yWidget.editingFinished.connect(self.somethingChanged.emit)
 
-        self.zWidget = QLineEdit("0")
+        self.zWidget = QLineEdit()
         self.zWidget.setValidator(QDoubleValidator())
-        self.zWidget.editingFinished.connect(self.somethingChanged)
+        self.zWidget.editingFinished.connect(self.somethingChanged.emit)
 
         layout.addWidget(self.xWidget)
         layout.addWidget(self.yWidget)
         layout.addWidget(self.zWidget)
 
     def getJsonData(self):
-        return {"value": [float(self.xWidget.text() or 0), float(self.yWidget.text() or 0), float(self.zWidget.text() or 0)],
-                "default": "value"}
+        return {"value": [float(self.xWidget.text() or 0), float(self.yWidget.text() or 0), float(self.zWidget.text() or 0)], "default": "value"}
 
     def setJsonData(self, value):
         self.xWidget.setText(str(value["value"][0]))
@@ -943,12 +985,12 @@ def evaluateBezierCurveFromX(cvs, x):
 def normalizedPoint(p, minX, maxX, minY, maxY):
     x = (p[0] - minX) / (maxX - minX)
     y = (p[1] - minY) / (maxY - minY)
-    return (x, y)
+    return [x, y]
 
 class CurvePointItem(QGraphicsItem):
     Size = 10
     def __init__(self, **kwargs):
-        super(CurvePointItem, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
 
@@ -969,7 +1011,7 @@ class CurvePointItem(QGraphicsItem):
 
     def itemChange(self, change, value):
         if not self.scene():
-            return super(CurvePointItem, self).itemChange(change, value)
+            return super().itemChange(change, value)
 
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange:
             if self.fixedX is not None:
@@ -1010,14 +1052,14 @@ class CurvePointItem(QGraphicsItem):
                 if type(view) == CurveView:
                     view.somethingChanged.emit()
 
-        return super(CurvePointItem, self).itemChange(change, value)
+        return super().itemChange(change, value)
 
 class CurveScene(QGraphicsScene):
     MaxX = 300
     MaxY = -100
     DrawCurveSamples = 33
     def __init__(self, **kwargs):
-        super(CurveScene, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.cvs = []
 
@@ -1077,7 +1119,7 @@ class CurveScene(QGraphicsScene):
 
             event.accept()
         else:
-            super(CurveScene,self).mousePressEvent(event)
+            super().mousePressEvent(event)
 
     def calculateCVs(self):
         self.cvs = []
@@ -1108,7 +1150,7 @@ class CurveScene(QGraphicsScene):
                     w = max(w1, w2)*2 - 1 # from 0 to 1, because max(w1,w2) is always >= 0.5
                     w = w ** 4
                 tg = QVector2D(items[i+1].pos() - items[i-1].pos()).normalized() * (1-w) + QVector2D(1, 0) * w
-                
+
             tangents.append(tg)
 
         for i, _ in enumerate(items):
@@ -1192,7 +1234,7 @@ class CurveView(QGraphicsView):
     somethingChanged = Signal()
 
     def __init__(self, **kwargs):
-        super(CurveView, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.TextAntialiasing, True)
@@ -1211,10 +1253,10 @@ class CurveView(QGraphicsView):
 
 class CurveTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
-        super(CurveTemplateWidget, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         layout = QVBoxLayout()
-        layout.setMargin(0)
+        layout.setContentsMargins(QMargins())
         self.setLayout(layout)
 
         self.curveView = CurveView()
@@ -1222,7 +1264,9 @@ class CurveTemplateWidget(TemplateWidget):
         layout.addWidget(self.curveView)
 
     def getDefaultData(self):
-        return {'default': 'cvs', 'cvs': [(0.0, 1.0), (0.13973423457023273, 0.722154453101879), (0.3352803473835302, -0.0019584480764515554), (0.5029205210752953, -0.0), (0.6686136807168636, 0.0019357021806590401), (0.8623842449806401, 0.7231513901834298), (1.0, 1.0)]}
+        return {'default': 'cvs', 'cvs': [[0.0, 1.0], [0.13973423457023273, 0.722154453101879], 
+                                          [0.3352803473835302, -0.0019584480764515554], [0.5029205210752953, -0.0], 
+                                          [0.6686136807168636, 0.0019357021806590401], [0.8623842449806401, 0.7231513901834298], [1.0, 1.0]]}
 
     def getJsonData(self):
         return {"cvs": self.curveView.scene().cvs, "default": "cvs"}
@@ -1240,11 +1284,81 @@ class CurveTemplateWidget(TemplateWidget):
                 if i == 0 or i == len(value["cvs"]) - 1:
                     item.fixedX = item.pos().x()
 
+class JsonTemplateWidget(TemplateWidget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        layout.setContentsMargins(QMargins())
+
+        self.jsonWidget = JsonWidget()
+        self.jsonWidget.itemChanged.connect(lambda _,__:self.somethingChanged.emit())
+        self.jsonWidget.itemMoved.connect(lambda _:self.somethingChanged.emit())
+        self.jsonWidget.itemAdded.connect(lambda _:self.somethingChanged.emit())
+        self.jsonWidget.itemRemoved.connect(lambda _:self.somethingChanged.emit())
+        self.jsonWidget.dataLoaded.connect(self.somethingChanged.emit)
+        self.jsonWidget.cleared.connect(self.somethingChanged.emit)
+        self.jsonWidget.readOnlyChanged.connect(lambda _: self.somethingChanged.emit())
+        self.jsonWidget.rootChanged.connect(lambda _: self.updateInfoLabel())
+        self.jsonWidget.itemClicked.connect(lambda _: self.updateInfoLabel())
+
+        incSizeBtn = QPushButton("+")
+        incSizeBtn.setFixedSize(25, 25)
+        incSizeBtn.clicked.connect(self.incSize)
+        decSizeBtn = QPushButton("-")
+        decSizeBtn.setFixedSize(25, 25)
+        decSizeBtn.clicked.connect(self.decSize)
+
+        self.infoLabel = QLabel()
+
+        hlayout = QHBoxLayout()
+        hlayout.addWidget(decSizeBtn)
+        hlayout.addWidget(incSizeBtn)
+        hlayout.addStretch()
+        hlayout.addWidget(self.infoLabel)
+
+        layout.addLayout(hlayout)
+        layout.addWidget(self.jsonWidget)
+        layout.addStretch()
+
+    def updateInfoLabel(self):
+        rootIndex = self.jsonWidget.rootIndex()
+        root = self.jsonWidget.itemFromIndex(rootIndex).getPath() if rootIndex != QModelIndex() else ""
+
+        item = self.jsonWidget.selectedItem()
+        path = item.getPath() if item else ""
+        self.infoLabel.setText("Root:{} Path:{}".format(root, path.replace(root,"")))
+
+    def incSize(self):
+        self.jsonWidget.setFixedHeight(self.jsonWidget.height() + 50)
+        self.somethingChanged.emit()
+
+    def decSize(self):
+        self.jsonWidget.setFixedHeight(self.jsonWidget.height() - 50)
+        self.somethingChanged.emit()
+
+    def getDefaultData(self):
+        return {"data": [{"a": 1, "b": 2}], "height":200, "readonly": False, "default": "data"}
+
+    def getJsonData(self):
+        return {"data": self.jsonWidget.toJsonList(), 
+                "height":self.jsonWidget.height(),
+                "readonly": self.jsonWidget.isReadOnly(),
+                "default": "data"}
+
+    def setJsonData(self, value):
+        self.jsonWidget.setFixedHeight(value["height"])
+        self.jsonWidget.clear()
+        self.jsonWidget.fromJsonList(value["data"])
+        self.jsonWidget.setReadOnly(value["readonly"])
+
 TemplateWidgets = {
     "button": ButtonTemplateWidget,
     "checkBox": CheckBoxTemplateWidget,
     "comboBox": ComboBoxTemplateWidget,
     "curve": CurveTemplateWidget,
+    "json": JsonTemplateWidget,
     "label": LabelTemplateWidget,
     "lineEdit": LineEditTemplateWidget,
     "lineEditAndButton": LineEditAndButtonTemplateWidget,
