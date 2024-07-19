@@ -1,72 +1,49 @@
-<module name="convertSkinTool" type="Tools/ConvertSkinTool" muted="0" uid="c7568f79334f48238ef02aacbae45fbe">
+<module name="convertSkinTool" muted="0" uid="c7568f79334f48238ef02aacbae45fbe">
 <run><![CDATA[# The script moves joints and use current deformer to get skin weights for each joint.
 
+import maya.api.OpenMaya as om
 import pymel.core as pm
-import pymel.api as api
-import maya.cmds as cmds
+import maya.mel as mel
 
-try:
-    import ngSkinTools as ng
-    ngSkinToolsAvailable = True
-except ImportError:    
-    ngSkinToolsAvailable = False
-
-geo = pm.PyNode(@sourceGeo)
-joints = [pm.PyNode(j) for j in @joints]
-
-geoFn = api.MFnMesh(geo.__apimdagpath__())
-origPoints = api.MPointArray()
-geoFn.getPoints(origPoints, api.MSpace.kWorld)
+def getMDagPath(nodeName):
+    sel = om.MSelectionList()
+    sel.add(nodeName)
+    return sel.getDagPath(0)
+    
+meshFn = om.MFnMesh(getMDagPath(@skinGeo))
+origPoints = meshFn.getPoints(om.MSpace.kWorld)
 
 skin = pm.mel.eval("findRelatedSkinCluster \"%s\""%@skinGeo)
 if not skin:
     pm.error("Cannot find skinCluster on "+@skinGeo)
+skin = pm.PyNode(skin)    
 
-skin = pm.PyNode(skin)
+beginProgress("Converting...", len(@joints))
 
-if ngSkinToolsAvailable and @ngskin_layerName:
-    ngmll = ng.mllInterface.MllInterface()
-    ngmll.setCurrentMesh(@skinGeo)
+for i, j in enumerate(@joints):
+    stepProgress(i)
+    j = pm.PyNode(j)
     
-    if ngmll.getLayersAvailable():
-        print "Init ngSkinTools layers"
-        ngmll.initLayers()    
-
-for j in joints:
-    print j
-    old_t = j.t.get()
+    old = j.ty.get()
     
-    j.ty.set(j.ty.get()+1)
+    j.ty.set(old+1)
     
     idx = skin.indexForInfluenceObject(j)
     
-    points = api.MPointArray()
-    geoFn.getPoints(points, api.MSpace.kWorld)
+    points = meshFn.getPoints(om.MSpace.kWorld)    
     
-    beginProgress("Converting %s"%j, points.length(), 0.10)
-    
-    weights = [0.0] * points.length()    
-    for i in range(points.length()):
+    for i in range(len(points)):
         w = (origPoints[i] - points[i]).length()
-        cmds.setAttr("%s.weightList[%d].weights[%d]"%(skin, i, idx), w)
-        weights[i] = w
-        stepProgress(i)
+        pm.setAttr("%s.weightList[%d].weights[%d]"%(skin, i, idx), w)
     
-    if ngSkinToolsAvailable and @ngskin_layerName:
-        getLayerIds = lambda layerName: [l[0] for l in ngmll.listLayers() if l[1] == layerName]
-        layerIds = getLayerIds(@ngskin_layerName)
-        layerId = layerIds[0] if layerIds else ngmll.createLayer(@ngskin_layerName)
-        ngmll.setInfluenceWeights(layerId, idx, weights)
-        
-    endProgress()
-    j.t.set(old_t)
+    j.ty.set(old)
+    
+endProgress()
 ]]></run>
 <attributes>
-<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "<html>\n<b>sourceGeo</b> should be deformed by a some deformer.<br>\nThat defomer must be controlled by <b>joints</b><br>\n<b>skinGeo</b> must have <b>joints</b> as influences.\n</html>\n\n"}]]></attr>
-<attr name="sourceGeo" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "head_geo"}]]></attr>
-<attr name="skinGeo" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "head_geo"}]]></attr>
-<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"default": "items", "items": ["L_eyelid_upper_1_joint", "L_eyelid_upper_2_joint"]}]]></attr>
-<attr name="ngskin_layerName" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "max": "", "validator": 0, "value": "eyelids", "min": ""}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "Make sure <b>skinGeo</b> has both skinCluster\nand a custom deformer. <u>Disable skinCluster!</u>", "default": "text"}]]></attr>
+<attr name="skinGeo" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "pCube1", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "default": "value"}]]></attr>
+<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"items": ["joint1", "joint2", "joint3", "joint4"], "default": "items"}]]></attr>
 </attributes>
 <children>
 </children>
