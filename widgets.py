@@ -411,7 +411,7 @@ value = path or value'''}
 path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
 value = path or value'''}
 
-        defaultCmd = self.templates["Get selected"]
+        defaultCmd = self.templates.get("Get selected", {"label": "<", "command": 'value = "Hello world!"'})
 
         self.buttonCommand = defaultCmd["command"]
 
@@ -1178,9 +1178,12 @@ class CurveScene(QGraphicsScene):
         self.calculateCVs()
 
         font = painter.font()
-        font.setPointSize(font.pointSize() - 4)
-        font.setPixelSize(font.pixelSize() - 4)
-        font.setPointSizeF(font.pointSizeF() - 4)
+        if font.pointSize() > 0:
+            font.setPointSize(font.pointSize() - 4)
+        elif font.pixelSize() > 0:
+            font.setPixelSize(font.pixelSize() - 4)
+        elif font.pointSizeF() > 0:
+            font.setPointSizeF(font.pointSizeF() - 4)
         painter.setFont(font)
 
         GridSize = 4
