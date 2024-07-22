@@ -1625,8 +1625,11 @@ class RigBuilderWindow(QFrame):
         selectedItems = self.treeWidget.selectedItems()
         if selectedItems:
             item = selectedItems[0]
-            code = '''import rigBuilder;rigBuilder.RigBuilderTool(r"{}").show()'''.format(item.module.getRelativePath())
-            QApplication.clipboard().setText(code)
+            if item.module.isLoadedFromLocal() or item.module.isLoadedFromServer():
+                code = '''import rigBuilder;rigBuilder.RigBuilderTool(r"{}").show()'''.format(item.module.getRelativePath())
+                QApplication.clipboard().setText(code)
+            else:
+                QMessageBox.critical(self, "RigBuilder", "Module must be loaded from local or server!")
 
     def clearAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
