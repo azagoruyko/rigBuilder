@@ -3,7 +3,7 @@ from PySide2.QtCore import *
 from PySide2.QtWidgets import *
 
 import re
-from .utils import clamp, getActions, setActionsLocalShortcut, wordAtCursor, findBracketSpans
+from .utils import clamp, getActions, setActionsLocalShortcut, wordAtCursor, findBracketSpans, fontSize, setFontSize
 
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):
@@ -126,17 +126,6 @@ class PythonHighlighter(QSyntaxHighlighter):
             return True
         else:
            return False
-
-
-
-def fontSize(font):
-    return font.pixelSize() if font.pixelSize() > 0 else font.pointSize()
-
-def setFontSize(font, size):
-    if font.pixelSize() > 0:
-        font.setPixelSize(size)
-    else:
-        font.setPointSize(size)
 
 def highlightLine(widget, line=None, *, clear=False):
     if line is None:
@@ -541,6 +530,11 @@ class CompletionWidget(QTextEdit):
 
     def showEvent(self, event):
         self.autoResize()
+
+class TextBlockData(QTextBlockUserData):
+    def __init__(self):
+        super().__init__()
+        self.hasBookmark = False
 
 class CodeEditorWidget(QTextEdit):
     editorState = {}
@@ -1133,11 +1127,6 @@ class NumberBarWidget(QWidget):
         painter.end()
 
         QWidget.paintEvent(self, event)
-
-class TextBlockData(QTextBlockUserData):
-    def __init__(self):
-        super().__init__()
-        self.hasBookmark = False
 
 class CodeEditorWithNumbersWidget(QWidget):
     def __init__(self, **kwargs):

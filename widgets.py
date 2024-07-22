@@ -1178,12 +1178,7 @@ class CurveScene(QGraphicsScene):
         self.calculateCVs()
 
         font = painter.font()
-        if font.pointSize() > 0:
-            font.setPointSize(font.pointSize() - 4)
-        elif font.pixelSize() > 0:
-            font.setPixelSize(font.pixelSize() - 4)
-        elif font.pointSizeF() > 0:
-            font.setPointSizeF(font.pointSizeF() - 4)
+        setFontSize(font, fontSize(font) - 4)        
         painter.setFont(font)
 
         GridSize = 4

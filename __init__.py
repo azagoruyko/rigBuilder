@@ -31,14 +31,13 @@ def sendToServer(module):
     '''
     Send module to server with SVN, Git, Perforce or other VCS.
     '''
-    module.sendToServer()
+    module.sendToServer() # copy file to server and add to VCS
     return True
 
 def updateFilesFromServer():
     '''
     Update files from server with SVN, Git, Perforce or other VCS.
     '''
-
     def update():
         pass
 
@@ -1821,17 +1820,18 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
     w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
     w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
     
+    w.codeEditorWidget.hide()
+    w.treeWidget.hide()
+
+    centerWindow(w)
+
     if size:
         if type(size) in [int, float]:
             size = [size, size]
         w.resize(size[0], size[1])
     else: # auto size
-        w.attributesTabWidget.adjustSize()
-        w.resize(w.attributesTabWidget.size() + QSize(50, 100))
-
-    w.codeEditorWidget.hide()
-    w.treeWidget.hide()
-    centerWindow(w)
+        w.adjustSize()
+        
     return w
 
 if not os.path.exists(RigBuilderLocalPath):

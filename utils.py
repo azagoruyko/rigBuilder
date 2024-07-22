@@ -162,6 +162,22 @@ def wordAtCursor(cursor):
 
     return (lpart[::-1]+rpart, start+1, end)
 
+def fontSize(font):
+    if font.pointSize() > 0:
+        return font.pointSize()
+    elif font.pixelSize() > 0:
+        return font.pixelSize()
+    elif font.pointSizeF() > 0:
+        return font.pointSizeF()    
+
+def setFontSize(font, size):
+    if font.pointSize() > 0:
+        font.setPointSize(size)
+    elif font.pixelSize() > 0:
+        font.setPixelSize(size)
+    elif font.pointSizeF() > 0:
+        font.setPointSizeF(size)
+
 class SearchReplaceDialog(QDialog):
     onReplace = Signal(str, str, dict) # old, new, options
 
