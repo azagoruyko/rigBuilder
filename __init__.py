@@ -668,8 +668,9 @@ class ModuleItem(QTreeWidgetItem):
                 a.modified = False
 
         if children:
-            for ch in self.module.getChildren():
-                if not ch.uid: # embeded module
+            for i in range(self.childCount()):
+                ch = self.child(i)
+                if not ch.module.uid: # embeded module
                     ch.clearModifiedFlag(attrFlag=True, moduleFlag=True, children=True)
                 else: # only direct children
                     ch.clearModifiedFlag(attrFlag=True, moduleFlag=False, children=False)
