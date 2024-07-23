@@ -1073,6 +1073,7 @@ class EditTemplateWidget(QWidget):
         self.template = template
         self.attrConnect = ""
         self.attrExpression = ""
+        self.attrModified = False
 
         layout = QHBoxLayout()
         layout.setContentsMargins(0,0,0,0)
@@ -1148,6 +1149,7 @@ class EditTemplateWidget(QWidget):
             w.nameWidget.setText(self.nameWidget.text())
             w.attrConnect = self.attrConnect
             w.attrExpression = self.attrExpression
+            w.attrModified = self.attrModified
             self.deleteLater()
 
     def upBtnClicked(self):
@@ -1159,6 +1161,7 @@ class EditTemplateWidget(QWidget):
             w.nameWidget.setText(self.nameWidget.text())
             w.attrConnect = self.attrConnect
             w.attrExpression = self.attrExpression
+            w.attrModified = self.attrModified
             self.deleteLater()
 
 class EditAttributesWidget(QWidget):
@@ -1182,6 +1185,7 @@ class EditAttributesWidget(QWidget):
                 w.templateWidget.setJsonData(a.data)
                 w.attrConnect = a.connect
                 w.attrExpression = a.expression
+                w.attrModified = a.modified
 
         layout.addLayout(self.attributesLayout)
         layout.addStretch()
@@ -1354,6 +1358,7 @@ class EditAttributesDialog(QDialog):
                 a.category = self.tabWidget.tabText(i)
                 a.connect = w.attrConnect
                 a.expression = w.attrExpression
+                a.modified = w.attrModified
                 self.moduleItem.module.addAttribute(a)
 
         self.moduleItem.module.runCode = self.tabWidget.tempRunCode
@@ -1629,7 +1634,7 @@ class RigBuilderWindow(QFrame):
                 code = '''import rigBuilder;rigBuilder.RigBuilderTool(r"{}").show()'''.format(item.module.getRelativePath())
                 QApplication.clipboard().setText(code)
             else:
-                QMessageBox.critical(self, "RigBuilder", "Module must be loaded from local or server!")
+                QMessageBox.critical(self, "Rig Builder", "Module must be loaded from local or server!")
 
     def clearAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
