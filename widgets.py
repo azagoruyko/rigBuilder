@@ -92,7 +92,7 @@ class LabelTemplateWidget(TemplateWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-        #layout.setContentsMargins(QMargins())
+        layout.setContentsMargins(QMargins())
 
         self.label = QLabel()
         self.label.setCursor(Qt.PointingHandCursor)
@@ -257,13 +257,15 @@ class ComboBoxTemplateWidget(TemplateWidget):
         return {"items": ["a", "b"], "current": "a", "default": "current"}
 
     def getJsonData(self):
-        return {"items": [self.comboBox.itemText(i) for i in range(self.comboBox.count())],
-                "current": self.comboBox.currentText(),
+        return {"items": [smartConversion(self.comboBox.itemText(i)) for i in range(self.comboBox.count())],
+                "current": smartConversion(self.comboBox.currentText()),
                 "default": "current"}
 
     def setJsonData(self, value):
         self.comboBox.clear()
-        self.comboBox.addItems(value["items"])
+
+        for item in value["items"]:
+            self.comboBox.addItem(fromSmartConversion(item))
 
         if value["current"] in value["items"]:
             self.comboBox.setCurrentIndex(value["items"].index(value["current"]))
@@ -395,9 +397,12 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        defaultCmd = {"label": "<", "command": 'value = "Hello world!"'}
+
         self.templates = {}
         if DCC == "maya":
             self.templates["Get selected"] = {"label": "<", "command":"import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"}
+            defaultCmd = self.templates["Get selected"]
 
         self.templates["Get open file"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
 path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
@@ -410,8 +415,6 @@ value = path or value'''}
         self.templates["Get existing directory"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
 path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
 value = path or value'''}
-
-        defaultCmd = self.templates.get("Get selected", {"label": "<", "command": 'value = "Hello world!"'})
 
         self.buttonCommand = defaultCmd["command"]
 
@@ -511,9 +514,13 @@ class ListBoxTemplateWidget(TemplateWidget):
         menu.addAction("Edit", self.editItem)
         menu.addAction("Sort", self.listWidget.sortItems)
         menu.addSeparator()
-        menu.addAction("Get selected from "+DCC, Callback(self.getFromDCC, False))
-        menu.addAction("Add selected from "+DCC, Callback(self.getFromDCC, True))
-        menu.addAction("Select in "+DCC, self.selectInDCC)
+        
+        if DCC in ["maya"]:
+            dccLabel = DCC.capitalize()
+            menu.addAction("Get selected from "+dccLabel, Callback(self.getFromDCC, False))
+            menu.addAction("Add selected from "+dccLabel, Callback(self.getFromDCC, True))
+            menu.addAction("Select in "+dccLabel, self.selectInDCC)
+
         menu.addAction("Clear", self.clearItems)
 
         menu.popup(event.globalPos())
@@ -580,12 +587,12 @@ class ListBoxTemplateWidget(TemplateWidget):
         return {"items": ["a", "b"], "default": "items"}
 
     def getJsonData(self):
-        return {"items": [self.listWidget.item(i).text() for i in range(self.listWidget.count())],
+        return {"items": [smartConversion(self.listWidget.item(i).text()) for i in range(self.listWidget.count())],
                 "default": "items"}
 
     def setJsonData(self, value):
         self.listWidget.clear()
-        self.listWidget.addItems([str(v) for v in value["items"]])
+        self.listWidget.addItems([fromSmartConversion(v) for v in value["items"]])
         self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):
