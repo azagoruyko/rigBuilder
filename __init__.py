@@ -1278,7 +1278,17 @@ class EditAttributesTabWidget(QTabWidget):
         self.setCurrentIndex(self.count()-1)
 
     def nameChangedCallback(self, oldName, newName):
-        if oldName.strip():
+        sameAttrs = []
+        for i in range(self.count()): # find other attributes with the same name, if any, then don't rename in code and connections
+            attrsLayout = self.widget(i).widget().attributesLayout # tab/scrollArea/EditAttributesWidget
+
+            for k in range(attrsLayout.count()):
+                w = attrsLayout.itemAt(k).widget()
+                attrName = w.nameWidget.text()
+                if attrName == oldName:
+                    sameAttrs.append(w)
+
+        if oldName.strip() and not sameAttrs:
             pairs = [("@\\b{}\\b".format(oldName), "@"+newName),
                      ("@\\bset_{}\\b".format(oldName), "@set_"+newName),
                      ("@\\b{}_data\\b".format(oldName), "@"+newName+"_data")]
