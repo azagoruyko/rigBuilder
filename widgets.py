@@ -577,7 +577,10 @@ class ListBoxTemplateWidget(TemplateWidget):
             self.listWidget.clear()
 
         def updateUI(nodes):
-            self.listWidget.addItems(nodes)
+            for n in nodes:
+                item = QListWidgetItem(n)
+                item.setForeground(jsonColor(n))
+                self.listWidget.addItem(item)
             self.resizeWidget()
             self.somethingChanged.emit()
 
@@ -591,7 +594,10 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
 
     def appendItem(self):
-        self.listWidget.addItem("newItem%d"%(self.listWidget.count()+1))
+        text = "newItem%d"%(self.listWidget.count()+1)
+        self.listWidget.addItem(text)
+        item = self.listWidget.item(self.listWidget.count()-1)
+        item.setForeground(jsonColor(text))
         self.resizeWidget()
         self.somethingChanged.emit()
 
