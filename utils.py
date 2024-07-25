@@ -6,6 +6,34 @@ from PySide2.QtGui import *
 from PySide2.QtCore import *
 from PySide2.QtWidgets import *
 
+JsonColors = {"none": QColor("#000000"),
+              "bool": QColor("#CDEB8B"),
+              "true": QColor("#82C777"),
+              "false": QColor("#CC6666"),
+              "int": QColor("#B88164"), 
+              "float": QColor("#BF994D"), 
+              "string": QColor("#BBBB88"), 
+              "list": QColor("#538A53"), 
+              "dict": QColor("#7AB1CC")}
+
+def jsonColor(value):
+    if value is None:
+        return JsonColors["none"]
+    elif value is True:
+        return JsonColors["true"]
+    elif value is False:
+        return JsonColors["false"]    
+    elif isinstance(value, int):
+        return JsonColors["int"]
+    elif isinstance(value, float):
+        return JsonColors["float"]
+    elif isinstance(value, str):
+        return JsonColors["string"]
+    elif isinstance(value, list):
+        return JsonColors["list"]
+    elif isinstance(value, dict):
+        return JsonColors["dict"]
+
 def Callback(f, *args, **kwargs):
    return lambda: f(*args, **kwargs)
 

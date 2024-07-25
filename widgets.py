@@ -234,7 +234,10 @@ class ComboBoxTemplateWidget(TemplateWidget):
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.comboBox.clear()
-            self.comboBox.addItems([x.strip() for x in newItems.split(";")])
+            for i, item in enumerate(newItems.split(";")):
+                self.comboBox.addItem(item.strip())
+                idx = self.comboBox.count()-1
+                self.comboBox.setItemData(idx, jsonColor(smartConversion(item)), Qt.ForegroundRole)
             self.somethingChanged.emit()
 
     def clearItems(self):
@@ -244,9 +247,9 @@ class ComboBoxTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def appendItem(self):
-        name, ok = QInputDialog.getText(self, "Rig Builder", "Name", QLineEdit.Normal, "")
-        if ok and name:
-            self.comboBox.addItem(name)
+        value, ok = QInputDialog.getText(self, "Rig Builder", "Value", QLineEdit.Normal, "")
+        if ok and value:
+            self.comboBox.addItem(value)
             self.somethingChanged.emit()
 
     def removeItem(self):
@@ -264,9 +267,9 @@ class ComboBoxTemplateWidget(TemplateWidget):
     def setJsonData(self, value):
         self.comboBox.clear()
 
-        for item in value["items"]:
-            self.comboBox.addItem(fromSmartConversion(item))
-
+        for i, item in enumerate(value["items"]):
+            self.comboBox.addItem(fromSmartConversion(item))     
+            self.comboBox.setItemData(i, jsonColor(item), Qt.ForegroundRole)
         if value["current"] in value["items"]:
             self.comboBox.setCurrentIndex(value["items"].index(value["current"]))
 
@@ -334,10 +337,17 @@ class LineEditTemplateWidget(TemplateWidget):
         layout.addWidget(self.textWidget)
         layout.addWidget(self.sliderWidget)
 
-    def textChanged(self):
-        if self.validator:
-            self.sliderWidget.setValue(float(self.textWidget.text())*100)
+    def colorizeText(self):
+        text = self.textWidget.text().strip()
+        color = jsonColor(smartConversion(text))
+        self.textWidget.setStyleSheet("color: {}".format(color.name()))
 
+    def textChanged(self):
+        text = self.textWidget.text().strip()
+        if self.validator:
+            self.sliderWidget.setValue(float(text)*100)
+
+        self.colorizeText()
         self.somethingChanged.emit()
 
     def sliderValueChanged(self, v):
@@ -392,6 +402,7 @@ class LineEditTemplateWidget(TemplateWidget):
             self.sliderWidget.hide()
 
         self.textWidget.setText(fromSmartConversion(data["value"]))
+        self.colorizeText()
 
 class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -423,7 +434,7 @@ value = path or value'''}
         layout.setContentsMargins(QMargins())
 
         self.textWidget = QLineEdit()
-        self.textWidget.editingFinished.connect(self.somethingChanged)
+        self.textWidget.editingFinished.connect(self.textChanged)
 
         self.buttonWidget = QPushButton(defaultCmd["label"])
         self.buttonWidget.clicked.connect(self.buttonClicked)
@@ -431,6 +442,15 @@ value = path or value'''}
 
         layout.addWidget(self.textWidget)
         layout.addWidget(self.buttonWidget)
+
+    def colorizeText(self):
+        text = self.textWidget.text().strip()
+        color = jsonColor(smartConversion(text))
+        self.textWidget.setStyleSheet("color: {}".format(color.name()))
+
+    def textChanged(self):
+        self.colorizeText()
+        self.somethingChanged.emit()
 
     def buttonContextMenuEvent(self, event):
         menu = QMenu(self)
@@ -491,6 +511,7 @@ value = path or value'''}
         self.textWidget.setText(fromSmartConversion(data["value"]))
         self.buttonCommand = data["buttonCommand"]
         self.buttonWidget.setText(data["buttonLabel"])
+        self.colorizeText()
 
 class ListBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -538,7 +559,10 @@ class ListBoxTemplateWidget(TemplateWidget):
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
             self.listWidget.clear()
-            self.listWidget.addItems([x.strip() for x in newItems.split(";")])
+            for x in newItems.split(";"):
+                item = QListWidgetItem(x.strip())
+                item.setForeground(jsonColor(smartConversion(x)))
+                self.listWidget.addItem(item)
             self.somethingChanged.emit()
             self.resizeWidget()
 
@@ -580,6 +604,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         newText, ok = QInputDialog.getText(self, "Rig Builder", "New text", QLineEdit.Normal, item.text())
         if ok:
             item.setText(newText)
+            item.setForeground(jsonColor(smartConversion(newText)))
             self.resizeWidget()
             self.somethingChanged.emit()
 
@@ -592,7 +617,10 @@ class ListBoxTemplateWidget(TemplateWidget):
 
     def setJsonData(self, value):
         self.listWidget.clear()
-        self.listWidget.addItems([fromSmartConversion(v) for v in value["items"]])
+        for v in value["items"]:
+            item = QListWidgetItem(fromSmartConversion(v))
+            item.setForeground(jsonColor(v))
+            self.listWidget.addItem(item)
         self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):
@@ -720,6 +748,7 @@ class TableTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
 
     def tableItemChanged(self, item):
+        item.setForeground(jsonColor(smartConversion(item.text())))
         self.somethingChanged.emit()
 
     def sectionDoubleClicked(self, column):
@@ -849,6 +878,7 @@ class TableTemplateWidget(TemplateWidget):
         for r, row in enumerate(items):
             for c, data in enumerate(row):
                 item = QTableWidgetItem(fromSmartConversion(data))
+                item.setForeground(jsonColor(data))
                 self.tableWidget.setItem(r, c, item)
 
         self.updateSize()

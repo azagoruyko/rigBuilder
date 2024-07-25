@@ -5,7 +5,7 @@ import json
 import re
 import os
 
-from .utils import clamp, getActions, centerWindow, setActionsLocalShortcut, SimpleUndo, SearchReplaceDialog
+from .utils import clamp, getActions, centerWindow, setActionsLocalShortcut, SimpleUndo, SearchReplaceDialog, JsonColors
 
 RootDirectory = os.path.dirname(__file__)
 
@@ -74,7 +74,7 @@ class JsonItem(QTreeWidgetItem):
     def __init__(self, jsonType, data=None):
         super().__init__()
 
-        self._editValue = None
+        self._editValue = data
 
         self.jsonType = jsonType
 
@@ -85,17 +85,6 @@ class JsonItem(QTreeWidgetItem):
 
         elif jsonType in [self.BoolType, self.IntType, self.FloatType, self.StringType]:
             self.setFlags(self.flags() | Qt.ItemIsEditable)
-
-        colors = {self.BoolType: QColor("#CDEB8B"), 
-                  self.IntType:  QColor("#B85E28"), 
-                  self.FloatType: QColor("#BF8208"), 
-                  self.StringType: QColor("#AAAA33"), 
-                  self.ListType: QColor("#008A00"), 
-                  self.DictType: QColor("#28A6E3")}
-
-        self.setForeground(0, QBrush(colors.get(jsonType, Qt.gray)))
-
-        self.setData(0, Qt.EditRole, data)
 
     def clone(self):
         item = JsonItem(self.jsonType)
@@ -113,6 +102,19 @@ class JsonItem(QTreeWidgetItem):
         super().setData(0, role, value)
 
     def data(self, _, role):
+        if role == Qt.ForegroundRole:
+            if self.jsonType == self.BoolType:
+                return JsonColors["true"] if self._editValue else JsonColors["false"]
+            else:
+                colors = {self.NoneType: JsonColors["none"],
+                          self.IntType:  JsonColors["int"],
+                          self.FloatType: JsonColors["float"],
+                          self.StringType: JsonColors["string"],
+                          self.ListType: JsonColors["list"],
+                          self.DictType: JsonColors["dict"]}
+
+                return colors.get(self.jsonType, Qt.gray)
+        
         if role == Qt.ToolTipRole:
             return str(self._editValue or "")
         
