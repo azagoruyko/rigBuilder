@@ -270,10 +270,10 @@ class SwoopSearchDialog(QDialog):
         self.resultsLineChanged()
 
     def reposition(self):
-        c = self.textWidget.mapToGlobal(self.textWidget.cursorRect().topLeft())
+        c = self.textWidget.mapToGlobal(self.textWidget.cursorRect().bottomLeft())
         w = self.resultsWidget.document().idealWidth() + 30
         h = self.resultsWidget.document().blockCount()*self.resultsWidget.cursorRect().height() + 110
-        self.setGeometry(c.x(), c.y() + fontSize(self.textWidget.font())+5, clamp(w, 0, 500), clamp(h, 0, 400))
+        self.setGeometry(c.x(), c.y()+3, clamp(w, 0, 500), clamp(h, 0, 400))
 
     def switchReplaceMode(self, value=None):
         self.replaceMode = not self.replaceMode if value is None else value
