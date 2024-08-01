@@ -1,6 +1,12 @@
-# Rig Builder
-Rig Builder is a flexible and extendable UI maker for your Python scripts. The tool can be used in any DCC which supports Qt.
+<div>
+<img src="https://img.shields.io/github/v/release/azagoruyko/rigBuilder?logoColor=green&color=green"/>
+<a href="https://github.com/azagoruyko/rigBuilder/wiki/Documentation">
+  <img src="https://img.shields.io/badge/docs-here-blue?label=docs"/>
+</a>
+</div>
+<br>
 
-![rb](https://user-images.githubusercontent.com/9614751/163259226-61f06392-d2e4-4674-909d-7a8e8a4833a4.PNG)
+Rig Builder is a flexible and extendable UI maker for your Python scripts. The tool can be used in any DCC which supports Qt/PySide framework.
 
-Full documenation lives here: https://github.com/azagoruyko/rigBuilder/wiki/Documentation
+![rb_example](https://github.com/user-attachments/assets/51961be9-ae99-4fae-aa70-1080305c286d)
+
