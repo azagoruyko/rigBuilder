@@ -189,7 +189,7 @@ class CheckBoxTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.checkBox = QCheckBox()
-        self.checkBox.stateChanged.connect(self.somethingChanged)
+        self.checkBox.stateChanged.connect(self.somethingChanged.emit)
         layout.addWidget(self.checkBox)
 
     def getJsonData(self):
@@ -207,7 +207,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.comboBox = QComboBox()
-        self.comboBox.currentIndexChanged.connect(self.somethingChanged)
+        self.comboBox.activated.connect(lambda _=None: self.somethingChanged.emit())
         self.comboBox.contextMenuEvent = self.comboBoxContextMenuEvent
         layout.addWidget(self.comboBox)
 
@@ -267,8 +267,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
             self.comboBox.setItemData(i, jsonColor(item), Qt.ForegroundRole)
             skip.append(item)
 
-        if value["current"] in value["items"]:
-            self.comboBox.setCurrentIndex(value["items"].index(value["current"]))
+        self.comboBox.setCurrentIndex(value["items"].index(value["current"]))
 
 class LineEditOptionsDialog(QDialog):
     def __init__(self, **kwargs):
@@ -559,7 +558,7 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         self.listWidget = QListWidget()
         self.listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.listWidget.itemSelectionChanged.connect(self.somethingChanged)
+        self.listWidget.itemSelectionChanged.connect(self.somethingChanged.emit)
         self.listWidget.itemChanged.connect(self.itemChanged)
         self.listWidget.contextMenuEvent = self.listContextMenuEvent
 
@@ -942,7 +941,7 @@ class TextTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.textWidget = QTextEdit()
-        self.textWidget.textChanged.connect(self.somethingChanged)
+        self.textWidget.textChanged.connect(self.somethingChanged.emit)
 
         incSizeBtn = QPushButton("+")
         incSizeBtn.setFixedSize(25, 25)
@@ -1077,7 +1076,7 @@ class VectorTemplateWidget(TemplateWidget):
             v = value["value"][i] if i < len(value["value"]) else 0.0
             widget = QLineEdit(str(round(v, self.precision)))
             widget.setValidator(validator)
-            widget.editingFinished.connect(self.somethingChanged)
+            widget.editingFinished.connect(self.somethingChanged.emit)
             widget.contextMenuEvent = lambda event, w=widget: widgetContextMenu(event, w)
             layout.addWidget(widget, i//self.numColumns, i%self.numColumns)
             self.widgets.append(widget)
@@ -1405,7 +1404,7 @@ class CurveTemplateWidget(TemplateWidget):
         self.setLayout(layout)
 
         self.curveView = CurveView()
-        self.curveView.somethingChanged.connect(self.somethingChanged)
+        self.curveView.somethingChanged.connect(self.somethingChanged.emit)
         layout.addWidget(self.curveView)
 
     def getDefaultData(self):

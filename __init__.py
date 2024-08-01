@@ -38,6 +38,7 @@ def updateFilesFromServer():
     '''
     Update files from server with SVN, Git, Perforce or other VCS.
     '''
+
     def update():
         pass
 
@@ -113,13 +114,12 @@ class AttributesWidget(QWidget):
                     self.updateWidgets()
             return localEnv
 
-        for a in attributes:
+        for idx, a in enumerate(attributes):
             templateWidget = widgets.TemplateWidgets[a.template](executor=executor)
             nameWidget = QLabel(a.name)
 
             self._attributeAndWidgets.append((a, nameWidget, templateWidget))
-            idx = len(self._attributeAndWidgets) - 1 # index of widgets
-
+            
             self.updateWidget(idx)
             self.updateWidgetStyle(idx)
 
@@ -191,14 +191,18 @@ class AttributesWidget(QWidget):
 
     def _wrapper(f):
         def inner(self, attrWidgetIndex, *args, **kwargs):
-            attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
+            attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
             with captureOutput(self.mainWindow.logWidget):
                 try:
                     return f(self, attrWidgetIndex, *args, **kwargs)
                 
                 except Exception as e:
                     print("Error: {}.{}: {}".format(self.moduleItem.module.name, attr.name, str(e)))
-                    self.mainWindow.showLog()                    
+                    widget.blockSignals(True)
+                    attr.data = widget.getJsonData()
+                    attr.modified = True
+                    widget.blockSignals(False)
+                    self.mainWindow.showLog()
 
         return inner
     
@@ -211,7 +215,7 @@ class AttributesWidget(QWidget):
         runtimeAttr = RuntimeAttribute(self.moduleItem.module, attr)
         widgetData = widget.getJsonData()
         runtimeAttr.data = copyJson(widgetData)
-        runtimeAttr.push()
+        runtimeAttr.push()        
 
         modifiedAttrs = []        
         for otherAttr in self.moduleItem.module.getAttributes():
