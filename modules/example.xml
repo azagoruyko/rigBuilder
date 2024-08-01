@@ -5,10 +5,12 @@ print("lineAttr:", @lineAttr, type(@lineAttr))
 beginProgress("Some slow operation", 10)
 for i in range(10):
     stepProgress(i)
-    time.sleep(0.2)
+    time.sleep(0.1)
 endProgress()
 
-@set_out_time(time.strftime(time.ctime()))
+@set_out_other("Hello world")
+
+chset("/out_lst", [1,2,3])
 
 # children access
 ch = module.child("child") # or module.child(0)
@@ -16,26 +18,36 @@ ch.run()
 
 ]]></run>
 <attributes>
-<attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# we can setup json data here directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})", "label": "Press me", "default": "label"}]]></attr>
+<attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# we can setup json data here directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})\n\n# or with ch/chset\nchset(\"/out_lst\", [\"a\", \"b\", \"c\"])", "label": "Press me", "default": "label"}]]></attr>
 <attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<center><h3>You can use html markup here</h3></center>", "default": "text"}]]></attr>
-<attr name="lineAttr" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
-<attr name="out_time" template="lineEdit" category="General" connect=""><![CDATA[{"value": "Sun Jun 23 08:30:22 2024", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+<attr name="lineAttr" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": 0, "max": 100, "validator": 0}]]></attr>
+<attr name="out_lst" template="listBox" category="General" connect=""><![CDATA[{"items": [], "selected": [], "default": "items"}]]></attr>
+<attr name="out_other" template="lineEdit" category="General" connect=""><![CDATA[{"value": "", "default": "value", "min": 0, "max": 100, "validator": 0}]]></attr>
+<attr name="slider" template="lineEdit" category="General" connect=""><![CDATA[{"value": 0, "default": "value", "min": 0, "max": 100, "validator": 1}]]></attr>
+<attr name="lst" template="listBox" category="Expression" connect=""><![CDATA[{"items": ["a", "b", "c"], "selected": [2], "default": "items", "_expression": "sel = listBox_selected(data)\nchset(\"/selected\", \" \".join([str(v) for v in sel]))"}]]></attr>
+<attr name="selected" template="lineEdit" category="Expression" connect=""><![CDATA[{"value": "c", "default": "value", "min": 0, "max": 100, "validator": 0}]]></attr>
 </attributes>
 <children>
 <module name="child" muted="1" uid="">
 <run><![CDATA[print("I'm a muted child, but can be run directly with Module.run")
-parent = module.parent()
-lineAttr = parent.attr.lineAttr
-print("lineAttr from child", lineAttr.get())]]></run>
+print("lineAttr = {}".format(ch("../lineAttr")))]]></run>
 <attributes>
-<attr name="time" template="lineEdit" category="General" connect="/out_time"><![CDATA[{"value": "Sun Jun 23 08:30:22 2024", "default": "value", "min": "", "max": "", "validator": 0}]]></attr>
+<attr name="input" template="lineEdit" category="General" connect="/out_other"><![CDATA[{"value": "", "default": "value", "min": 0, "max": 100, "validator": 0}]]></attr>
+<attr name="input_edited" template="lineEdit" category="General" connect=""><![CDATA[{"value": "_edited!", "default": "value", "min": 0, "max": 100, "validator": 0, "_expression": "value = ch(\"/input\") + \"_edited!\""}]]></attr>
+<attr name="slider" template="lineEdit" category="General" connect="/slider"><![CDATA[{"value": 0, "default": "value", "min": 0, "max": 100, "validator": 1, "_expression": "chset(\"/out_slider\", value+1)"}]]></attr>
+<attr name="out_slider" template="lineEdit" category="General" connect=""><![CDATA[{"value": 1, "default": "value", "min": 0, "max": 100, "validator": 0}]]></attr>
+<attr name="table" template="table" category="General" connect=""><![CDATA[{"items": [[0, 1]], "header": ["name", "value"], "default": "items", "_expression": "a = ch(\"/slider\")\nb = ch(\"/out_slider\")\nvalue = [[a,b]]"}]]></attr>
 </attributes>
 <children>
 </children>
 </module>
-<module name="anotherChild" muted="0" uid="">
-<run><![CDATA[print("I'm running indirectly when my parent is executing")]]></run>
+<module name="curve" muted="0" uid="">
+<run><![CDATA[]]></run>
 <attributes>
+<attr name="param" template="lineEdit" category="General" connect=""><![CDATA[{"value": 0.0, "default": "value", "min": 0, "max": 1, "validator": 2, "_expression": "p = curve_evaluateFromX(chdata(\"/curve\"), value)\nchset(\"/out_vec\", p)"}]]></attr>
+<attr name="curve" template="curve" category="General" connect=""><![CDATA[{"cvs": [[0.0, 1.0], [0.1364919774234294, 0.7236900971443566], [0.3293209876543207, -0.0], [0.49398148148148113, -0.0], [0.6626543209876541, -0.0], [0.8591423581319826, 0.7216353982411047], [1.0, 1.0]], "default": "cvs"}]]></attr>
+<attr name="out_vec" template="vector" category="General" connect=""><![CDATA[{"value": [0.0008004017767750135, 0.9983758855280973], "default": "value", "dimension": 2, "columns": 3, "_expression": "import maya.cmds as cmds\n\nnode = ch(\"/node\")\nif cmds.objExists(node):\n    cmds.setAttr(node+\".tx\",value[0])\n    cmds.setAttr(node+\".tz\",value[1])"}]]></attr>
+<attr name="node" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "default": "value"}]]></attr>
 </attributes>
 <children>
 </children>

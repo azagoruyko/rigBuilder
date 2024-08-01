@@ -5,7 +5,7 @@ import json
 import re
 import os
 
-from .utils import clamp, getActions, centerWindow, setActionsLocalShortcut, SimpleUndo, SearchReplaceDialog, JsonColors
+from .utils import clamp, getActions, centerWindow, setActionsLocalShortcut, SimpleUndo, SearchReplaceDialog, JsonColors, findUniqueName
 
 RootDirectory = os.path.dirname(__file__)
 
@@ -158,18 +158,6 @@ class JsonItem(QTreeWidgetItem):
         else:
             return super().data(0, role)
         
-    def findUniqueKey(self, key="key"):
-        def keyExists(k): 
-            return any([self.child(i).data(0, JsonItem.KeyRole) == k for i in range(self.childCount())])
-
-        keyNoNum = re.sub(r"\d+$", "", key) # remove trailing numbers
-        newKey = key
-        i = 1
-        while keyExists(newKey):
-            newKey = keyNoNum + str(i)
-            i += 1
-        return newKey
-    
     def getPath(self, path=""):
         parent = self.parent()
         if not parent:
@@ -234,7 +222,7 @@ class JsonWidget(QTreeWidget):
         self.setReadOnly(self._readOnly)
 
         if data:
-            self.fromJsonList([data])
+            self.loadFromJsonList(data if type(data) == list else [data])
 
     def getMenu(self):
         menu = QMenu(self)
@@ -376,7 +364,9 @@ class JsonWidget(QTreeWidget):
             if key is not None:
                 newKey, ok = QInputDialog.getText(self, "Edit key", "Key:", text=key)
                 if ok:
-                    item.setData(0, item.KeyRole, item.parent().findUniqueKey(newKey))
+                    existingKeys = set([item.parent().child(i).data(0, item.KeyRole) for i in range(item.parent().childCount())])
+                    newKey = findUniqueName(newKey, existingKeys)
+                    item.setData(0, item.KeyRole, newKey)
 
                     # undo
                     def f():
@@ -420,14 +410,14 @@ class JsonWidget(QTreeWidget):
             self.clear()
             with open(path, "r") as f:
                 d = json.load(f)
-                self.fromJsonList([d])
+                self.loadFromJsonList([d])
 
     def importFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import JSON", "", "JSON (*.json)")
         if path:
             with open(path, "r") as f:
                 d = json.load(f)
-                self.fromJsonList([d])
+                self.loadFromJsonList([d])
 
     def setRootItem(self, item=None):
         if item and item.jsonType in [item.ListType, item.DictType]:
@@ -466,23 +456,43 @@ class JsonWidget(QTreeWidget):
             self.scrollToItem(selectedItems[-1], QAbstractItemView.PositionAtCenter)
 
     def editItemData(self, item=None):
-        def saveCallback(item, data):
-            newItem = self.setItemJson(item, data)
-            self.itemChanged.emit(item, 0)
+        def saveCallback(item, newData):
+            if item:
+                newItem = self.setItemJson(item, newData)
+                self.itemChanged.emit(item, 0)
 
-            # undo
-            def f():
-                parent = newItem.parent() or self.invisibleRootItem()
-                idx = parent.indexOfChild(newItem)
-                parent.removeChild(newItem)
-                parent.insertChild(idx, item.clone())
-            self._undoSystem.push("EditData", f)            
+                # undo
+                def f():
+                    parent = newItem.parent() or self.invisibleRootItem()
+                    idx = parent.indexOfChild(newItem)
+                    parent.removeChild(newItem)
+                    parent.insertChild(idx, item.clone())
+                self._undoSystem.push("EditData", f)            
+
+            else:
+                if type(newData) != list:
+                    newData = [newData]
+
+                oldData = self.toJsonList()
+                self.clear()
+                for d in newData:
+                    item = self.itemFromJson(d)
+                    self.addTopLevelItem(item)
+                    self.itemChanged.emit(item, 0)
+
+                # undo
+                def f():
+                    self.clear()
+                    for d in oldData:
+                        self.addTopLevelItem(self.itemFromJson(d))
+                self._undoSystem.push("EditData", f)
 
         item = item or self.selectedItem()
-        if item:
-            dlg = EditJsonTextWindow(self.itemToJson(item), readOnly=self._readOnly)
-            dlg.saved.connect(lambda data: saveCallback(item, data))
-            dlg.exec_()
+        data = self.itemToJson(item) if item else self.toJsonList()
+
+        dlg = EditJsonTextWindow(data, readOnly=self._readOnly)
+        dlg.saved.connect(lambda data: saveCallback(item, data))
+        dlg.exec_()
 
     def moveItem(self, direction):
         selectedItems = self.selectedItems()
@@ -551,7 +561,8 @@ class JsonWidget(QTreeWidget):
 
         if parentItem and parentItem is not self.invisibleRootItem():
             if parentItem.jsonType == parentItem.DictType:
-                key = parentItem.findUniqueKey()
+                existingKeys = set([parentItem.child(i).data(0, parentItem.KeyRole) for i in range(parentItem.childCount())])
+                key = findUniqueName("key", existingKeys)
                 item.setData(0, item.KeyRole, key)
             elif parentItem.jsonType != parentItem.ListType:
                 return
@@ -624,13 +635,25 @@ class JsonWidget(QTreeWidget):
         return [self.itemToJson(self.topLevelItem(i)) for i in range(self.topLevelItemCount())]
 
     def fromJsonList(self, dataList):
+        items = []
         for d in dataList:
-            self.addTopLevelItem(self.itemFromJson(d))
+            item = self.itemFromJson(d)
+            self.addTopLevelItem(item)
+            items.append(item)
+        return items
 
-        self.expandItem(self.invisibleRootItem(), True)
+    def loadFromJsonList(self, dataList):
+        newItems = self.fromJsonList(dataList)
+        for item in newItems:
+            self.expandItem(item, True)
+        
+        # undo
+        def f():
+            for item in newItems:
+                self.invisibleRootItem().removeChild(item)
+        self._undoSystem.push("Load", f)
+        
         self.dataLoaded.emit()
-
-        self._undoSystem.flush()
 
     def itemToJson(self, item):
         if item.jsonType == item.ListType:

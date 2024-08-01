@@ -5,6 +5,9 @@ import glob
 import json
 import uuid
 import xml.etree.ElementTree as ET
+from .utils import copyJson
+
+ModulesAPI = {} # updated at the end
 
 if sys.version_info.major > 2:
     RigBuilderPath = os.path.dirname(__file__)
@@ -23,36 +26,6 @@ def getUidFromFile(path):
         r = re.search("uid=\"(\\w*)\"", l)
         if r:
             return r.group(1)
-
-def smartConversion(x):
-    v = None
-    try:
-        v = int(x)
-    except ValueError:
-        try:
-            v = float(x)
-        except ValueError:
-            v = str(x)
-    return v
-
-def copyJson(data):
-    if data is None:
-        return None
-
-    elif type(data) in [list, tuple]:
-        return [copyJson(x) for x in data]
-
-    elif type(data) == dict:
-        return {k:copyJson(data[k]) for k in data}
-
-    elif type(data) in [int, float, bool, str]:
-        return data
-
-    elif sys.version_info.major < 3 and type(data) is unicode: # compatibility with python 2.7
-        return data
-
-    else:
-        raise TypeError("Data of {} type is not JSON compatible: {}".format(type(data), str(data)))
 
 def calculateRelativePath(path, root):
     path = os.path.normpath(path)
@@ -103,46 +76,13 @@ class Attribute(object):
         self.modified = False # used by UI
 
     def copy(self):
-        return Attribute(self.name, copyJson(self.data), self.category, self.template, self.connect, self.expression)
-
-    def __eq__(self, other):
-        if not isinstance(other, Attribute):
-            return False
-
-        return self.name == other.name and\
-               self.data == other.data and\
-               self.category == other.category and\
-               self.template == other.template # don't compare connections
-
-    def hasDefault(self):
-        return "default" in self.data
+        return Attribute(self.name, self.data, self.category, self.template, self.connect, self.expression)
 
     def getDefaultValue(self):
-        if self.hasDefault():
-            return self.data[self.data["default"]]
+        return self.data[self.data["default"]]
 
     def setDefaultValue(self, v):
-        if self.hasDefault():
-            self.data[self.data["default"]] = v
-
-    @staticmethod
-    def isDataSame(a, b):
-        a = dict(a)
-        b = dict(b)
-
-        if "default" in a and "default" in b:
-            a.pop(a["default"]) # remove default value
-            b.pop(b["default"])
-
-        if a == b:
-            return True       
-
-    def updateFromAttribute(self, otherAttr):
-        # copy default value if any
-        if self.hasDefault() and otherAttr.hasDefault():
-            self.setDefaultValue(copyJson(otherAttr.getDefaultValue()))
-        else:
-            self.data = copyJson(otherAttr.data)
+        self.data[self.data["default"]] = v
 
     def toXml(self, *, keepConnection=True):
         attrs = [("name", self.name),
@@ -153,9 +93,9 @@ class Attribute(object):
         attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
 
         data = dict(self.data) # here data can have additional keys for storing custom data
-        if self.expression and keepConnection: # expressions are the part of neighbor modules, save them as connections
+        if self.expression:
             data["_expression"] = self.expression
-
+        
         header = "<attr {attribs}><![CDATA[{data}]]></attr>"
         return header.format(attribs=attrsStr, data=json.dumps(data))
     
@@ -207,14 +147,6 @@ class Module(object):
         module.loadedFrom = self.loadedFrom
         module.muted = self.muted
         return module
-
-    def __eq__(self, other):
-        if not isinstance(other, Module):
-            return False
-        return self.uid == other.uid and\
-               self.name == other.name and\
-               self.runCode == other.runCode and\
-               self.loadedFrom == other.loadedFrom
 
     def clearChildren(self):
         self._children = []
@@ -366,6 +298,7 @@ class Module(object):
                         origAttr.data = foundAttr.data
 
                     origAttr.connect = foundAttr.connect
+                    origAttr.expression = foundAttr.expression
 
                 newAttributes.append(origAttr)
 
@@ -472,8 +405,7 @@ class Module(object):
     def findConnectionSourceForAttribute(self, attr):
         if self.parent and attr.connect:
             srcModule, srcAttr = self.parent.findModuleAndAttributeByPath(attr.connect)
-            if srcAttr:
-                return srcModule.findConnectionSourceForAttribute(srcAttr)
+            return srcModule, srcAttr
 
         return self, attr
 
@@ -481,7 +413,7 @@ class Module(object):
         '''
         Returns (module, attribute) by path, where path is /a/b/c, where c is attr, a/b is a parent relative path
         '''
-        *moduleList, attr = path.split("/")
+        *moduleList, attrName = path.split("/")
 
         currentParent = self
         for module in moduleList:
@@ -495,94 +427,55 @@ class Module(object):
             elif module == ".":
                 continue
 
-            found = currentParent.findChild(module)
-            if found:
-                currentParent = found
+            ch = currentParent.findChild(module)
+            if ch:
+                currentParent = ch
             else:
-                return (None, None)
+                raise AttributeResolverError("Cannot resolve '{}' path".format(path))
 
-        found = currentParent.findAttribute(attr)
-        return (currentParent, found) if found else (currentParent, None)
-
-    def resolveConnection(self, attr):
-        if not attr.connect:
-            return
-
-        srcMod, srcAttr = self.findConnectionSourceForAttribute(attr)
+        attr = currentParent.findAttribute(attrName)
+        if not attr:
+            raise AttributeResolverError("Cannot find '{}' attribute".format(path))
         
-        if srcAttr is not attr:
-            if attr.template != srcAttr.template:
-                raise AttributeResolverError("{}: '{}' has incompatible connection template".format(self.name, attr.name))
+        return currentParent, attr
 
-            try:
-                srcMod.resolveExpression(srcAttr)
-                attr.updateFromAttribute(srcAttr)
-
-            except TypeError:
-                raise AttributeResolverError("{}: '{}' data is not JSON serializable".format(self.name, attr.name))
-
-        else:
-            raise AttributeResolverError("{}: cannot resolve connection for '{}' which is '{}'".format(self.name, attr.name, attr.connect))
-
-    def resolveExpression(self, attr):
+    def executeExpression(self, attr):
         if not attr.expression:
             return
         
-        env = {"module": ModuleWrapper(self), "ch": self.ch, "data": attr.data, "value": copyJson(attr.getDefaultValue())}
+        localEnv = dict(self.getEnv())
+        localEnv.update({"data": attr.data, "value": attr.getDefaultValue()})
+
         try:
-            exec(attr.expression, env)
+            exec(attr.expression, localEnv)
         except Exception as e:
-            raise AttributeExpressionError("{}: '{}' has invalid expression: {}".format(self.name, attr.name, str(e)))
+            raise AttributeExpressionError("Invalid expression: {}".format(str(e)))
         else:
-            attr.setDefaultValue(env["value"])
+            attr.setDefaultValue(localEnv["value"])
 
-    def ch(self, path, key=None):
-        mod, attr = self.findModuleAndAttributeByPath(path)
-        if attr:
-            _, attr = mod.findConnectionSourceForAttribute(attr)
-            if not key:
-                return copyJson(attr.getDefaultValue())
-            else:
-                return AttributeWrapper(self, attr).data().get(key)
-        else:
-            raise AttributeResolverError("Attribute '{}' not found".format(path))
+    def getEnv(self):        
+        mod = RuntimeModule(self)
 
-    def chset(self, path, value, key=None):
-        mod, attr = self.findModuleAndAttributeByPath(path)
-        if attr:
-            _, attr = mod.findConnectionSourceForAttribute(attr)
-            if not key:
-                attr.setDefaultValue(value)
-            else:
-                AttributeWrapper(self, attr).data()[key] = value
-        else:
-            raise AttributeResolverError("Attribute '{}' not found".format(path))
+        env = dict(ModulesAPI)
+        env.update({"module": mod, 
+                    "ch": mod.ch, 
+                    "chdata": mod.chdata, 
+                    "chset": mod.chset})
+        return env
 
-    def run(self, env, *, uiCallback=None):
+    def run(self, *, env=None, uiCallback=None):
         if self.muted:
             return
 
-        localEnv = {
-            "module": ModuleWrapper(self),
-            "ch": self.ch,
-            "chset": self.chset
-        }
-
-        for k in env:
-            if k not in localEnv: # don't overwrite locals
-                localEnv[k] = env[k]
-
-        ModuleWrapper.env = dict(env) # update environment for runtime modules
+        localEnv = dict(env or {})
+        localEnv.update(self.getEnv())
 
         attrPrefix = "attr_"
         for attr in self._attributes:
-            self.resolveExpression(attr)
-            self.resolveConnection(attr) # connection rewrites data
-
-            attrWrapper = AttributeWrapper(self, attr)
-            localEnv[attrPrefix+attr.name] = attrWrapper.get()
-            localEnv[attrPrefix+"set_"+attr.name] = attrWrapper.set
-            localEnv[attrPrefix+attr.name+"_data"] = attrWrapper.data()
+            runtimeAttr = RuntimeAttribute(self, attr)
+            localEnv[attrPrefix+attr.name] = runtimeAttr.get()
+            localEnv[attrPrefix+"set_"+attr.name] = runtimeAttr.set
+            localEnv[attrPrefix+attr.name+"_data"] = DataAccessor(RuntimeAttribute(self, attr))
 
         print("{} is running...".format(self.getPath()))
 
@@ -595,7 +488,7 @@ class Module(object):
             pass
 
         for ch in self._children:
-            ch.run(env, uiCallback=uiCallback)
+            ch.run(env=env, uiCallback=uiCallback)
 
         return localEnv
 
@@ -621,7 +514,7 @@ class Module(object):
 
         return uids
 
-# used inside modules in scripts
+# Runtime classes
 class Dict(dict):
     def __init__(self):
         pass
@@ -632,34 +525,68 @@ class Dict(dict):
     def __setattr__(self, name, value):
         self[name] = value
 
-class AttributeWrapper(object):
+class RuntimeAttribute(object):
     def __init__(self, module, attr):
         self._attr = attr
         self._module = module
 
-    def set(self, v):
-        try:
-            vcopy = copyJson(v)
-        except TypeError:
-            raise CopyJsonError("Cannot set non-JSON data for '{}' attribute (got {})".format(self._attr.name, v))
+    def pull(self):
+        if self._attr.connect:
+            srcMod, srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
 
-        srcAttr = self._attr
-        if self._attr.connect and self._module.parent:
-            _, srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
+            RuntimeAttribute(srcMod, srcAttr).pull()
+            srcMod.executeExpression(srcAttr)
+            self._attr.setDefaultValue(copyJson(srcAttr.getDefaultValue()))
 
-        default = srcAttr.data.get("default")
-        if default:
-            srcAttr.data[default] = vcopy
-        else:
-            srcAttr.data = vcopy
+        self._module.executeExpression(self._attr) # run expression on top of connection
+
+    def push(self):
+        if self._attr.connect:
+            srcMod, srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
+
+            srcAttr.setDefaultValue(copyJson(self._attr.getDefaultValue()))            
+            RuntimeAttribute(srcMod, srcAttr).push()
 
     def get(self):
-        default = self._attr.data.get("default")
-        return copyJson(self._attr.data[default] if default else self._attr.data)
+        self.pull()
+        return copyJson(self._attr.getDefaultValue())
 
-    def data(self):
+    def set(self, value):        
+        try:
+            valueCopy = copyJson(value)
+        except TypeError:
+            raise CopyJsonError("Cannot set non-JSON data (got {})".format(value))
+
+        self._attr.setDefaultValue(valueCopy)
+        self.push()
+
+    @property
+    def data(self): # data is local
         return self._attr.data
+    
+    @data.setter
+    def data(self, value): # data is local
+        self._attr.data = value
 
+class DataAccessor(): # for accessing data with @_data suffix inside a module's code
+    def __init__(self, runtimeAttr):
+        self._runtimeAttr = runtimeAttr
+
+    def __getitem__(self, name):
+        self._runtimeAttr.pull()
+        return self._runtimeAttr.data[name]
+
+    def __setitem__(self, name, value):
+        self._runtimeAttr.data[name] = value
+        self._runtimeAttr.push()
+
+    def __str__(self):
+        items = []
+        for k in self._runtimeAttr.data:
+            self._runtimeAttr.pull()
+            items.append("{}: {}".format(k, self._runtimeAttr.data[k]))
+        return "\n".join(items)
+    
 class AttrsWrapper(object): # attributes getter/setter
     def __init__(self, module):
         self._module = module
@@ -668,7 +595,7 @@ class AttrsWrapper(object): # attributes getter/setter
         module = object.__getattribute__(self, "_module")
         attr = module.findAttribute(name)
         if attr:
-            return AttributeWrapper(self._module, attr)
+            return RuntimeAttribute(self._module, attr)
         else:
             raise AttributeError("Attribute '{}' not found".format(name))
 
@@ -679,19 +606,11 @@ class AttrsWrapper(object): # attributes getter/setter
             module = object.__getattribute__(self, "_module")
             attr = module.findAttribute(name)
             if attr:
-                AttributeWrapper(self._module, attr).set(value)
+                RuntimeAttribute(self._module, attr).set(value)
             else:
                 raise AttributeError("Attribute '{}' not found".format(name))
 
-'''
-How to use wrappers inside scripts.
-module.attr.someAttr.set(10)
-module.attr.someAttr = 5
-module.parent().attr.someAttr.set(20)
-print(@attr) # module.attr.attr.get()
-@set_attr(30) # module.attr.attr.set(30)
-'''
-class ModuleWrapper(object):
+class RuntimeModule(object):
     glob = Dict() # global memory
     env = {} # default environment for module scripts
 
@@ -704,30 +623,25 @@ class ModuleWrapper(object):
 
         self.attr = AttrsWrapper(self._module)
 
-    def __eq__(self, other):
-        if not isinstance(other, ModuleWrapper):
-            return False
-        return self._module == other._module
-
     def name(self):
         return self._module.name
 
     def child(self, nameOrIndex):
         if type(nameOrIndex) == int:
-            return ModuleWrapper(self._module.getChildren()[nameOrIndex])
+            return RuntimeModule(self._module.getChildren()[nameOrIndex])
 
         elif type(nameOrIndex) == str:
             m = self._module.findChild(nameOrIndex)
             if m:
-                return ModuleWrapper(m)
+                return RuntimeModule(m)
             else:
                 raise ModuleNotFoundError("Child module '{}' not found".format(nameOrIndex))
 
     def children(self):
-        return [ModuleWrapper(ch) for ch in self._module.getChildren()]
+        return [RuntimeModule(ch) for ch in self._module.getChildren()]
 
     def parent(self):
-        return ModuleWrapper(self._module.parent) if self._module.parent else None
+        return RuntimeModule(self._module.parent) if self._module.parent else None
 
     def muted(self):
         return self._module.muted
@@ -742,10 +656,22 @@ class ModuleWrapper(object):
         return self._module.getPath()
 
     def ch(self, path, key=None):
-        return self._module.ch(path, key)
-
+        mod, attr = self._module.findModuleAndAttributeByPath(path)
+        if key:
+            return RuntimeAttribute(mod, attr).data[key]
+        else:
+            return RuntimeAttribute(mod, attr).get()
+    
+    def chdata(self, path):
+        mod, attr = self._module.findModuleAndAttributeByPath(path)
+        return copyJson(RuntimeAttribute(mod, attr).data)
+    
     def chset(self, path, value, key=None):
-        self._module.chset(path, value, key)
+        mod, attr = self._module.findModuleAndAttributeByPath(path)
+        if not key:
+            RuntimeAttribute(mod, attr).set(value)
+        else:
+            RuntimeAttribute(mod, attr).data[key] = value
 
     def run(self):
         muted = self._module.muted
@@ -753,32 +679,31 @@ class ModuleWrapper(object):
 
         env = {}
         try:
-            env = self._module.run(ModuleWrapper.env)
+            env = self._module.run(env=RuntimeModule.env)
         except:
             raise
         finally:
             self._module.muted = muted
         return env
 
-def getModuleDefaultEnv():
-    def printError(msg):
-        raise RuntimeError(msg)
+def printError(msg):
+    raise RuntimeError(msg)
 
-    def printWarning(msg):
-        print("Warning: "+msg)
+def printWarning(msg):
+    print("Warning: "+msg)
 
-    def exitModule():
-        raise ExitModuleException()
+def exitModule():
+    raise ExitModuleException()
 
-    env = {"module":None, # setup in Module.run
-           "Module": ModuleWrapper,
-           "ch": None, # setup in Module.run
-           "chset": None, # setup in Module.run
-           "copyJson": copyJson,
-           "exit": exitModule,
-           "error": printError,
-           "warning": printWarning}
-
-    return env
+ModulesAPI.update({
+    "module":None, # updated at runtime
+    "Module": RuntimeModule,
+    "ch": None, # updated at runtime
+    "chdata": None, # updated at runtime
+    "chset": None, # updated at runtime
+    "copyJson": copyJson,
+    "exit": exitModule,
+    "error": printError,
+    "warning": printWarning})
 
 Module.updateUidsCache()

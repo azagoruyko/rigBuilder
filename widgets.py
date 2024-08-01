@@ -20,25 +20,18 @@ else:
 if DCC == "maya":
     import maya.cmds as cmds
 
-def smartConversion(x):
-    try:
-        return json.loads(x)
-    except ValueError:
-        return str(x)
-
-def fromSmartConversion(x):
-    if sys.version_info.major > 2:
-        return json.dumps(x) if not isinstance(x, str) else x
-    else:
-        return json.dumps(x) if type(x) not in [str, unicode] else x
-
 class TemplateWidget(QFrame):
     somethingChanged = Signal()
-    needUpdateUI = Signal()
 
-    def __init__(self, env=None, **kwargs):
-        super(TemplateWidget, self).__init__(**kwargs)
-        self.env = env or {} # used to pass data to widgets
+    def __init__(self, *, executor=None, **kwargs):
+        super().__init__(**kwargs)
+        self.executor = executor or self._defaultExecutor # used to execute commands
+
+    def _defaultExecutor(self, cmd, env=None):
+        localEnv = dict(WidgetsAPI)
+        localEnv.update(env or {})
+        exec(cmd, localEnv)
+        return localEnv
 
     def getDefaultData(self):
         return self.getJsonData()
@@ -52,7 +45,7 @@ class TemplateWidget(QFrame):
 class EditTextDialog(QDialog):
     saved = Signal(str) # emitted when user clicks OK
 
-    def __init__(self, text="", *, title="Edit", placeholder="", python=False):
+    def __init__(self, text="", *, title="Edit", placeholder="", words=None, python=False):
         super().__init__(parent=QApplication.activeWindow())
 
         self.setWindowTitle(title)
@@ -68,6 +61,7 @@ class EditTextDialog(QDialog):
             self.textWidget.setWordWrapMode(QTextOption.NoWrap)            
         else:
             self.textWidget = CodeEditorWidget()
+            self.textWidget.words = words or []
         
         self.textWidget.setPlaceholderText(placeholder)
         self.textWidget.setPlainText(text)
@@ -159,22 +153,21 @@ class ButtonTemplateWidget(TemplateWidget):
             self.buttonCommand = text
             self.somethingChanged.emit()
 
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder='chset("/someAttr", 1)', python=True)
+        words = list(self.executor("").keys())
+    
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder='chset("/someAttr", 1)', words=words, python=True)
         editText.saved.connect(save)
         editText.show()
 
     def buttonClicked(self):
         if self.buttonCommand:
-            localEnv = dict(self.env)
-
             def f():
-                exec(self.buttonCommand, localEnv)
-                self.needUpdateUI.emit() # update UI
+                self.executor(self.buttonCommand)
 
             f()
 
     def getDefaultData(self):
-        return {"command": "module.attr.someAttr.set(1)",
+        return {"command": 'chset("/someAttr", 1)',
                 "label": "Press me",
                 "default": "label"}
 
@@ -233,11 +226,9 @@ class ComboBoxTemplateWidget(TemplateWidget):
         items = ";".join([self.comboBox.itemText(i) for i in range(self.comboBox.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
-            self.comboBox.clear()
-            for i, item in enumerate(newItems.split(";")):
-                self.comboBox.addItem(item.strip())
-                idx = self.comboBox.count()-1
-                self.comboBox.setItemData(idx, jsonColor(smartConversion(item)), Qt.ForegroundRole)
+            value = self.getJsonData()
+            value["items"] = [smartConversion(item.strip()) for item in newItems.split(";") if item.strip()]
+            self.setJsonData(value)
             self.somethingChanged.emit()
 
     def clearItems(self):
@@ -267,9 +258,15 @@ class ComboBoxTemplateWidget(TemplateWidget):
     def setJsonData(self, value):
         self.comboBox.clear()
 
+        skip = []
         for i, item in enumerate(value["items"]):
+            if item in skip: # don't add duplicates
+                continue
+
             self.comboBox.addItem(fromSmartConversion(item))     
             self.comboBox.setItemData(i, jsonColor(item), Qt.ForegroundRole)
+            skip.append(item)
+
         if value["current"] in value["items"]:
             self.comboBox.setCurrentIndex(value["items"].index(value["current"]))
 
@@ -320,6 +317,7 @@ class LineEditTemplateWidget(TemplateWidget):
         self.minValue = 0
         self.maxValue = 100
         self.validator = 0
+        self.value = ""
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -337,28 +335,30 @@ class LineEditTemplateWidget(TemplateWidget):
         layout.addWidget(self.textWidget)
         layout.addWidget(self.sliderWidget)
 
-    def colorizeText(self):
-        text = self.textWidget.text().strip()
-        color = jsonColor(smartConversion(text))
-        self.textWidget.setStyleSheet("color: {}".format(color.name()))
+    def colorizeValue(self):
+        color = jsonColor(self.value)
+        self.textWidget.setStyleSheet("QLineEdit {{ color: {} }}".format(color.name()))
 
     def textChanged(self):
         text = self.textWidget.text().strip()
         if self.validator:
             self.sliderWidget.setValue(float(text)*100)
 
-        self.colorizeText()
+        self.value = smartConversion(text)
+        self.colorizeValue()
         self.somethingChanged.emit()
 
     def sliderValueChanged(self, v):
         v /= 100.0
         if self.validator == 1: # int
             v = round(v)
+        self.value = v
         self.textWidget.setText(str(v))
         self.somethingChanged.emit()
 
     def textContextMenuEvent(self, event):
         menu = self.textWidget.createStandardContextMenu()
+        menu.addSeparator()
         menu.addAction("Options...", self.optionsClicked)
         menu.popup(event.globalPos())
 
@@ -373,7 +373,7 @@ class LineEditTemplateWidget(TemplateWidget):
         self.setJsonData(self.getJsonData())
 
     def getJsonData(self):
-        return {"value": smartConversion(self.textWidget.text().strip()),
+        return {"value": self.value,
                 "default": "value",
                 "min": self.minValue,
                 "max": self.maxValue,
@@ -383,6 +383,7 @@ class LineEditTemplateWidget(TemplateWidget):
         self.validator = data.get("validator", 0)
         self.minValue = int(data.get("min") or LineEditTemplateWidget.defaultMin)
         self.maxValue = int(data.get("max") or LineEditTemplateWidget.defaultMax)
+        self.value = data.get("value", "")
 
         if self.validator == 1:
             self.textWidget.setValidator(QIntValidator())
@@ -396,13 +397,13 @@ class LineEditTemplateWidget(TemplateWidget):
             if self.maxValue:
                 self.sliderWidget.setMaximum(self.maxValue*100)
 
-            if data["value"]:
-                self.sliderWidget.setValue(float(data["value"])*100)
+            if self.value:
+                self.sliderWidget.setValue(float(self.value)*100)
         else:
             self.sliderWidget.hide()
 
-        self.textWidget.setText(fromSmartConversion(data["value"]))
-        self.colorizeText()
+        self.textWidget.setText(fromSmartConversion(self.value))
+        self.colorizeValue()
 
 class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -428,6 +429,7 @@ path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expand
 value = path or value'''}
 
         self.buttonCommand = defaultCmd["command"]
+        self.value = ""
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -443,13 +445,13 @@ value = path or value'''}
         layout.addWidget(self.textWidget)
         layout.addWidget(self.buttonWidget)
 
-    def colorizeText(self):
-        text = self.textWidget.text().strip()
-        color = jsonColor(smartConversion(text))
-        self.textWidget.setStyleSheet("color: {}".format(color.name()))
+    def colorizeValue(self):
+        color = jsonColor(self.value)
+        self.textWidget.setStyleSheet("QLineEdit {{ color: {} }}".format(color.name()))
 
     def textChanged(self):
-        self.colorizeText()
+        self.value = smartConversion(self.textWidget.text().strip())
+        self.colorizeValue()
         self.somethingChanged.emit()
 
     def buttonContextMenuEvent(self, event):
@@ -481,37 +483,71 @@ value = path or value'''}
         def save(text):
             self.buttonCommand = text
             self.somethingChanged.emit()
-            
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", python=True)
+        
+        words = list(self.executor("").keys())
+        
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", words=words, python=True)
         editText.saved.connect(save)
         editText.show()
 
     def buttonClicked(self):
         if self.buttonCommand:
-            env = dict(self.env)
-            env["value"] = smartConversion(self.textWidget.text().strip())
-
             def f():
-                exec(self.buttonCommand, env)
-                self.textWidget.setText(fromSmartConversion(env["value"]))
+                env = {"value": smartConversion(self.textWidget.text().strip())}
+                outEnv = self.executor(self.buttonCommand, env)
+                self.value = outEnv["value"]
+                self.textWidget.setText(fromSmartConversion(self.value))
                 self.somethingChanged.emit()
 
             f()
 
     def getJsonData(self):
-        return {"value": smartConversion(self.textWidget.text().strip()),
+        return {"value": self.value,
                 "buttonCommand": self.buttonCommand,
                 "buttonLabel": self.buttonWidget.text(),
                 "default": "value"}
 
-    def setCustomText(self, value):
-        self.textWidget.setText(fromSmartConversion(value))
-
     def setJsonData(self, data):
-        self.textWidget.setText(fromSmartConversion(data["value"]))
+        self.value = data["value"]
+        self.textWidget.setText(fromSmartConversion(self.value))
         self.buttonCommand = data["buttonCommand"]
         self.buttonWidget.setText(data["buttonLabel"])
-        self.colorizeText()
+        self.colorizeValue()
+
+class ListBoxItem(QListWidgetItem):
+    ValueRole = Qt.UserRole + 1
+
+    def __init__(self, value):
+        super().__init__()
+        self._value = value
+        self.setFlags(self.flags() | Qt.ItemIsEditable)
+
+    def clone(self):
+        return ListBoxItem(copyJson(self._value))
+    
+    def data(self, role):
+        if role == Qt.ForegroundRole:
+            return jsonColor(self._value)
+        
+        elif role == Qt.DisplayRole:
+            return fromSmartConversion(self._value)
+        
+        elif role == Qt.EditRole:
+            return fromSmartConversion(self._value) # always edit as string
+        
+        elif role == ListBoxItem.ValueRole:
+            return self._value
+        
+        return super().data(role)
+
+    def setData(self, role, value):
+        if role == Qt.EditRole:
+            self._value = smartConversion(value)
+
+        elif role == ListBoxItem.ValueRole:
+            self._value = value
+
+        super().setData(role, value)
 
 class ListBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -522,7 +558,9 @@ class ListBoxTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.listWidget = QListWidget()
-        self.listWidget.itemDoubleClicked.connect(self.itemDoubleClicked)
+        self.listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.listWidget.itemSelectionChanged.connect(self.somethingChanged)
+        self.listWidget.itemChanged.connect(self.itemChanged)
         self.listWidget.contextMenuEvent = self.listContextMenuEvent
 
         layout.addWidget(self.listWidget, alignment=Qt.AlignLeft|Qt.AlignTop)
@@ -533,18 +571,30 @@ class ListBoxTemplateWidget(TemplateWidget):
         menu.addAction("Append", self.appendItem)
         menu.addAction("Remove", self.removeItem)
         menu.addAction("Edit", self.editItem)
-        menu.addAction("Sort", self.listWidget.sortItems)
+
+        def f():
+            self.listWidget.sortItems()
+            self.somethingChanged.emit()
+        menu.addAction("Sort", f)
+
         menu.addSeparator()
         
         if DCC in ["maya"]:
             dccLabel = DCC.capitalize()
             menu.addAction("Get selected from "+dccLabel, Callback(self.getFromDCC, False))
             menu.addAction("Add selected from "+dccLabel, Callback(self.getFromDCC, True))
-            menu.addAction("Select in "+dccLabel, self.selectInDCC)
+            menu.addAction("Select in "+dccLabel, Callback(self.selectInDCC, False))
+            menu.addAction("Select all in "+dccLabel, self.selectInDCC)
 
+        menu.addSeparator()
         menu.addAction("Clear", self.clearItems)
 
         menu.popup(event.globalPos())
+
+    def itemChanged(self, item):
+        self.listWidget.closePersistentEditor(item)
+        self.somethingChanged.emit()
+        self.resizeWidget()
 
     def resizeWidget(self):
         width = self.listWidget.sizeHintForColumn(0) + 50
@@ -560,14 +610,13 @@ class ListBoxTemplateWidget(TemplateWidget):
         if ok and newItems:
             self.listWidget.clear()
             for x in newItems.split(";"):
-                item = QListWidgetItem(x.strip())
-                item.setForeground(jsonColor(smartConversion(x)))
+                item = ListBoxItem(smartConversion(x.strip()))
                 self.listWidget.addItem(item)
             self.somethingChanged.emit()
             self.resizeWidget()
 
-    def selectInDCC(self):
-        items = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
+    def selectInDCC(self, allItems=True):
+        items = [self.listWidget.item(i).text() for i in range(self.listWidget.count()) if allItems or self.listWidget.item(i).isSelected()]
 
         if DCC == "maya":
             cmds.select(items)
@@ -578,9 +627,7 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         def updateUI(nodes):
             for n in nodes:
-                item = QListWidgetItem(n)
-                item.setForeground(jsonColor(n))
-                self.listWidget.addItem(item)
+                self.listWidget.addItem(ListBoxItem(n))
             self.resizeWidget()
             self.somethingChanged.emit()
 
@@ -589,15 +636,17 @@ class ListBoxTemplateWidget(TemplateWidget):
             updateUI(nodes)
 
     def clearItems(self):
-        self.listWidget.clear()
-        self.resizeWidget()
-        self.somethingChanged.emit()
+        ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        if ok:
+            self.listWidget.blockSignals(True) # avoid emitting signals by selecting items
+            self.listWidget.clear()
+            self.listWidget.blockSignals(False)
+            self.somethingChanged.emit()
+            self.resizeWidget()
 
     def appendItem(self):
-        text = "newItem%d"%(self.listWidget.count()+1)
-        self.listWidget.addItem(text)
-        item = self.listWidget.item(self.listWidget.count()-1)
-        item.setForeground(jsonColor(text))
+        text = "item%d"%(self.listWidget.count()+1)
+        self.listWidget.addItem(ListBoxItem(text))
         self.resizeWidget()
         self.somethingChanged.emit()
 
@@ -606,27 +655,25 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.resizeWidget()
         self.somethingChanged.emit()
 
-    def itemDoubleClicked(self, item):
-        newText, ok = QInputDialog.getText(self, "Rig Builder", "New text", QLineEdit.Normal, item.text())
-        if ok:
-            item.setText(newText)
-            item.setForeground(jsonColor(smartConversion(newText)))
-            self.resizeWidget()
-            self.somethingChanged.emit()
-
     def getDefaultData(self):
-        return {"items": ["a", "b"], "default": "items"}
+        return {"items": ["a", "b"], "current":0, "selected":[], "default": "items"}
 
     def getJsonData(self):
-        return {"items": [smartConversion(self.listWidget.item(i).text()) for i in range(self.listWidget.count())],
+        return {"items": [self.listWidget.item(i).data(ListBoxItem.ValueRole) for i in range(self.listWidget.count())],
+                "selected": [self.listWidget.row(item) for item in self.listWidget.selectedItems()],
                 "default": "items"}
 
     def setJsonData(self, value):
         self.listWidget.clear()
+
         for v in value["items"]:
-            item = QListWidgetItem(fromSmartConversion(v))
-            item.setForeground(jsonColor(v))
-            self.listWidget.addItem(item)
+            self.listWidget.addItem(ListBoxItem(v))
+        
+        for i in value.get("selected", []):
+            item = self.listWidget.item(i)
+            if item:
+                item.setSelected(True)
+
         self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):
@@ -653,7 +700,10 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
         columnsMenu = QMenu("Columns", self)
         for n in RadioButtonTemplateWidget.Columns:
-            columnsMenu.addAction(str(n) + " columns", Callback(self.setColumns, n))
+            action = columnsMenu.addAction(str(n) + " columns", Callback(self.setColumns, n))
+            if n == self.numColumns:
+                action.setCheckable(True)
+                action.setChecked(True)
         menu.addMenu(columnsMenu)
 
         menu.popup(event.globalPos())
@@ -666,7 +716,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
     def colorizeButtons(self):
         for b in self.buttonsGroupWidget.buttons():
-            b.setStyleSheet("background-color: #2a6931" if b.isChecked() else "")
+            b.setStyleSheet("QRadioButton {background-color: #2a6931}" if b.isChecked() else "")
 
     def buttonClicked(self, b):
         self.colorizeButtons()
@@ -698,25 +748,20 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
     def setJsonData(self, value):
         gridLayout = self.layout()
-
         self.clearButtons()
 
         self.numColumns = value["columns"]
         gridLayout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
 
-        row = 0
-        column = 0
         for i, item in enumerate(value["items"]):
-            if i % self.numColumns == 0 and i > 0:
-                row += 1
-                column = 0
-
             button = QRadioButton(item)
-            gridLayout.addWidget(button, row, column)
+            gridLayout.addWidget(button, i//self.numColumns, i%self.numColumns)
 
             self.buttonsGroupWidget.addButton(button)
             self.buttonsGroupWidget.setId(button, i)
-            column += 1
+
+        if value["current"] not in range(len(value["items"])):
+            value["current"] = 0
 
         self.buttonsGroupWidget.buttons()[value["current"]].setChecked(True)
         self.colorizeButtons()
@@ -822,8 +867,7 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.setFixedHeight(clamp(height, headerHeight+100, 500))
 
     def clearAll(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Really remove all elements?",
-                                  QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        ok = QMessageBox.question(self, "Rig Builder", "Really remove all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
             self.tableWidget.clearContents()
             self.tableWidget.setRowCount(1)
@@ -940,33 +984,103 @@ class VectorTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        layout = QHBoxLayout()
+        self.vectorDim = 3
+        self.numColumns = 3
+        self.precision = 4
+        self.widgets = []
+
+        layout = QGridLayout()        
         self.setLayout(layout)
         layout.setContentsMargins(QMargins())
 
-        self.xWidget = QLineEdit()
-        self.xWidget.setValidator(QDoubleValidator())
-        self.xWidget.editingFinished.connect(self.somethingChanged.emit)
-        
-        self.yWidget = QLineEdit()
-        self.yWidget.setValidator(QDoubleValidator())
-        self.yWidget.editingFinished.connect(self.somethingChanged.emit)
+        self.setJsonData(self.getDefaultData())
 
-        self.zWidget = QLineEdit()
-        self.zWidget.setValidator(QDoubleValidator())
-        self.zWidget.editingFinished.connect(self.somethingChanged.emit)
+    def createMenu(self):
+        menu = QMenu(self)
 
-        layout.addWidget(self.xWidget)
-        layout.addWidget(self.yWidget)
-        layout.addWidget(self.zWidget)
+        vectorDimMenu = menu.addMenu("Dimension")
+        for size in range(2, 17):
+            action = vectorDimMenu.addAction(str(size)+"D", Callback(self.setSizes, size, self.numColumns))
+            if size == self.vectorDim:
+                action.setCheckable(True)
+                action.setChecked(True)
+
+        numColumnsMenu = menu.addMenu("Columns")        
+        for size in range(2, 8):
+            action = numColumnsMenu.addAction(str(size), Callback(self.setSizes, self.vectorDim, size))
+            if size == self.numColumns:
+                action.setCheckable(True)
+                action.setChecked(True)
+
+        precisionMenu = menu.addMenu("Precision")        
+        for n in range(0, 8):
+            action = precisionMenu.addAction(str(n), Callback(self.setPrecision, n))
+            if n == self.precision:
+                action.setCheckable(True)
+                action.setChecked(True)
+
+        return menu
+
+    def contextMenuEvent(self, event):
+        menu = self.createMenu()
+        menu.popup(event.globalPos())
+
+    def setSizes(self, vectorDim, numColumns):
+        self.vectorDim = vectorDim
+        self.numColumns = numColumns
+        self.setJsonData(self.getJsonData())
+        self.somethingChanged.emit()
+
+    def setPrecision(self, prec):
+        self.precision = prec
+        self.setJsonData(self.getJsonData())
+        self.somethingChanged.emit()
+
+    def getDefaultData(self):
+        return {"value": [0.0, 0.0, 0.0], "default": "value", "dimension": self.vectorDim, "columns": self.numColumns, "precision": self.precision}
 
     def getJsonData(self):
-        return {"value": [float(self.xWidget.text() or 0), float(self.yWidget.text() or 0), float(self.zWidget.text() or 0)], "default": "value"}
+        return {"value": [float(w.text() or 0.0) for w in self.widgets], 
+                "default": "value", 
+                "dimension": self.vectorDim,
+                "precision": self.precision,
+                "columns": self.numColumns}
 
     def setJsonData(self, value):
-        self.xWidget.setText(str(value["value"][0]))
-        self.yWidget.setText(str(value["value"][1]))
-        self.zWidget.setText(str(value["value"][2]))
+        def widgetContextMenu(event, w):            
+            stdMenu = w.createStandardContextMenu()
+            stdMenu.addSeparator()
+
+            menu = self.createMenu()            
+            for a in menu.actions():
+                stdMenu.addAction(a)
+            stdMenu.popup(event.globalPos())
+
+        for w in self.widgets:
+            w.hide()
+
+        self.widgets = []
+
+        layout = self.layout()
+        clearLayout(layout)
+
+        self.numColumns = value.get("columns", self.numColumns)
+        layout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
+
+        self.vectorDim = value.get("dimension", self.vectorDim)
+        self.precision = value.get("precision", self.precision)
+
+        validator = QDoubleValidator()
+        validator.setDecimals(self.precision)        
+        
+        for i in range(self.vectorDim):
+            v = value["value"][i] if i < len(value["value"]) else 0.0
+            widget = QLineEdit(str(round(v, self.precision)))
+            widget.setValidator(validator)
+            widget.editingFinished.connect(self.somethingChanged)
+            widget.contextMenuEvent = lambda event, w=widget: widgetContextMenu(event, w)
+            layout.addWidget(widget, i//self.numColumns, i%self.numColumns)
+            self.widgets.append(widget)
 
 def listLerp(lst1, lst2, coeff):
     return [p1*(1-coeff) + p2*coeff for p1, p2 in zip(lst1, lst2)]
@@ -1088,13 +1202,6 @@ class CurvePointItem(QGraphicsItem):
                 elif value.y() < CurveScene.MaxY:
                     value.setY(CurveScene.MaxY)
 
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            scene = self.scene()
-            scene.calculateCVs()
-            for view in scene.views():
-                if type(view) == CurveView:
-                    view.somethingChanged.emit()
-
         return super().itemChange(change, value)
 
 class CurveScene(QGraphicsScene):
@@ -1139,30 +1246,27 @@ class CurveScene(QGraphicsScene):
         item.setPos(pos)
         self.addItem(item)
 
-        self.calculateCVs()
-
-        for view in self.views():
-            if type(view) == CurveView:
-                view.somethingChanged.emit()
-
     def mousePressEvent(self, event):
+        self._oldCvs = self.cvs[:]
+
         if event.button() == Qt.RightButton:
-            somethingChanged = False
             for item in self.selectedItems():
                 if item.fixedX is None: # don't remove tips
                     self.removeItem(item)
-                    somethingChanged = True
-
-            if somethingChanged:
-                self.calculateCVs()
-
-                for view in self.views():
-                    if type(view) == CurveView:
-                        view.somethingChanged.emit()
 
             event.accept()
         else:
             super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+
+        self.calculateCVs()
+
+        if self.cvs != self._oldCvs:
+            for view in self.views():
+                if type(view) == CurveView:
+                    view.somethingChanged.emit()
 
     def calculateCVs(self):
         self.cvs = []
@@ -1187,7 +1291,7 @@ class CurveScene(QGraphicsScene):
                 else:
                     d1 = abs(y - prevy)
                     d2 = abs(y - nexty)
-                    s = d1 + d2
+                    s = d1 + d2 + 1e-5
                     w1 = d1 / s
                     w2 = d2 / s
                     w = max(w1, w2)*2 - 1 # from 0 to 1, because max(w1,w2) is always >= 0.5
@@ -1391,7 +1495,7 @@ class JsonTemplateWidget(TemplateWidget):
     def setJsonData(self, value):
         self.jsonWidget.setFixedHeight(value["height"])
         self.jsonWidget.clear()
-        self.jsonWidget.fromJsonList(value["data"])
+        self.jsonWidget.loadFromJsonList(value["data"])
         self.jsonWidget.setReadOnly(value["readonly"])
 
 TemplateWidgets = {
@@ -1409,11 +1513,39 @@ TemplateWidgets = {
     "text": TextTemplateWidget,
     "vector": VectorTemplateWidget}
 
+def curve_evaluate(data, param):
+    return evaluateBezierCurve(data["cvs"], param)
+
+def curve_evaluateFromX(data, param): 
+    return evaluateBezierCurveFromX(data["cvs"], param)
+
+def listBox_setSelected(data, indices):
+    data["selected"] = indices
+
+def listBox_selected(data):
+    return [data["items"][idx] for idx in data["selected"] if idx < len(data["items"])]    
+
+def comboBox_items(data):
+    return data["items"]
+
+def comboBox_setItems(data, items):
+    data["items"] = items
+
 WidgetsAPI = {
-    "evaluateBezierCurve": evaluateBezierCurve,
-    "evaluateBezierCurveFromX": evaluateBezierCurveFromX,
     "listLerp": listLerp,
     "clamp": clamp,
     "smartConversion": smartConversion,
     "fromSmartConversion": fromSmartConversion,
+
+    # data based
+    "curve_evaluate": curve_evaluate,
+    "curve_evaluateFromX": curve_evaluateFromX,
+    "listBox_selected": listBox_selected,
+    "listBox_setSelected": listBox_setSelected,
+    "comboBox_items": comboBox_items,
+    "comboBox_setItems": comboBox_setItems,
+
+    # obsolete
+    "evaluateBezierCurve": evaluateBezierCurve,
+    "evaluateBezierCurveFromX": evaluateBezierCurveFromX,
 }

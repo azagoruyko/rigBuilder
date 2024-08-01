@@ -95,11 +95,26 @@ class AttributesWidget(QWidget):
         layout.setColumnStretch(1, 1)
         self.setLayout(layout)
 
-        globEnv = self.mainWindow.getModuleGlobalEnv()
-        globEnv.update({"module": ModuleWrapper(self.moduleItem.module), "ch": self.moduleItem.module.ch, "chset": self.moduleItem.module.chset})
+        def executor(cmd, env=None):
+            envUI = self.mainWindow.getEnvUI()
+            RuntimeModule.env = envUI # update environment for runtime modules
+
+            localEnv = dict(envUI)
+            localEnv.update(self.moduleItem.module.getEnv())
+            localEnv.update(env or {})
+
+            with captureOutput(self.mainWindow.logWidget):
+                try:
+                    exec(cmd, localEnv)
+                except Exception as e:
+                    print("Error: "+str(e))
+                    self.mainWindow.showLog()
+                else:
+                    self.updateWidgets()
+            return localEnv
 
         for a in attributes:
-            templateWidget = widgets.TemplateWidgets[a.template](env=globEnv)
+            templateWidget = widgets.TemplateWidgets[a.template](executor=executor)
             nameWidget = QLabel(a.name)
 
             self._attributeAndWidgets.append((a, nameWidget, templateWidget))
@@ -109,7 +124,6 @@ class AttributesWidget(QWidget):
             self.updateWidgetStyle(idx)
 
             templateWidget.somethingChanged.connect(lambda idx=idx: self.widgetOnChange(idx))
-            templateWidget.needUpdateUI.connect(self.updateWidgets)
 
             nameWidget.setAlignment(Qt.AlignRight)
             nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
@@ -157,10 +171,17 @@ class AttributesWidget(QWidget):
 
         if attr.connect:
             menu.addAction("Break connection", Callback(self.disconnectAttr, attrWidgetIndex))
-            menu.addSeparator()
+
+        menu.addSeparator()
 
         menu.addAction("Edit data", Callback(self.editData, attrWidgetIndex))
+        menu.addSeparator()
         menu.addAction("Edit expression", Callback(self.editExpression, attrWidgetIndex))
+
+        if attr.expression:
+            menu.addAction("Evaluate expression", Callback(self.updateWidget, attrWidgetIndex))
+            menu.addAction("Clear expression", Callback(self.clearExpression, attrWidgetIndex))
+
         menu.addSeparator()
         menu.addAction("Expose", Callback(self.exposeAttr, attrWidgetIndex))
         menu.addSeparator()
@@ -168,46 +189,59 @@ class AttributesWidget(QWidget):
 
         menu.popup(event.globalPos())
 
+    def _wrapper(f):
+        def inner(self, attrWidgetIndex, *args, **kwargs):
+            attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
+            with captureOutput(self.mainWindow.logWidget):
+                try:
+                    return f(self, attrWidgetIndex, *args, **kwargs)
+                
+                except Exception as e:
+                    print("Error: {}.{}: {}".format(self.moduleItem.module.name, attr.name, str(e)))
+                    self.mainWindow.showLog()                    
+
+        return inner
+    
+    @_wrapper
     def widgetOnChange(self, attrWidgetIndex):
         attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
 
-        newData = widget.getJsonData()
-        oldData = copyJson(attr.data)
-        attr.data = newData
+        previousAttrsData = {id(otherAttr): copyJson(otherAttr.data) for otherAttr in self.moduleItem.module.getAttributes()}
 
-        if attr.connect:
-            _, srcAttr = self.moduleItem.module.findConnectionSourceForAttribute(attr)
-            if srcAttr:
-                srcAttr.updateFromAttribute(attr)
-        else:
-            if not Attribute.isDataSame(oldData, newData): # compare without value and expression
-                self.moduleItem.module.modified = True
-                self.moduleItem.emitDataChanged()
+        runtimeAttr = RuntimeAttribute(self.moduleItem.module, attr)
+        widgetData = widget.getJsonData()
+        runtimeAttr.data = copyJson(widgetData)
+        runtimeAttr.push()
 
-            if oldData != newData and not attr.expression: # compare with default value
-                attr.modified = True
-                self.updateWidgetStyle(attrWidgetIndex)
+        modifiedAttrs = []        
+        for otherAttr in self.moduleItem.module.getAttributes():
+            RuntimeAttribute(self.moduleItem.module, otherAttr).pull()
 
+            if otherAttr.data != previousAttrsData[id(otherAttr)]:
+                otherAttr.modified = True
+                modifiedAttrs.append(otherAttr)
+
+        for idx, (otherAttr, _, _) in enumerate(self._attributeAndWidgets): # update attributes' widgets
+            if otherAttr in modifiedAttrs:
+                self.updateWidget(idx)
+                self.updateWidgetStyle(idx)
+
+        if attr.data != widgetData:
+            widget.blockSignals(True)
+            widget.setJsonData(attr.data)
+            widget.blockSignals(False)
+            self.updateWidgetStyle(attrWidgetIndex)       
+
+    @_wrapper
     def updateWidget(self, attrWidgetIndex):
         attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
 
-        with captureOutput(self.mainWindow.logWidget):
-            error = None
-            try:
-                self.moduleItem.module.resolveExpression(attr)
-                self.moduleItem.module.resolveConnection(attr)
-                widget.setJsonData(attr.data)
-            except AttributeExpressionError as e:
-                error = "Error: " + str(e)
-            except Exception as e:
-                error = "Error: '{}' has invalid or incompatible JSON data".format(attr.name)
+        runtimeAttr = RuntimeAttribute(self.moduleItem.module, attr)
+        runtimeAttr.pull()
 
-            if error:
-                print(error)
-                attr.data = widget.getDefaultData()
-                widget.setJsonData(attr.data)
-                self.mainWindow.showLog()
-                self.mainWindow.logWidget.ensureCursorVisible()
+        widget.blockSignals(True)
+        widget.setJsonData(runtimeAttr.data)
+        widget.blockSignals(False)
 
     def updateWidgets(self):
         for i in range(len(self._attributeAndWidgets)):
@@ -221,15 +255,16 @@ class AttributesWidget(QWidget):
         if attr.connect:
             tooltip.append("Connect: "+attr.connect)
         if attr.expression:
-            tooltip.append("Expression:\n"+attr.expression)
+            tooltip.append("Expression:\n" + attr.expression)
 
-        if attr.connect:
-            style = "TemplateWidget {border: 4px solid #6e6e39; background-color: #6e6e39}"
-        elif attr.expression:
-            style = "TemplateWidget {border: 4px solid #632094; background-color: #632094}"
-
-        if attr.expression and attr.connect: # both, invalid
-            style = "TemplateWidget {border: 4px solid #781656; background-color: #781656}"
+        if attr.connect and not attr.expression: # only connection
+            style = "TemplateWidget { border: 4px solid #6e6e39; background-color: #6e6e39 }"
+        
+        elif attr.expression and not attr.connect: # only expression
+            style = "TemplateWidget { border: 4px solid #632094; background-color: #632094 }"
+        
+        elif attr.expression and attr.connect: # both
+            style = "TemplateWidget { border: 4px solid rgb(0,0,0,0); background: QLinearGradient( x1: 0, y1: 0, x2: 1, y2:0, stop: 0 #6e6e39, stop: 1 #632094);}"
 
         nameWidget.setText(attr.name+("*" if attr.modified else ""))
 
@@ -271,23 +306,29 @@ class AttributesWidget(QWidget):
     def editExpression(self, attrWidgetIndex):
         def save(text):
             attr.expression = text
-            self.updateWidget(attrWidgetIndex)
+            self.updateWidgets()
             self.updateWidgetStyle(attrWidgetIndex)
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
+        words = set(self.mainWindow.getEnvUI().keys()) | set(self.moduleItem.module.getEnv().keys())
         placeholder = '# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]'
-        w = widgets.EditTextDialog(attr.expression, title="Edit expression for '{}'".format(attr.name), placeholder=placeholder, python=True)
+        w = widgets.EditTextDialog(attr.expression, title="Edit expression for '{}'".format(attr.name), placeholder=placeholder, words=words, python=True)
         w.saved.connect(save)
         w.show()
 
+    def clearExpression(self, attrWidgetIndex):
+        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
+        attr.expression = ""
+        self.updateWidgetStyle(attrWidgetIndex)
+
     def resetAttr(self, attrWidgetIndex):
-        attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
+        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         tmp = widgets.TemplateWidgets[attr.template]()
         attr.data = tmp.getDefaultData()
         attr.connect = ""
-        widget.setJsonData(attr.data)
+        self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 
     def disconnectAttr(self, attrWidgetIndex):
@@ -296,10 +337,9 @@ class AttributesWidget(QWidget):
         self.updateWidgetStyle(attrWidgetIndex)
 
     def connectAttr(self, connect, attrWidgetIndex):
-        attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
+        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
         attr.connect = connect
-        self.moduleItem.module.resolveConnection(attr)
-        widget.setJsonData(attr.data)
+        self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 
 class AttributesTabWidget(QTabWidget):
@@ -562,7 +602,10 @@ class ModuleItem(QTreeWidgetItem):
         self.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
 
     def clone(self):
-        return ModuleItem(self.module.copy())
+        item = ModuleItem(self.module.copy())
+        for i in range(self.childCount()):
+            item.addChild(self.child(i).clone())
+        return item
 
     def data(self, column, role):
         if column == 0: # name
@@ -650,6 +693,9 @@ class ModuleItem(QTreeWidgetItem):
         if column == 0:
             if role == Qt.EditRole:
                 newName = replaceSpecialChars(value).strip()
+                if self.parent():
+                    existingNames = set([ch.name for ch in self.parent().module.getChildren()])
+                    newName = findUniqueName(newName, existingNames)
 
                 connections = self._saveConnections(self.module) # rename in connections
                 self.module.name = newName
@@ -732,7 +778,6 @@ class TreeWidget(QTreeWidget):
 
         if event.mouseButtons() == Qt.MiddleButton:
             self.dragItems = self.selectedItems()
-            self.dragParents = [item.parent() for item in self.dragItems]
         else:
             event.ignore()
 
@@ -743,6 +788,11 @@ class TreeWidget(QTreeWidget):
             event.setDropAction(Qt.CopyAction)
 
     def dropEvent(self, event):
+        for item in self.dragItems:
+            if item.parent():
+                item.parent().module.modified = True
+                item.parent().emitDataChanged()
+            
         super().dropEvent(event)
 
         if event.mimeData().hasUrls():
@@ -760,23 +810,20 @@ class TreeWidget(QTreeWidget):
                         print(e)
                         print("Error '{}': invalid module".format(path))
                         self.mainWindow.showLog()
-                        self.mainWindow.logWidget.ensureCursorVisible()
-
-        if self.dragItems:
-            for oldParent, item in zip(self.dragParents, self.dragItems):
-                if oldParent:
-                    oldParent.module.removeChild(item.module)
+        else:
+            for item in self.dragItems:
+                if item.module.parent: # remove from old parent
+                    item.module.parent.removeChild(item.module)
 
                 newParent = item.parent()
                 if newParent:
-                    if item.module in newParent.module.getChildren():
-                        newParent.module.removeChild(item.module)
-
                     idx = newParent.indexOfChild(item)
                     newParent.module.insertChild(idx, item.module)
+                    
+                    newParent.module.modified = True
+                    newParent.emitDataChanged()
 
             self.dragItems = []
-            self.dragParents = []
 
     def makeItemFromModule(self, module):
         item = ModuleItem(module)
@@ -844,7 +891,6 @@ class TreeWidget(QTreeWidget):
         except ET.ParseError:
             print("Error '{}': invalid module".format(filePath))
             self.mainWindow.showLog()
-            self.mainWindow.logWidget.ensureCursorVisible()
 
     def saveModule(self):
         selectedItems = self.selectedItems()
@@ -942,10 +988,12 @@ class TreeWidget(QTreeWidget):
     def duplicateModule(self):
         newItems = []
         for item in self.selectedItems():
-            parent = item.parent()
-
             newItem = self.makeItemFromModule(item.module.copy())
+            if item.parent():
+                existingNames = set([ch.name for ch in item.parent().module.getChildren()])
+                newItem.module.name = findUniqueName(item.module.name, existingNames)
 
+            parent = item.parent()
             if parent:
                 parent.addChild(newItem)
                 parent.module.addChild(newItem.module)
@@ -973,6 +1021,9 @@ class TreeWidget(QTreeWidget):
             if parent:
                 parent.removeChild(item)
                 parent.module.removeChild(item.module)
+
+                parent.module.modified = True
+                parent.emitDataChanged()
             else:
                 self.invisibleRootItem().removeChild(item)
 
@@ -1150,6 +1201,7 @@ class EditTemplateWidget(QWidget):
             w.nameWidget.setText(self.nameWidget.text())
             w.attrConnect = self.attrConnect
             w.attrExpression = self.attrExpression
+            w.attrCallback = self.attrCallback
             w.attrModified = self.attrModified
             self.deleteLater()
 
@@ -1162,6 +1214,7 @@ class EditTemplateWidget(QWidget):
             w.nameWidget.setText(self.nameWidget.text())
             w.attrConnect = self.attrConnect
             w.attrExpression = self.attrExpression
+            w.attrCallback = self.attrCallback
             w.attrModified = self.attrModified
             self.deleteLater()
 
@@ -1417,14 +1470,14 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.moduleItem:
             return
 
-        words = list(self.mainWindow.getModuleGlobalEnv().keys())
-        words.extend(list(widgets.WidgetsAPI.keys()))
+        words = set(self.mainWindow.getEnvUI().keys()) | set(self.moduleItem.module.getEnv().keys())
 
         for a in self.moduleItem.module.getAttributes():
-            words.append("@" + a.name)
-            words.append("@set_" + a.name)
+            words.add("@" + a.name)
+            words.add("@" + a.name + "_data")
+            words.add("@set_" + a.name)
 
-        self.editorWidget.words = set(words)
+        self.editorWidget.words = words
 
 class LogHighligher(QSyntaxHighlighter):
     def __init__(self, parent):
@@ -1567,7 +1620,7 @@ class RigBuilderWindow(QFrame):
 
         self.runBtn = QPushButton("Run!")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
-        self.runBtn.clicked.connect(self.runModulesBtnClicked)
+        self.runBtn.clicked.connect(self.runModuleClicked)
         self.runBtn.hide()
 
         self.infoWidget = QTextBrowser()
@@ -1636,7 +1689,7 @@ class RigBuilderWindow(QFrame):
         helpMenu.addAction("Documentation", self.showDocumenation)
 
         return menu
-    
+
     def copyToolCode(self):
         selectedItems = self.treeWidget.selectedItems()
         if selectedItems:
@@ -1745,30 +1798,23 @@ class RigBuilderWindow(QFrame):
         if sizes[-1] < 10:
             sizes[-1] = 200
             self.vsplitter.setSizes(sizes)
+        self.logWidget.ensureCursorVisible()
 
-    def getModuleGlobalEnv(self):
-        env = {"beginProgress": self.progressBarWidget.beginProgress,
-               "stepProgress": self.progressBarWidget.stepProgress,
-               "endProgress": self.progressBarWidget.endProgress,
-               "currentTabIndex": self.attributesTabWidget.currentIndex()}
+    def getEnvUI(self):
+        return {"beginProgress": self.progressBarWidget.beginProgress,
+                "stepProgress": self.progressBarWidget.stepProgress,
+                "endProgress": self.progressBarWidget.endProgress,
+                "currentTabIndex": self.attributesTabWidget.currentIndex()}    
 
-        for k,v in getModuleDefaultEnv().items():
-            env[k] = v
-
-        for k, f in widgets.WidgetsAPI.items():
-            env[k] = f
-
-        return env
-
-    def runModulesBtnClicked(self):
+    def runModuleClicked(self):
         if DCC == "maya":
             cmds.undoInfo(ock=True) # run in undo chunk
-            self.runModules()
+            self.runModule()
             cmds.undoInfo(cck=True)
         else:
-            self.runModules()
+            self.runModule()
 
-    def runModules(self):
+    def runModule(self):
         def uiCallback(mod):
             self.progressBarWidget.stepProgress(self.progressCounter, mod.getPath())
             self.progressCounter += 1
@@ -1806,8 +1852,10 @@ class RigBuilderWindow(QFrame):
             muted = currentItem.module.muted
             currentItem.module.muted = False
 
+            RuntimeModule.env = self.getEnvUI() # for runtime module
+
             try:
-                currentItem.module.run(self.getModuleGlobalEnv(), uiCallback=uiCallback)
+                currentItem.module.run(env=self.getEnvUI(), uiCallback=uiCallback)
             except Exception:
                 printErrorStack()
             finally:
@@ -1838,7 +1886,7 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
     w.setWindowTitle("Rig Builder Tool - {}".format(module.getPath()))
     w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
     w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
-    
+
     w.codeEditorWidget.hide()
     w.treeWidget.hide()
 
@@ -1850,8 +1898,10 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
         w.resize(size[0], size[1])
     else: # auto size
         w.adjustSize()
-        
+
     return w
+
+ModulesAPI.update(widgets.WidgetsAPI)
 
 if not os.path.exists(RigBuilderLocalPath):
     os.makedirs(RigBuilderLocalPath+"/modules")

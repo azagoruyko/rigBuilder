@@ -1,12 +1,13 @@
 import sys
 import re
 from contextlib import contextmanager
+import json
 
 from PySide2.QtGui import *
 from PySide2.QtCore import *
 from PySide2.QtWidgets import *
 
-JsonColors = {"none": QColor("#000000"),
+JsonColors = {"none": QColor("#AAAAAA"),
               "bool": QColor("#CDEB8B"),
               "true": QColor("#82C777"),
               "false": QColor("#CC6666"),
@@ -43,11 +44,51 @@ def clamp(val, low, high):
 def replaceSpecialChars(text):
     return re.sub("[^a-zA-Z0-9_]", "_", text)
 
+def findUniqueName(name, existingNames):
+    nameNoNum = re.sub(r"\d+$", "", name) # remove trailing numbers
+    newName = name
+    i = 1
+    while newName in existingNames:
+        newName = nameNoNum + str(i)
+        i += 1
+    return newName
+    
 def replacePairs(pairs, text):
     for k, v in pairs:
         text = re.sub(k, v, text)
     return text
 
+def smartConversion(x):
+    try:
+        return json.loads(x)
+    except ValueError:
+        return str(x)
+
+def fromSmartConversion(x):
+    if sys.version_info.major > 2:
+        return json.dumps(x) if not isinstance(x, str) else x
+    else:
+        return json.dumps(x) if type(x) not in [str, unicode] else x
+    
+def copyJson(data):
+    if data is None:
+        return None
+
+    elif type(data) in [list, tuple]:
+        return [copyJson(x) for x in data]
+
+    elif type(data) == dict:
+        return {k:copyJson(data[k]) for k in data}
+
+    elif type(data) in [int, float, bool, str]:
+        return data
+
+    elif sys.version_info.major < 3 and type(data) is unicode: # compatibility with python 2.7
+        return data
+
+    else:
+        raise TypeError("Data of '{}' type is not JSON compatible: {}".format(type(data), str(data)))
+    
 @contextmanager
 def captureOutput(stream):
     default_stdout = sys.stdout
