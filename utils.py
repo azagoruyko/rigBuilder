@@ -120,6 +120,12 @@ def printErrorStack():
             indent += "  "
     print("Error: {}".format(exc_value))
 
+@contextmanager
+def blockedWidgetContext(widget):
+    widget.blockSignals(True)
+    yield widget
+    widget.blockSignals(False)
+
 def centerWindow(window):
     screen = QDesktopWidget().screenGeometry()
     cp = screen.center()

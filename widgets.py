@@ -189,14 +189,15 @@ class CheckBoxTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.checkBox = QCheckBox()
-        self.checkBox.stateChanged.connect(self.somethingChanged.emit)
+        self.checkBox.stateChanged.connect(lambda _=None: self.somethingChanged.emit())
         layout.addWidget(self.checkBox)
 
     def getJsonData(self):
         return {"checked": self.checkBox.isChecked(), "default": "checked"}
 
     def setJsonData(self, value):
-        self.checkBox.setChecked(value["checked"])
+        with blockedWidgetContext(self.checkBox) as w:
+            w.setChecked(value["checked"])
 
 class ComboBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -267,7 +268,8 @@ class ComboBoxTemplateWidget(TemplateWidget):
             self.comboBox.setItemData(i, jsonColor(item), Qt.ForegroundRole)
             skip.append(item)
 
-        self.comboBox.setCurrentIndex(value["items"].index(value["current"]))
+        with blockedWidgetContext(self.comboBox) as w:
+            w.setCurrentIndex(value["items"].index(value["current"]))
 
 class LineEditOptionsDialog(QDialog):
     def __init__(self, **kwargs):
@@ -350,7 +352,7 @@ class LineEditTemplateWidget(TemplateWidget):
     def sliderValueChanged(self, v):
         v /= 100.0
         if self.validator == 1: # int
-            v = round(v)
+            v = round(v)        
         self.value = v
         self.textWidget.setText(str(v))
         self.somethingChanged.emit()
@@ -390,18 +392,23 @@ class LineEditTemplateWidget(TemplateWidget):
             self.textWidget.setValidator(QDoubleValidator())
 
         if self.validator:
-            self.sliderWidget.show()
-            if self.minValue:
-                self.sliderWidget.setMinimum(self.minValue*100) # slider values are int, so mult by 100
-            if self.maxValue:
-                self.sliderWidget.setMaximum(self.maxValue*100)
+            self.textWidget.validator().setRange(self.minValue, self.maxValue)
 
-            if self.value:
-                self.sliderWidget.setValue(float(self.value)*100)
+            self.sliderWidget.show()
+            with blockedWidgetContext(self.sliderWidget) as slider:
+                if self.minValue:
+                    slider.setMinimum(self.minValue*100) # slider values are int, so mult by 100
+                if self.maxValue:
+                    slider.setMaximum(self.maxValue*100)
+                
+                if self.value:                
+                    slider.setValue(float(self.value)*100)
         else:
             self.sliderWidget.hide()
 
-        self.textWidget.setText(fromSmartConversion(self.value))
+        with blockedWidgetContext(self.textWidget) as w:
+            w.setText(fromSmartConversion(self.value))
+
         self.colorizeValue()
 
 class LineEditAndButtonTemplateWidget(TemplateWidget):
@@ -508,7 +515,9 @@ value = path or value'''}
 
     def setJsonData(self, data):
         self.value = data["value"]
-        self.textWidget.setText(fromSmartConversion(self.value))
+        with blockedWidgetContext(self.textWidget) as w:
+            w.setText(fromSmartConversion(self.value))
+
         self.buttonCommand = data["buttonCommand"]
         self.buttonWidget.setText(data["buttonLabel"])
         self.colorizeValue()
@@ -663,15 +672,16 @@ class ListBoxTemplateWidget(TemplateWidget):
                 "default": "items"}
 
     def setJsonData(self, value):
-        self.listWidget.clear()
+        with blockedWidgetContext(self.listWidget) as w:
+            w.clear()
 
-        for v in value["items"]:
-            self.listWidget.addItem(ListBoxItem(v))
-        
-        for i in value.get("selected", []):
-            item = self.listWidget.item(i)
-            if item:
-                item.setSelected(True)
+            for v in value["items"]:
+                w.addItem(ListBoxItem(v))
+            
+            for i in value.get("selected", []):
+                item = w.item(i)
+                if item:
+                    item.setSelected(True)
 
         self.resizeWidget()
 
@@ -762,7 +772,8 @@ class RadioButtonTemplateWidget(TemplateWidget):
         if value["current"] not in range(len(value["items"])):
             value["current"] = 0
 
-        self.buttonsGroupWidget.buttons()[value["current"]].setChecked(True)
+        with blockedWidgetContext(self.buttonsGroupWidget) as w:
+            w.buttons()[value["current"]].setChecked(True)
         self.colorizeButtons()
 
 class TableTemplateWidget(TemplateWidget):
@@ -941,7 +952,7 @@ class TextTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.textWidget = QTextEdit()
-        self.textWidget.textChanged.connect(self.somethingChanged.emit)
+        self.textWidget.textChanged.connect(lambda _=None: self.somethingChanged.emit())
 
         incSizeBtn = QPushButton("+")
         incSizeBtn.setFixedSize(25, 25)
@@ -976,8 +987,9 @@ class TextTemplateWidget(TemplateWidget):
                 "default": "text"}
 
     def setJsonData(self, data):
-        self.textWidget.setPlainText(data["text"])
-        self.textWidget.setFixedHeight(data.get("height", self.getDefaultData()["height"]))
+        with blockedWidgetContext(self.textWidget) as w:
+            w.setPlainText(data["text"])
+            w.setFixedHeight(data.get("height", self.getDefaultData()["height"]))
 
 class VectorTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -1496,9 +1508,10 @@ class JsonTemplateWidget(TemplateWidget):
 
     def setJsonData(self, value):
         self.jsonWidget.setFixedHeight(value["height"])
-        self.jsonWidget.clear()
-        self.jsonWidget.loadFromJsonList(value["data"])
-        self.jsonWidget.setReadOnly(value["readonly"])
+        with blockedWidgetContext(self.jsonWidget) as w:
+            w.clear()
+            w.loadFromJsonList(value["data"])
+            w.setReadOnly(value["readonly"])
 
 TemplateWidgets = {
     "button": ButtonTemplateWidget,
