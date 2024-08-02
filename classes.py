@@ -475,7 +475,7 @@ class Module(object):
             runtimeAttr = RuntimeAttribute(self, attr)
             localEnv[attrPrefix+attr.name] = runtimeAttr.get()
             localEnv[attrPrefix+"set_"+attr.name] = runtimeAttr.set
-            localEnv[attrPrefix+attr.name+"_data"] = DataAccessor(RuntimeAttribute(self, attr))
+            localEnv[attrPrefix+attr.name+"_data"] = RuntimeDataAccessor(RuntimeAttribute(self, attr))
 
         print("{} is running...".format(self.getPath()))
 
@@ -543,49 +543,46 @@ class RuntimeAttribute(object):
     def push(self):
         if self._attr.connect:
             srcMod, srcAttr = self._module.findConnectionSourceForAttribute(self._attr)
-
             srcAttr.setDefaultValue(copyJson(self._attr.getDefaultValue()))            
             RuntimeAttribute(srcMod, srcAttr).push()
 
-    def get(self):
+    def get(self, key=None):
         self.pull()
-        return copyJson(self._attr.getDefaultValue())
-
-    def set(self, value):        
+        return copyJson(self._attr.getDefaultValue() if not key else self._attr.data.get(key))
+        
+    def set(self, value, key=None):
         try:
             valueCopy = copyJson(value)
         except TypeError:
             raise CopyJsonError("Cannot set non-JSON data (got {})".format(value))
 
-        self._attr.setDefaultValue(valueCopy)
-        self.push()
+        if not key:
+            self._attr.setDefaultValue(valueCopy)
+        else:
+            self._attr.data[key] = valueCopy
 
-    @property
-    def data(self): # data is local
-        return self._attr.data
+        self.push()        
+
+    def data(self): # return actual read-only copy of all data
+        self.pull()
+        return copyJson(self._attr.data)
     
-    @data.setter
-    def data(self, value): # data is local
-        self._attr.data = value
-
-class DataAccessor(): # for accessing data with @_data suffix inside a module's code
+    def setData(self, data):
+        self._attr.data = copyJson(data)
+        self.push()
+    
+class RuntimeDataAccessor(): # for accessing data with @_data suffix inside a module's code
     def __init__(self, runtimeAttr):
         self._runtimeAttr = runtimeAttr
 
     def __getitem__(self, name):
-        self._runtimeAttr.pull()
-        return self._runtimeAttr.data[name]
+        return self._runtimeAttr.get(name)
 
     def __setitem__(self, name, value):
-        self._runtimeAttr.data[name] = value
-        self._runtimeAttr.push()
+        self._runtimeAttr.set(value, name)
 
     def __str__(self):
-        items = []
-        for k in self._runtimeAttr.data:
-            self._runtimeAttr.pull()
-            items.append("{}: {}".format(k, self._runtimeAttr.data[k]))
-        return "\n".join(items)
+        return json.dumps(self._runtimeAttr.data())
     
 class AttrsWrapper(object): # attributes getter/setter
     def __init__(self, module):
@@ -599,7 +596,7 @@ class AttrsWrapper(object): # attributes getter/setter
         else:
             raise AttributeError("Attribute '{}' not found".format(name))
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value): # for code like 'module.attr.input = value'
         if name == "_module":
             object.__setattr__(self, "_module", value)
         else:
@@ -657,21 +654,15 @@ class RuntimeModule(object):
 
     def ch(self, path, key=None):
         mod, attr = self._module.findModuleAndAttributeByPath(path)
-        if key:
-            return RuntimeAttribute(mod, attr).data[key]
-        else:
-            return RuntimeAttribute(mod, attr).get()
+        return RuntimeAttribute(mod, attr).get(key)
     
     def chdata(self, path):
         mod, attr = self._module.findModuleAndAttributeByPath(path)
-        return copyJson(RuntimeAttribute(mod, attr).data)
+        return RuntimeAttribute(mod, attr).data()
     
     def chset(self, path, value, key=None):
         mod, attr = self._module.findModuleAndAttributeByPath(path)
-        if not key:
-            RuntimeAttribute(mod, attr).set(value)
-        else:
-            RuntimeAttribute(mod, attr).data[key] = value
+        RuntimeAttribute(mod, attr).set(value, key)
 
     def run(self):
         muted = self._module.muted

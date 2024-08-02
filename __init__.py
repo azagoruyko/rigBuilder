@@ -38,7 +38,6 @@ def updateFilesFromServer():
     '''
     Update files from server with SVN, Git, Perforce or other VCS.
     '''
-
     def update():
         pass
 
@@ -214,8 +213,7 @@ class AttributesWidget(QWidget):
 
         runtimeAttr = RuntimeAttribute(self.moduleItem.module, attr)
         widgetData = widget.getJsonData()
-        runtimeAttr.data = copyJson(widgetData)
-        runtimeAttr.push()        
+        runtimeAttr.setData(widgetData) # implicitly push
 
         modifiedAttrs = []        
         for otherAttr in self.moduleItem.module.getAttributes():
@@ -241,10 +239,9 @@ class AttributesWidget(QWidget):
         attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
 
         runtimeAttr = RuntimeAttribute(self.moduleItem.module, attr)
-        runtimeAttr.pull()
 
         widget.blockSignals(True)
-        widget.setJsonData(runtimeAttr.data)
+        widget.setJsonData(runtimeAttr.data()) # pull data
         widget.blockSignals(False)
 
     def updateWidgets(self):

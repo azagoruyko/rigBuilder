@@ -1081,10 +1081,11 @@ class VectorTemplateWidget(TemplateWidget):
             layout.addWidget(widget, i//self.numColumns, i%self.numColumns)
             self.widgets.append(widget)
 
-def listLerp(lst1, lst2, coeff):
-    return [p1*(1-coeff) + p2*coeff for p1, p2 in zip(lst1, lst2)]
+def listLerp(lst1, lst2, w):    
+    return [p1*(1-w) + p2*w for p1, p2 in zip(lst1, lst2)]
 
 def evaluateBezierCurve(cvs, param):
+    param = clamp(param, 0, 1)
     absParam = param * (math.floor((len(cvs) + 2) / 3.0) - 1)
 
     offset = int(math.floor(absParam - 1e-5))
@@ -1120,23 +1121,25 @@ def bezierSplit(p1, p2, p3, p4, at=0.5):
 
     return (p1, p1_p2, p1_p2_p2_p3, p), (p, p2_p3_p3_p4, p3_p4, p4)
 
-def findFromX(p1, p2, p3, p4, x):
+def findFromX(p1, p2, p3, p4, x, *, epsilon=1e-3):
     cvs1, cvs2 = bezierSplit(p1, p2, p3, p4)
     midp = cvs2[0]
 
-    if abs(midp[0] - x) < 1e-3:
+    if abs(midp[0] - x) < epsilon:
         return midp
     elif x < midp[0]:
-        return findFromX(cvs1[0], cvs1[1], cvs1[2], cvs1[3], x)
+        return findFromX(cvs1[0], cvs1[1], cvs1[2], cvs1[3], x, epsilon=epsilon)
     else:
-        return findFromX(cvs2[0], cvs2[1], cvs2[2], cvs2[3], x)
+        return findFromX(cvs2[0], cvs2[1], cvs2[2], cvs2[3], x, epsilon=epsilon)
 
-def evaluateBezierCurveFromX(cvs, x):
+def evaluateBezierCurveFromX(cvs, x, *, epsilon=1e-3):
+    x = clamp(x, 0, 1)
+
     for i in range(0, len(cvs), 3):
         if cvs[i][0] > x:
             break
 
-    return findFromX(cvs[i-3], cvs[i-2], cvs[i-1], cvs[i], x)
+    return findFromX(cvs[i-3], cvs[i-2], cvs[i-1], cvs[i], x, epsilon=epsilon)
 
 def normalizedPoint(p, minX, maxX, minY, maxY):
     x = (p[0] - minX) / (maxX - minX)
@@ -1512,11 +1515,11 @@ TemplateWidgets = {
     "text": TextTemplateWidget,
     "vector": VectorTemplateWidget}
 
-def curve_evaluate(data, param):
-    return evaluateBezierCurve(data["cvs"], param)
+def curve_evaluate(data, param, *, epsilon=1e-3):
+    return evaluateBezierCurve(data["cvs"], param, epsilon=epsilon)
 
-def curve_evaluateFromX(data, param): 
-    return evaluateBezierCurveFromX(data["cvs"], param)
+def curve_evaluateFromX(data, param, *, epsilon=1e-3): 
+    return evaluateBezierCurveFromX(data["cvs"], param, epsilon=epsilon)
 
 def listBox_setSelected(data, indices):
     data["selected"] = indices
