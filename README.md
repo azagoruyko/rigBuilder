@@ -1,5 +1,5 @@
 <div>
-<img src="https://img.shields.io/github/v/tag/azagoruyko/rigBuilder?label=Current%20version"/>
+<img src="https://img.shields.io/github/v/tag/azagoruyko/rigBuilder?label=current%20version"/>
 <img src="https://img.shields.io/github/v/release/azagoruyko/rigBuilder?logoColor=green&color=green"/>
 <a href="https://github.com/azagoruyko/rigBuilder/wiki/Documentation">
   <img src="https://img.shields.io/badge/docs-here-blue?label=docs"/>
