@@ -386,14 +386,21 @@ class LineEditTemplateWidget(TemplateWidget):
         self.maxValue = int(data.get("max") or LineEditTemplateWidget.defaultMax)
         self.value = data.get("value", "")
 
-        if self.validator == 1:
-            self.textWidget.setValidator(QIntValidator())
-        elif self.validator == 2:
-            self.textWidget.setValidator(QDoubleValidator())
+        if self.validator == 1: # int
+            validator = QIntValidator()
+            validator.setRange(self.minValue, self.maxValue)
+            self.textWidget.setValidator(validator)
+
+        elif self.validator == 2: # double
+            validator = QDoubleValidator()
+            validator.setRange(self.minValue, self.maxValue)
+            validator.setDecimals(2)
+            self.textWidget.setValidator(validator)
+
+        else:
+            self.textWidget.setValidator(None)
 
         if self.validator:
-            self.textWidget.validator().setRange(self.minValue, self.maxValue)
-
             self.sliderWidget.show()
             with blockedWidgetContext(self.sliderWidget) as slider:
                 if self.minValue:
@@ -616,7 +623,9 @@ class ListBoxTemplateWidget(TemplateWidget):
         items = ";".join([self.listWidget.item(i).text() for i in range(self.listWidget.count())])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
-            self.listWidget.clear()
+            with blockedWidgetContext(self.listWidget) as w:
+                w.clear()
+
             for x in newItems.split(";"):
                 item = ListBoxItem(smartConversion(x.strip()))
                 self.listWidget.addItem(item)
@@ -630,12 +639,14 @@ class ListBoxTemplateWidget(TemplateWidget):
             cmds.select(items)
 
     def getFromDCC(self, add=False):
-        if not add:
-            self.listWidget.clear()
-
         def updateUI(nodes):
+            if not add:
+                with blockedWidgetContext(self.listWidget) as w:
+                    w.clear()
+
             for n in nodes:
-                self.listWidget.addItem(ListBoxItem(n))
+                w.addItem(ListBoxItem(n))
+
             self.resizeWidget()
             self.somethingChanged.emit()
 
@@ -646,9 +657,8 @@ class ListBoxTemplateWidget(TemplateWidget):
     def clearItems(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
-            self.listWidget.blockSignals(True) # avoid emitting signals by selecting items
-            self.listWidget.clear()
-            self.listWidget.blockSignals(False)
+            with blockedWidgetContext(self.listWidget) as w:
+                w.clear()
             self.somethingChanged.emit()
             self.resizeWidget()
 
@@ -858,14 +868,9 @@ class TableTemplateWidget(TemplateWidget):
 
         menu.addSeparator()
 
-        menu.addAction("Resize", self.updateSize)
         menu.addAction("Clear", self.clearAll)
 
         menu.popup(event.globalPos())
-
-    def updateSize(self):
-        self.tableWidget.resizeRowsToContents()
-        self.resizeWidget()
 
     def resizeWidget(self):
         height = 0
@@ -941,7 +946,8 @@ class TableTemplateWidget(TemplateWidget):
                 item.setForeground(jsonColor(data))
                 self.tableWidget.setItem(r, c, item)
 
-        self.updateSize()
+        self.tableWidget.resizeRowsToContents()
+        self.resizeWidget()
 
 class TextTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
