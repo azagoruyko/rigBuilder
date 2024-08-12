@@ -882,7 +882,7 @@ class TableTemplateWidget(TemplateWidget):
             height += self.tableWidget.rowHeight(i)
 
         headerHeight = self.tableWidget.verticalHeader().sizeHint().height()
-        height += headerHeight + 25
+        height += headerHeight*2
         self.tableWidget.setFixedHeight(clamp(height, headerHeight+100, 500))
 
     def clearAll(self):

@@ -88,36 +88,41 @@ class Attribute(object):
         return self._name
     
     def setName(self, name):
-        self._name = name
-        self._modified = True
+        if name != self._name:
+            self._name = name
+            self._modified = True
     
     def category(self):
         return self._category
     
     def setCategory(self, category):
-        self._category = category
-        self._modified = True
+        if category != self._category:
+            self._category = category
+            self._modified = True
     
     def template(self):
         return self._template
     
     def setTemplate(self, template):
-        self._template = template
-        self._modified = True
+        if template != self._template:
+            self._template = template
+            self._modified = True
     
     def connect(self):
         return self._connect
     
     def setConnect(self, connect):
-        self._connect = connect
-        self._modified = True
+        if connect != self._connect:
+            self._connect = connect
+            self._modified = True
     
     def expression(self):
         return self._expression
     
     def setExpression(self, expression):
-        self._expression = expression
-        self._modified = True
+        if expression != self._expression:
+            self._expression = expression
+            self._modified = True
     
     def modified(self):
         return self._modified
@@ -129,9 +134,9 @@ class Attribute(object):
         return copyJson(self._data[self._data["default"]])
     
     def _setDefaultValue(self, value):
-        old = self._defaultValue()
-        self._data[self._data["default"]] = copyJson(value)        
-        if old != self._defaultValue():
+        newValue = copyJson(value)
+        if newValue != self._defaultValue():
+            self._data[self._data["default"]] = newValue
             self._modified = True
     
     def data(self): # return actual read-only copy of all data
@@ -142,16 +147,17 @@ class Attribute(object):
         return copyJson(self._data)
     
     def setLocalData(self, data):
-        self._data = copyJson(data)
-        self._modified
+        newData = copyJson(data)
+        if newData != self._data:
+            self._data = newData
+            self._modified = True
     
     def setData(self, data):
-        old = copyJson(self._data)
-        self._data = copyJson(data)
-        
-        if old != self._data:
+        newData = copyJson(data)
+        if newData != self._data:
+            self._data = newData
             self._modified = True
-        self.push()
+            self.push()
 
     def pull(self):
         if self._connect:
@@ -182,11 +188,12 @@ class Attribute(object):
 
         if not key:
             self._setDefaultValue(valueCopy)
+            self.push()          
         else:
-            self._data[key] = valueCopy        
-            self._modified = True
-
-        self.push()
+            if self._data.get(key) != valueCopy:
+                self._data[key] = valueCopy
+                self._modified = True
+                self.push()
 
     def executeExpression(self):
         if not self._expression:
@@ -568,7 +575,9 @@ class Module(object):
                 if origAttr._name and foundAttr and foundAttr._template == origAttr._template: # skip empty named attrs, use first found
                     origAttr._setDefaultValue(foundAttr._defaultValue()) # keep attribute value
                     origAttr._connect = foundAttr._connect
-                    origAttr._expression = foundAttr._expression                
+                    origAttr._expression = foundAttr._expression
+                    
+                origAttr._modified = False # clear modification flag              
                 attributes.append(origAttr)
 
             self._attributes = []
