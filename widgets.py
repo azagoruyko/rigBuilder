@@ -235,7 +235,8 @@ class ComboBoxTemplateWidget(TemplateWidget):
     def clearItems(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
-            self.comboBox.clear()
+            with blockedWidgetContext(self.comboBox) as w:
+                w.clear()
             self.somethingChanged.emit()
 
     def appendItem(self):
@@ -257,14 +258,17 @@ class ComboBoxTemplateWidget(TemplateWidget):
                 "default": "current"}
 
     def setJsonData(self, value):
-        self.comboBox.clear()
+        with blockedWidgetContext(self.comboBox) as w:
+            w.clear()
 
+        items = value["items"]
+        items.append(value["current"]) # make sure current is in items
         skip = []
-        for i, item in enumerate(value["items"]):
+        for i, item in enumerate(items):
             if item in skip: # don't add duplicates
                 continue
 
-            self.comboBox.addItem(fromSmartConversion(item))     
+            self.comboBox.addItem(fromSmartConversion(item))
             self.comboBox.setItemData(i, jsonColor(item), Qt.ForegroundRole)
             skip.append(item)
 

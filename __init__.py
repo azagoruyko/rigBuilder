@@ -204,13 +204,6 @@ class AttributesWidget(QWidget):
                         widget.setJsonData(attr.localData())
                         widget.blockSignals(False)
 
-                    else: # reset data
-                        widget.blockSignals(True)
-                        data = widget.getDefaultData()
-                        attr.setLocalData(data)
-                        widget.setJsonData(data)
-                        widget.blockSignals(False)
-
                     self.mainWindow.showLog()
 
         return inner
