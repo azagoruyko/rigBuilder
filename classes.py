@@ -153,11 +153,8 @@ class Attribute(object):
             self._modified = True
     
     def setData(self, data):
-        newData = copyJson(data)
-        if newData != self._data:
-            self._data = newData
-            self._modified = True
-            self.push()
+        self.setLocalData(data)
+        self.push()
 
     def pull(self):
         if self._connect:
@@ -449,15 +446,19 @@ class Module(object):
             if a._name == name:
                 return a
             
-    def _clearModificationFlag(self):
-        self._modified = False
+    def _clearModificationFlag(self, *, modules=True, attributes=True, recursive=True):
+        if modules:
+            self._modified = False
 
-        for a in self._attributes:
-            a._modified = False            
+        if attributes:
+            for a in self._attributes:
+                a._modified = False     
 
         for ch in self._children:
             if not ch._uid:
-                ch._clearModificationFlag()
+                ch._clearModificationFlag(recursive=recursive, modules=modules, attributes=attributes)
+            else:
+                ch._clearModificationFlag(recursive=False, modules=False, attributes=attributes)
     
     def ch(self, path, key=None):
         attr = self.findAttributeByPath(path)

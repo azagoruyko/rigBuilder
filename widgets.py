@@ -375,7 +375,8 @@ class LineEditTemplateWidget(TemplateWidget):
         self.minValue = int(self.optionsDialog.minWidget.text() or LineEditTemplateWidget.defaultMin)
         self.maxValue = int(self.optionsDialog.maxWidget.text() or LineEditTemplateWidget.defaultMax)
         self.validator = self.optionsDialog.validatorWidget.currentIndex()
-        self.setJsonData(self.getJsonData())
+        self.setupSlider()
+        self.somethingChanged.emit()
 
     def getJsonData(self):
         return {"value": self.value,
@@ -383,6 +384,20 @@ class LineEditTemplateWidget(TemplateWidget):
                 "min": self.minValue,
                 "max": self.maxValue,
                 "validator": self.validator}
+    
+    def setupSlider(self):
+        if self.validator:
+            self.sliderWidget.show()
+            with blockedWidgetContext(self.sliderWidget) as slider:
+                if self.minValue:
+                    slider.setMinimum(self.minValue*100) # slider values are int, so mult by 100
+                if self.maxValue:
+                    slider.setMaximum(self.maxValue*100)
+                
+                if self.value:                
+                    slider.setValue(float(self.value)*100)
+        else:
+            self.sliderWidget.hide()
 
     def setJsonData(self, data):
         self.validator = data.get("validator", 0)
@@ -404,22 +419,10 @@ class LineEditTemplateWidget(TemplateWidget):
         else:
             self.textWidget.setValidator(None)
 
-        if self.validator:
-            self.sliderWidget.show()
-            with blockedWidgetContext(self.sliderWidget) as slider:
-                if self.minValue:
-                    slider.setMinimum(self.minValue*100) # slider values are int, so mult by 100
-                if self.maxValue:
-                    slider.setMaximum(self.maxValue*100)
-                
-                if self.value:                
-                    slider.setValue(float(self.value)*100)
-        else:
-            self.sliderWidget.hide()
-
         with blockedWidgetContext(self.textWidget) as w:
             w.setText(fromSmartConversion(self.value))
 
+        self.setupSlider()
         self.colorizeValue()
 
 class LineEditAndButtonTemplateWidget(TemplateWidget):
@@ -867,11 +870,8 @@ class TableTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
         columnMenu.addAction("Remove", f)
-
         menu.addMenu(columnMenu)
-
         menu.addSeparator()
-
         menu.addAction("Clear", self.clearAll)
 
         menu.popup(event.globalPos())
