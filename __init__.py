@@ -215,31 +215,27 @@ class AttributesWidget(QWidget):
         widgetData = widget.getJsonData()
         attr.setData(widgetData) # implicitly push
 
-        modifiedAttrs = []        
+        previousData = {id(a):a.localData() for a in self.moduleItem.module.attributes()}
+        modifiedAttrs = []
         for otherAttr in self.moduleItem.module.attributes():
             otherAttr.pull()
-
-            if otherAttr.modified():
+            if otherAttr.localData() != previousData[id(otherAttr)]:
                 modifiedAttrs.append(otherAttr)
 
-        for idx, (otherAttr, _, _) in enumerate(self._attributeAndWidgets): # update attributes' widgets
+        for idx, (otherAttr, _, otherWidget) in enumerate(self._attributeAndWidgets): # update attributes' widgets
             if otherAttr in modifiedAttrs:
-                self.updateWidget(idx)
+                with blockedWidgetContext(otherWidget) as w:
+                    w.setJsonData(otherAttr.localData())
                 self.updateWidgetStyle(idx)
 
-        if attr.data != widgetData:
-            widget.blockSignals(True)
-            widget.setJsonData(attr.data())
-            widget.blockSignals(False)
+        if id(attr) not in modifiedAttrs: # update the modification style anyway
             self.updateWidgetStyle(attrWidgetIndex)       
 
     @_wrapper
     def updateWidget(self, attrWidgetIndex):
         attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
-
-        widget.blockSignals(True)
-        widget.setJsonData(attr.data()) # pull data
-        widget.blockSignals(False)
+        with blockedWidgetContext(widget) as w:
+            w.setJsonData(attr.data()) # pull data
 
     def updateWidgets(self):
         for i in range(len(self._attributeAndWidgets)):
