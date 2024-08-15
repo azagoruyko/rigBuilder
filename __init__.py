@@ -292,8 +292,9 @@ class AttributesWidget(QWidget):
         def save(data):
             @AttributesWidget._wrapper
             def _save(_, attrWidgetIndex):
-                attr.setData(data)
+                attr.setData(data)                
                 self.updateWidget(attrWidgetIndex)
+                self.updateWidgetStyle(attrWidgetIndex)
             _save(self, attrWidgetIndex)
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
@@ -892,9 +893,13 @@ class TreeWidget(QTreeWidget):
                 if not os.path.exists(dirname):
                     os.makedirs(dirname)
 
-                item.module.saveToFile(outputPath)
-                item.emitDataChanged() # path changed
-                self.mainWindow.attributesTabWidget.updateWidgetStyles()
+                try:
+                    item.module.saveToFile(outputPath)
+                except Exception as e:
+                    QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
+                else:
+                    item.emitDataChanged() # path changed
+                    self.mainWindow.attributesTabWidget.updateWidgetStyles()
 
     def saveAsModule(self):
         for item in self.selectedItems():
@@ -902,9 +907,13 @@ class TreeWidget(QTreeWidget):
             outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name(), outputDir + "/" +item.module.name(), "*.xml")
 
             if outputPath:
-                item.module.saveToFile(outputPath, newUid=True)
-                item.emitDataChanged() # path and uid changed
-                self.mainWindow.attributesTabWidget.updateWidgetStyles()
+                try:
+                    item.module.saveToFile(outputPath, newUid=True)
+                except Exception as e:
+                    QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
+                else:
+                    item.emitDataChanged() # path and uid changed
+                    self.mainWindow.attributesTabWidget.updateWidgetStyles()
 
     def embedModule(self):
         selectedItems = self.selectedItems()
