@@ -652,7 +652,7 @@ class ListBoxTemplateWidget(TemplateWidget):
                     w.clear()
 
             for n in nodes:
-                w.addItem(ListBoxItem(n))
+                self.listWidget.addItem(ListBoxItem(n))
 
             self.resizeWidget()
             self.somethingChanged.emit()
