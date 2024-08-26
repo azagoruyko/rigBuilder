@@ -709,9 +709,6 @@ class Module(object):
         return env
 
     def run(self, *, uiCallback=None):
-        if self.muted():
-            return
-
         localEnv = dict(Module.env or {})
         localEnv.update(self.getEnv())
 
@@ -732,7 +729,8 @@ class Module(object):
             pass
 
         for ch in self._children:
-            ch.run(uiCallback=uiCallback)
+            if not ch.muted():
+                ch.run(uiCallback=uiCallback)
 
         return localEnv
 
