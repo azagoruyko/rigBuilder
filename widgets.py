@@ -78,6 +78,32 @@ class EditTextDialog(QDialog):
         self.saved.emit(self.textWidget.toPlainText())
         self.accept()
 
+class EditJsonDialog(QDialog):
+    saved = Signal(object)
+
+    def __init__(self, data, *, title="Edit"):
+        super().__init__(parent=QApplication.activeWindow())
+
+        self.setWindowTitle(title)
+        self.setGeometry(0, 0, 600, 400)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self.jsonWidget = JsonWidget(data)
+
+        okBtn = QPushButton("OK")
+        okBtn.clicked.connect(self.saveAndClose)
+
+        layout.addWidget(self.jsonWidget)
+        layout.addWidget(okBtn)
+        centerWindow(self)
+
+    def saveAndClose(self):
+        dataList = self.jsonWidget.toJsonList()
+        self.saved.emit(dataList)
+        self.accept()
+
 class LabelTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -224,13 +250,13 @@ class ComboBoxTemplateWidget(TemplateWidget):
         menu.popup(event.globalPos())
 
     def editItems(self):
-        items = ";".join([self.comboBox.itemText(i) for i in range(self.comboBox.count())])
-        newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
-        if ok and newItems:
-            value = self.getJsonData()
-            value["items"] = [smartConversion(item.strip()) for item in newItems.split(";") if item.strip()]
-            self.setJsonData(value)
-            self.somethingChanged.emit()
+        def save(newData):
+            self.setItems(newData)
+
+        data = self.getItems()
+        w = EditJsonDialog(data, title="Edit items")
+        w.saved.connect(save)
+        w.show()
 
     def clearItems(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
@@ -249,31 +275,37 @@ class ComboBoxTemplateWidget(TemplateWidget):
         self.comboBox.removeItem(self.comboBox.currentIndex())
         self.somethingChanged.emit()
 
+    def getItems(self):
+        return [smartConversion(self.comboBox.itemText(i)) for i in range(self.comboBox.count())]
+    
+    def setItems(self, items):
+        with blockedWidgetContext(self.comboBox) as w:
+            w.clear()
+
+            for i, item in enumerate(items):
+                w.addItem(fromSmartConversion(item))
+                w.setItemData(i, jsonColor(item), Qt.ForegroundRole)
+
+        self.somethingChanged.emit()
+
     def getDefaultData(self):
         return {"items": ["a", "b"], "current": "a", "default": "current"}
 
     def getJsonData(self):
-        return {"items": [smartConversion(self.comboBox.itemText(i)) for i in range(self.comboBox.count())],
+        return {"items": self.getItems(),
                 "current": smartConversion(self.comboBox.currentText()),
                 "default": "current"}
 
     def setJsonData(self, value):
-        with blockedWidgetContext(self.comboBox) as w:
-            w.clear()
+        items = list(value["items"])
+        
+        if value["current"] not in items:
+            items.append(value["current"]) # make sure current is in items
 
-        items = value["items"]
-        items.append(value["current"]) # make sure current is in items
-        skip = []
-        for i, item in enumerate(items):
-            if item in skip: # don't add duplicates
-                continue
-
-            self.comboBox.addItem(fromSmartConversion(item))
-            self.comboBox.setItemData(i, jsonColor(item), Qt.ForegroundRole)
-            skip.append(item)
+        self.setItems(items)
 
         with blockedWidgetContext(self.comboBox) as w:
-            w.setCurrentIndex(value["items"].index(value["current"]))
+            w.setCurrentIndex(items.index(value["current"]))
 
 class LineEditOptionsDialog(QDialog):
     def __init__(self, **kwargs):
@@ -592,7 +624,7 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         menu.addAction("Append", self.appendItem)
         menu.addAction("Remove", self.removeItem)
-        menu.addAction("Edit", self.editItem)
+        menu.addAction("Edit", self.editItems)
 
         def f():
             self.listWidget.sortItems()
@@ -618,6 +650,16 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
         self.resizeWidget()
 
+    def editItems(self):
+        def save(newData):
+            self.setItems(newData)
+            self.resizeWidget()            
+
+        data = self.getItems()
+        w = EditJsonDialog(data, title="Edit items")
+        w.saved.connect(save)
+        w.show()        
+
     def resizeWidget(self):
         width = self.listWidget.sizeHintForColumn(0) + 50
         height = 0
@@ -625,19 +667,6 @@ class ListBoxTemplateWidget(TemplateWidget):
             height += self.listWidget.sizeHintForRow(i)
         height += 2*self.listWidget.frameWidth() + 50
         self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 500))
-
-    def editItem(self):
-        items = ";".join([self.listWidget.item(i).text() for i in range(self.listWidget.count())])
-        newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
-        if ok and newItems:
-            with blockedWidgetContext(self.listWidget) as w:
-                w.clear()
-
-            for x in newItems.split(";"):
-                item = ListBoxItem(smartConversion(x.strip()))
-                self.listWidget.addItem(item)
-            self.somethingChanged.emit()
-            self.resizeWidget()
 
     def selectInDCC(self, allItems=True):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count()) if allItems or self.listWidget.item(i).isSelected()]
@@ -676,25 +705,35 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
 
     def removeItem(self):
-        self.listWidget.takeItem(self.listWidget.currentRow())
+        for item in self.listWidget.selectedItems(): 
+            self.listWidget.takeItem(self.listWidget.row(item))
+            
         self.resizeWidget()
         self.somethingChanged.emit()
+
+    def getItems(self):
+        return [self.listWidget.item(i).data(ListBoxItem.ValueRole) for i in range(self.listWidget.count())]
+    
+    def setItems(self, items):
+        with blockedWidgetContext(self.listWidget) as w:
+            w.clear()
+            for v in items:
+                w.addItem(ListBoxItem(v))
+
+        self.somethingChanged.emit()  
 
     def getDefaultData(self):
         return {"items": ["a", "b"], "current":0, "selected":[], "default": "items"}
 
     def getJsonData(self):
-        return {"items": [self.listWidget.item(i).data(ListBoxItem.ValueRole) for i in range(self.listWidget.count())],
+        return {"items": self.getItems(),
                 "selected": [self.listWidget.row(item) for item in self.listWidget.selectedItems()],
                 "default": "items"}
 
     def setJsonData(self, value):
-        with blockedWidgetContext(self.listWidget) as w:
-            w.clear()
+        self.setItems(value["items"])
 
-            for v in value["items"]:
-                w.addItem(ListBoxItem(v))
-            
+        with blockedWidgetContext(self.listWidget) as w:
             for i in value.get("selected", []):
                 item = w.item(i)
                 if item:

@@ -54,33 +54,6 @@ class MyThread(QThread):
     def run(self):
         self.runFunction()
 
-class EditJsonDialog(QDialog):
-    saved = Signal(dict)
-
-    def __init__(self, data, *, title="Edit"):
-        super().__init__(parent=QApplication.activeWindow())
-
-        self.setWindowTitle(title)
-        self.setGeometry(0, 0, 600, 400)
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        self.jsonWidget = widgets.JsonWidget(data)
-
-        okBtn = QPushButton("OK")
-        okBtn.clicked.connect(self.saveAndClose)
-
-        layout.addWidget(self.jsonWidget)
-        layout.addWidget(okBtn)
-        centerWindow(self)
-
-    def saveAndClose(self):
-        dataList = self.jsonWidget.toJsonList()
-        if dataList:
-            self.saved.emit(dataList[0]) # keep the first item only
-            self.accept()
-
 class AttributesWidget(QWidget):
     def __init__(self, moduleItem, attributes, *, mainWindow=None, **kwargs):
         super().__init__(**kwargs)
@@ -292,13 +265,13 @@ class AttributesWidget(QWidget):
         def save(data):
             @AttributesWidget._wrapper
             def _save(_, attrWidgetIndex):
-                attr.setData(data)                
+                attr.setData(data[0]) # use [0] because data is a list
                 self.updateWidget(attrWidgetIndex)
                 self.updateWidgetStyle(attrWidgetIndex)
             _save(self, attrWidgetIndex)
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        w = EditJsonDialog(attr.localData(), title="Edit data")
+        w = widgets.EditJsonDialog(attr.localData(), title="Edit data")
         w.saved.connect(save)
         w.show()
 

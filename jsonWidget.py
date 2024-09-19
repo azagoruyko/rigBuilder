@@ -588,8 +588,21 @@ class JsonWidget(QTreeWidget):
         selectedItems = self.selectedItems()
 
         # add undo
-        _undoData = []
+        parentItems = []
         for item in selectedItems:
+            parent = item.parent()
+            skip = False
+            while parent:
+                if parent in selectedItems:
+                    skip = True
+                    break
+                parent = parent.parent()
+
+            if not skip:
+                parentItems.append(item)            
+
+        _undoData = []        
+        for item in parentItems:
             parent = item.parent() or self.invisibleRootItem()
             idx = parent.indexOfChild(item)
             _undoData.append([self.getPathIndex(parent), item.clone(), idx])
@@ -600,7 +613,7 @@ class JsonWidget(QTreeWidget):
                 parent.insertChild(idx, item)
         self._undoSystem.push("Remove", f)
 
-        for item in selectedItems:
+        for item in parentItems:
             (item.parent() or self.invisibleRootItem()).removeChild(item)
             self.itemRemoved.emit(item)
 
