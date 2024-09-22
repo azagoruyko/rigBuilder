@@ -1562,11 +1562,152 @@ class JsonTemplateWidget(TemplateWidget):
             w.loadFromJsonList(value["data"])
             w.setReadOnly(value["readonly"])
 
+class EditCompountWidgetsDialog(QDialog):
+    saved = Signal(list) # [(template, data), ...]
+
+    def __init__(self, compoundWidget, **kwargs):
+        super().__init__(**kwargs)
+
+        self.compoundWidget = compoundWidget
+
+        self.setWindowTitle("Edit widgets")
+        self.setGeometry(100, 100, 300, 400)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        self.listWidget = QListWidget()
+        self.listWidget.setDragEnabled(True)
+        self.listWidget.setDragDropMode(QAbstractItemView.InternalMove)
+        self.listWidget.contextMenuEvent = self.listContextMenuEvent
+        self.listWidget.setDropIndicatorShown(True)
+        self.listWidget.setIconSize(QSize(64, 64))
+
+        for w in compoundWidget.getWidgets():
+            self.listWidget.addItem(self.itemFromWidget(w))
+
+        saveBtn = QPushButton("Save")
+        saveBtn.clicked.connect(self.save)
+
+        layout.addWidget(self.listWidget)
+        layout.addWidget(saveBtn)
+
+        centerWindow(self)
+
+    def listContextMenuEvent(self, event):
+        menu = QMenu(self)
+
+        addMenu = menu.addMenu("Add")
+        for template in TemplateWidgets:
+            w = TemplateWidgets[template]()
+            w.setJsonData(w.getDefaultData())
+            w.template = template
+            addMenu.addAction(template, Callback(self.listWidget.addItem, self.itemFromWidget(w)))
+
+        menu.addAction("Remove", lambda: self.listWidget.takeItem(self.listWidget.currentRow()))
+        menu.addAction("Clear", self.listWidget.clear)    
+        menu.popup(event.globalPos())
+
+    def itemFromWidget(self, w):
+        item = QListWidgetItem()
+        item.setIcon(QIcon(QPixmap.grabWidget(w)))
+        item.setText(w.template)
+        item.setData(Qt.UserRole, w.getJsonData())        
+        return item
+    
+    def save(self):
+        widgetsData = []
+        for i in range(self.listWidget.count()):
+            item = self.listWidget.item(i)
+            data = item.data(Qt.UserRole)
+            template = item.text()
+            widgetsData.append((template, data))
+
+        self.saved.emit(widgetsData)
+        self.accept()
+
+class CompoundTemplateWidget(TemplateWidget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        layout = QHBoxLayout()
+        self.setLayout(layout)
+        layout.setContentsMargins(QMargins())
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        menu.addAction("Edit widgets", self.editWidgets)
+        menu.popup(event.globalPos())
+
+    def editWidgets(self):
+        def saveWidgets(widgetsData):
+            clearLayout(self.layout())
+            
+            templates, widgets, values = [], [], []            
+            for template, d in widgetsData:
+                templates.append(template)
+                widgets.append(d)
+                values.append(d[d["default"]])
+
+            self.setJsonData({"templates": templates, "widgets": widgets, "values": values, "default": "values"})
+            self.somethingChanged.emit()
+
+        dlg = EditCompountWidgetsDialog(self)
+        dlg.saved.connect(saveWidgets)
+        dlg.exec_()
+
+    def getWidgets(self):
+        layout = self.layout()
+        widgets = []
+        for i in range(layout.count()):
+            w = layout.itemAt(i).widget()
+            if w:                
+                widgets.append(w)
+        return widgets
+
+    def getDefaultData(self):
+        d1 = ListBoxTemplateWidget().getDefaultData()
+        d2 = ButtonTemplateWidget().getDefaultData()
+        return {"widgets": [d1, d2], "values": [d1[d1["default"]], d2[d2["default"]]], "templates":["listBox", "button"], "default": "values"}
+
+    def getJsonData(self):
+        values, widgets, templates = [], [], []
+        for w in self.getWidgets():
+            d = w.getJsonData()
+            templates.append(w.template)
+            values.append(d[d["default"]])
+            widgets.append(d)
+        return {"templates": templates, "widgets": widgets, "values": values, "default": "values"}
+
+    def setJsonData(self, value):
+        layout = self.layout()
+
+        widgets = value["widgets"]
+        templates = value["templates"]
+        values = value["values"]
+
+        clearLayout(layout)
+        for i in range(len(widgets)):
+            w = TemplateWidgets[templates[i]](executor=self.executor)
+            w.template = templates[i]
+
+            d = dict(widgets[i])
+            d[d["default"]] = values[i]
+            w.setJsonData(d)
+
+            w.somethingChanged.connect(self.somethingChanged.emit)
+
+            layout.addWidget(w, alignment=Qt.AlignTop)
+            layout.addSpacing(5)
+
+        layout.addStretch()
+
 TemplateWidgets = {
     "button": ButtonTemplateWidget,
     "checkBox": CheckBoxTemplateWidget,
     "comboBox": ComboBoxTemplateWidget,
     "curve": CurveTemplateWidget,
+    "compound": CompoundTemplateWidget,
     "json": JsonTemplateWidget,
     "label": LabelTemplateWidget,
     "lineEdit": LineEditTemplateWidget,

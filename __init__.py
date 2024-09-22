@@ -83,8 +83,9 @@ class AttributesWidget(QWidget):
                     print("Error: "+str(e))
                     self.mainWindow.showLog()
                 else:
-                    self.updateWidgets()
-                    self.updateWidgetStyles()
+                    if cmd: # in case command is specified, no command can be used for obtaining completions
+                        self.updateWidgets()
+                        self.updateWidgetStyles()
             return localEnv
 
         for idx, a in enumerate(attributes):
@@ -114,7 +115,7 @@ class AttributesWidget(QWidget):
         subMenu = QMenu(module.name())
 
         for a in module.attributes():
-            if a.template() == attr.template():
+            if a.template() == attr.template() and a.name(): # skip empty names as well
                 subMenu.addAction(a.name(), Callback(self.connectAttr, path+module.name()+"/"+a.name(), attrWidgetIndex))
 
         for ch in module.children():
@@ -129,18 +130,15 @@ class AttributesWidget(QWidget):
         menu = QMenu(self)
 
         if self.moduleItem and self.moduleItem.parent():
-            makeConnectionMenu = QMenu("Make connection")
+            makeConnectionMenu = menu.addMenu("Make connection")
+
             for a in self.moduleItem.module.parent().attributes():
-                if a.template() == attr.template():
+                if a.template() == attr.template() and a.name(): # skip empty names as well
                     makeConnectionMenu.addAction(a.name(), Callback(self.connectAttr, "/"+a.name(), attrWidgetIndex))
 
             for ch in self.moduleItem.module.parent().children():
-                if ch is self.moduleItem.module:
-                    continue
-
-                self.connectionMenu(makeConnectionMenu, ch, attrWidgetIndex)
-
-            menu.addMenu(makeConnectionMenu)
+                if ch is not self.moduleItem.module:
+                    self.connectionMenu(makeConnectionMenu, ch, attrWidgetIndex)
 
         if attr.connect():
             menu.addAction("Break connection", Callback(self.disconnectAttr, attrWidgetIndex))
