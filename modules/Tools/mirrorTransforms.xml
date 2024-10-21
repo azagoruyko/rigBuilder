@@ -40,17 +40,9 @@ def mirrorMatrixByDelta(srcBase, src, destBase):
 
 def mirrorTransform(src, *, recursive=False, findReplace=None, parent=None):
     src = pm.PyNode(src)
-    tr = src.duplicate()[0]
+    tr = src.duplicate(po=True)[0]
     if parent:
-        pm.PyNode(parent) | tr
-    
-    # remove children only, keep curve shapes
-    for ch in tr.listRelatives(c=True): 
-        if ch.type() not in ["nurbsCurve"]:
-            pm.delete(ch)
-        else:
-            ch.overrideEnabled.set(True)
-            ch.overrideColor.set(@colorIndex)
+        pm.PyNode(parent) | tr               
     
     if findReplace:
         name = src.name()
@@ -58,36 +50,49 @@ def mirrorTransform(src, *, recursive=False, findReplace=None, parent=None):
             name = name.replace(s_find, s_replace)
         tr.rename(name)
     
-    mirrorTmp = None
-    if tr.getShapes(): # if there are any shapes
-        mirrorTmp = pm.createNode("transform")        
-        trTmp = tr.duplicate()[0]
-        unlockTRS(trTmp)
-        mirrorTmp | trTmp
-        mirrorTmp.sx.set(-1)    
+    shapes_tr = None
+    if src.getShapes():
+        mirrorTmp = pm.createNode("transform")
+        shapes_tr = src.duplicate()[0]
+        for ch in shapes_tr.listRelatives(c=True):
+            if ch.type() in ["nurbsCurve"]:
+                ch.overrideEnabled.set(True)
+                ch.overrideColor.set(@colorIndex)
+            else:
+                pm.delete(ch)
+            
+        disableLimits(shapes_tr)
+        unlockTRS(shapes_tr)
+        mirrorTmp | shapes_tr
+        mirrorTmp.sx.set(-1)
+        pm.parent(shapes_tr, w=True)
+        pm.delete(mirrorTmp)
         
-        for sh in tr.getShapes(): # remove other shapes
-            pm.delete(sh)        
-    
     m = mirrorMatrixByDelta(om.MMatrix(), om.MMatrix(src.wm.get()), om.MMatrix())
     pm.xform(tr, ws=True, m=m)
 
-    if mirrorTmp:     
-        parentShape([trTmp], tr)
-        pm.delete(mirrorTmp)
-        
+    if shapes_tr:
+        parentShapes([shapes_tr], tr)
+
     if recursive:
         for ch in src.listRelatives(c=True, type="transform"):
             mirrorTransform(ch, recursive=True, findReplace=findReplace, parent=tr)
     return tr
 
-def unlockTRS(ctrl):
-    ctrl = pm.PyNode(ctrl)
+def disableLimits(transform):
+    pm.transformLimits(
+        transform, 
+        etx=(0,0),ety=(0,0),etz=(0,0),
+        erx=(0,0),ery=(0,0),erz=(0,0),
+        esx=(0,0),esy=(0,0),esz=(0,0))
+    
+def unlockTRS(transform):
+    transform = pm.PyNode(transform)
     for a in "trs":
         for b in "xyz":
-            ctrl.attr(a+b).unlock()
+            transform.attr(a+b).set(l=False, k=True)            
                 
-def parentShape(shapes, ctrl):
+def parentShapes(shapes, ctrl):
     ctrl = pm.PyNode(ctrl)
     
     for shape in shapes:
@@ -108,7 +113,7 @@ mirrorTransform(@source, recursive=@recursive, findReplace=[@findReplace])
 
     ]]></run>
 <attributes>
-<attr name="source" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "L_ctrl_null", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "default": "value"}]]></attr>
+<attr name="source" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "L_eyeLid_main_control_group", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "default": "value"}]]></attr>
 <attr name="findReplace" template="compound" category="General" connect=""><![CDATA[{"templates": ["lineEdit", "lineEdit"], "widgets": [{"value": "L_", "default": "value", "min": 0, "max": 100, "validator": 0}, {"value": "R_", "default": "value", "min": 0, "max": 100, "validator": 0}], "values": ["L_", "R_"], "default": "values"}]]></attr>
 <attr name="recursive" template="checkBox" category="General" connect=""><![CDATA[{"checked": true, "default": "checked"}]]></attr>
 <attr name="colorIndex" template="lineEdit" category="General" connect=""><![CDATA[{"value": 13, "default": "value", "min": 0, "max": 31, "validator": 1}]]></attr>
