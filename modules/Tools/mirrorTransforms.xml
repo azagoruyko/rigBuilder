@@ -1,0 +1,118 @@
+<module name="mirrorTransforms" muted="0" uid="f086f78ef56c4eb780aee9a3e72c0a27">
+<run><![CDATA[import pymel.core as pm
+import maya.cmds as cmds
+import maya.api.OpenMaya as om
+
+source = pm.PyNode(@source)
+
+def maxis(m, a):
+    return om.MVector(m[a*4+0], m[a*4+1], m[a*4+2])
+
+def set_maxis(m, a, v):
+    m[a*4+0] = v[0]
+    m[a*4+1] = v[1]
+    m[a*4+2] = v[2]
+
+def parentConstraintMatrix(destBase, srcBase, src):
+    return destBase * srcBase.inverse() * src
+    
+def symmat(m): # flip x axis
+    out = om.MMatrix(m)
+    out[0] *= -1
+    out[4] *= -1
+    out[8] *= -1
+    out[12] *= -1
+    return out
+
+def mirrorMatrix(base, srcBase, src):
+    return parentConstraintMatrix(base, symmat(srcBase), symmat(src))
+
+def mirrorMatrixByDelta(srcBase, src, destBase):
+    mirroredSrcBase = mirrorMatrix(om.MMatrix(), om.MMatrix(), srcBase)
+    mirroredSrc = mirrorMatrix(om.MMatrix(), om.MMatrix(), src)
+
+    # set translation the same, used for rotation
+    dt = maxis(mirroredSrcBase,3) - maxis(destBase,3)
+    set_maxis(mirroredSrc, 3, maxis(mirroredSrc, 3) - dt)
+    set_maxis(mirroredSrcBase, 3, maxis(mirroredSrcBase, 3) - dt)
+
+    return parentConstraintMatrix(destBase, mirroredSrcBase, mirroredSrc)
+
+def mirrorTransform(src, *, recursive=False, findReplace=None, parent=None):
+    src = pm.PyNode(src)
+    tr = src.duplicate()[0]
+    if parent:
+        pm.PyNode(parent) | tr
+    
+    # remove children only, keep curve shapes
+    for ch in tr.listRelatives(c=True): 
+        if ch.type() not in ["nurbsCurve"]:
+            pm.delete(ch)
+        else:
+            ch.overrideEnabled.set(True)
+            ch.overrideColor.set(@colorIndex)
+    
+    if findReplace:
+        name = src.name()
+        for s_find, s_replace in findReplace:
+            name = name.replace(s_find, s_replace)
+        tr.rename(name)
+    
+    mirrorTmp = None
+    if tr.getShapes(): # if there are any shapes
+        mirrorTmp = pm.createNode("transform")        
+        trTmp = tr.duplicate()[0]
+        unlockTRS(trTmp)
+        mirrorTmp | trTmp
+        mirrorTmp.sx.set(-1)    
+        
+        for sh in tr.getShapes(): # remove other shapes
+            pm.delete(sh)        
+    
+    m = mirrorMatrixByDelta(om.MMatrix(), om.MMatrix(src.wm.get()), om.MMatrix())
+    pm.xform(tr, ws=True, m=m)
+
+    if mirrorTmp:     
+        parentShape([trTmp], tr)
+        pm.delete(mirrorTmp)
+        
+    if recursive:
+        for ch in src.listRelatives(c=True, type="transform"):
+            mirrorTransform(ch, recursive=True, findReplace=findReplace, parent=tr)
+    return tr
+
+def unlockTRS(ctrl):
+    ctrl = pm.PyNode(ctrl)
+    for a in "trs":
+        for b in "xyz":
+            ctrl.attr(a+b).unlock()
+                
+def parentShape(shapes, ctrl):
+    ctrl = pm.PyNode(ctrl)
+    
+    for shape in shapes:
+        shape = pm.PyNode(shape)
+        
+        unlockTRS(shape)
+    
+        ctrl | shape
+        pm.makeIdentity(shape, apply=True,t=1,r=1,s=1,n=0,pn=1)
+
+        for sh in shape.getShapes():
+            pm.parent(sh, ctrl, r=True, s=True)
+            sh.rename(ctrl+"Shape")
+                
+        pm.delete(shape)
+    
+mirrorTransform(@source, recursive=@recursive, findReplace=[@findReplace])
+
+    ]]></run>
+<attributes>
+<attr name="source" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "L_ctrl_null", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "default": "value"}]]></attr>
+<attr name="findReplace" template="compound" category="General" connect=""><![CDATA[{"templates": ["lineEdit", "lineEdit"], "widgets": [{"value": "L_", "default": "value", "min": 0, "max": 100, "validator": 0}, {"value": "R_", "default": "value", "min": 0, "max": 100, "validator": 0}], "values": ["L_", "R_"], "default": "values"}]]></attr>
+<attr name="recursive" template="checkBox" category="General" connect=""><![CDATA[{"checked": true, "default": "checked"}]]></attr>
+<attr name="colorIndex" template="lineEdit" category="General" connect=""><![CDATA[{"value": 13, "default": "value", "min": 0, "max": 31, "validator": 1}]]></attr>
+</attributes>
+<children>
+</children>
+</module>
