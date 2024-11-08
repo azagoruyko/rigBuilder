@@ -266,13 +266,16 @@ class JsonWidget(QTreeWidget):
                     self._undoSystem.flush()
             menu.addAction("Clear", f)
 
-            menu.addSeparator()
+            menu.addSeparator()            
 
             moveMenu = menu.addMenu("Move")
             moveMenu.addAction("Top", lambda:self.moveItem(-9999999), "Ctrl+Shift+Up")
             moveMenu.addAction("Up", lambda:self.moveItem(-1), "Shift+Up")
             moveMenu.addAction("Down", lambda:self.moveItem(1), "Shift+Down")
             moveMenu.addAction("Bottom", lambda:self.moveItem(9999999), "Ctrl+Shift+Down")
+
+            menu.addAction("Sort", self.sortItemsChildren)
+            menu.addSeparator()
 
             menu.addAction("Duplicate", self.duplicateItem, "Ctrl+D")
 
@@ -518,6 +521,25 @@ class JsonWidget(QTreeWidget):
             item.setExpanded(expand)
 
             self.itemMoved.emit(item)
+
+    def sortItemsChildren(self, items=None):
+        undo_functions = []
+
+        for item in items or self.selectedItems():
+            children = [item.takeChild(0) for _ in range(item.childCount())]
+            sortedChildren = sorted(children, key=lambda x: x.text(0))
+            for i, child in enumerate(sortedChildren):
+                item.insertChild(i, child)
+            
+            # undo
+            def f():
+                _ = [item.takeChild(0) for _ in range(item.childCount())]
+                for i, child in enumerate(children):
+                    item.insertChild(i, child)
+            undo_functions.append(f)
+
+        f = lambda: [f() for f in undo_functions]
+        self._undoSystem.push("Sort", f)
 
     def duplicateItem(self):
         selectedItems = self.selectedItems()
