@@ -520,10 +520,10 @@ class Module(object):
     def loadedFromLocal(self):
         return self._filePath.startswith(os.path.normpath(RigBuilderLocalPath+"/modules/"))
 
-    def referenceFile(self):
+    def referenceFile(self, *, source=None):
         local = Module.LocalUids.get(self._uid)
         server = Module.ServerUids.get(self._uid)
-        path = {"all": local or server, "server": server, "local": local, "":self._filePath}.get(Module.UpdateSource)
+        path = {"all": local or server, "server": server, "local": local, "":self._filePath}.get(source or Module.UpdateSource)
         return path
 
     def relativePath(self):
@@ -723,8 +723,11 @@ class Module(object):
         if callable(uiCallback):
             uiCallback(self)
 
+        # replace @abc with prefix_abc
+        runCode = re.sub(r'@(\w+)', attrPrefix+r'\1', self._runCode)
+        
         try:
-            exec(self._runCode.replace("@", attrPrefix), localEnv)
+            exec(runCode, localEnv)
         except ExitModuleException:
             pass
 

@@ -984,9 +984,13 @@ class TableTemplateWidget(TemplateWidget):
         items = value["items"]
         self.tableWidget.setRowCount(len(items))
         for r, row in enumerate(items):
-            for c, data in enumerate(row):
-                item = QTableWidgetItem(fromSmartConversion(data))
-                item.setForeground(jsonColor(data))
+            for c in range(len(value["header"])): # fill each column
+                if c < len(row):
+                    data = row[c]
+                    item = QTableWidgetItem(fromSmartConversion(data))
+                    item.setForeground(jsonColor(data))
+                else:
+                    item = QTableWidgetItem()
                 self.tableWidget.setItem(r, c, item)
 
         self.tableWidget.resizeRowsToContents()

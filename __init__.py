@@ -31,14 +31,14 @@ def sendToServer(module):
     '''
     Send module to server with SVN, Git, Perforce or other VCS.
     '''
-    module.sendToServer() # copy file to server and add to VCS
+    module.sendToServer() # rewrite file on server
     return True
 
 def updateFilesFromServer():
-    '''
-    Update files from server with SVN, Git, Perforce or other VCS.
-    '''
     def update():
+        '''
+        Update files from server with SVN, Git, Perforce or other VCS.
+        '''
         pass
 
     global updateFilesThread
@@ -783,13 +783,7 @@ class TreeWidget(QTreeWidget):
         return item
 
     def contextMenuEvent(self, event):
-        menu = QMenu(self)
-        for m in self.mainWindow.menu.findChildren(QMenu):
-            if m.title():
-                for a in m.actions():
-                    menu.addAction(a)
-                menu.addSeparator()
-        menu.popup(event.globalPos())
+        self.mainWindow.menu.popup(event.globalPos())
 
     def sendModuleToServer(self):
         selectedItems = self.selectedItems()
@@ -1624,32 +1618,67 @@ class RigBuilderWindow(QFrame):
     def getMenu(self):
         menu = QMenu(self)
 
-        fileMenu = menu.addMenu("File")
-        fileMenu.addAction("New", self.treeWidget.insertModule, "Insert")
-        fileMenu.addAction("Import", self.treeWidget.importModule, "Ctrl+I")
-        fileMenu.addSeparator()
-        fileMenu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
-        fileMenu.addAction("Save as", self.treeWidget.saveAsModule)
-        fileMenu.addSeparator()
-        fileMenu.addAction("Locate file", self.locateModuleFile)
-        fileMenu.addAction("Copy tool code", self.copyToolCode)
+        menu.addAction("New", self.treeWidget.insertModule, "Insert")
+        menu.addAction("Import", self.treeWidget.importModule, "Ctrl+I")
+        menu.addSeparator()
+        menu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
+        menu.addAction("Save as", self.treeWidget.saveAsModule)
+        menu.addSeparator()
 
-        editMenu = menu.addMenu("Edit")
-        editMenu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
-        editMenu.addSeparator()
-        editMenu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
-        editMenu.addAction("Send to server", self.treeWidget.sendModuleToServer)
-        editMenu.addAction("Embed", self.treeWidget.embedModule)
-        editMenu.addSeparator()
-        editMenu.addAction("Mute", self.treeWidget.muteModule, "M")
-        editMenu.addAction("Remove", self.treeWidget.removeModule, "Delete")
-        editMenu.addAction("Clear all", self.clearAllModules)
+        menu.addAction("Locate file", self.locateModuleFile)
+        menu.addAction("Copy tool code", self.copyToolCode)
+        menu.addSeparator()
+        menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
+        menu.addSeparator()
 
-        helpMenu = menu.addMenu("Help")
-        helpMenu.addAction("Documentation", self.showDocumenation)
+        diffMenu = menu.addMenu("Diff")
+        diffMenu.addAction("vs File", lambda: self.diffModule(referenceSource="all"))
+        diffMenu.addAction("vs Server", lambda: self.diffModule(referenceSource="server"))
+
+        menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
+        menu.addAction("Send to server", self.treeWidget.sendModuleToServer)
+        menu.addAction("Embed", self.treeWidget.embedModule)
+
+        menu.addSeparator()
+        menu.addAction("Mute", self.treeWidget.muteModule, "M")
+        menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
+        menu.addAction("Clear all", self.clearAllModules)
+
+        menu.addAction("Documentation", self.showDocumenation)
 
         return menu
+    
+    def diffModule(self, *, referenceSource=None):
+        import webbrowser
+        import html
+        import difflib
+        diff = difflib.HtmlDiff(wrapcolumn=120)
 
+        selectedItems = self.treeWidget.selectedItems()
+        if not selectedItems:
+            return
+        
+        module = selectedItems[0].module
+        
+        path = module.referenceFile(source=referenceSource)
+        if path:
+            path = os.path.normpath(path)
+            currentXml = module.toXml()
+
+            with open(path, "r") as f:
+                originalXml = f.read()
+
+            tmpFile = os.path.expandvars("$TEMP/rigBuilderDiff.html")
+            diffHtml = diff.make_file(originalXml.splitlines(), currentXml.splitlines(), 
+                                      fromdesc=html.escape(path), 
+                                      todesc="Current",
+                                      context=True, numlines=3)
+            with open(tmpFile, "w") as f:
+                f.write(diffHtml)
+            webbrowser.open("file://"+tmpFile)
+        else:
+            QMessageBox.warning(self, "Rig Builder", "Can't find reference file")
+                    
     def copyToolCode(self):
         selectedItems = self.treeWidget.selectedItems()
         if selectedItems:
