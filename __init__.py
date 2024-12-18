@@ -988,10 +988,15 @@ class TreeWidget(QTreeWidget):
         self.addTopLevelItem(self.makeItemFromModule(m))
 
         # add to recent modules
-        if m not in self.mainWindow.infoWidget.recentModules:
-            self.mainWindow.infoWidget.recentModules.insert(0, m)
-            if len(self.mainWindow.infoWidget.recentModules) > 10:
-                self.mainWindow.infoWidget.recentModules.pop()
+        recentModules = self.mainWindow.infoWidget.recentModules
+        for rm in list(recentModules):
+            if rm.uid() == m.uid(): # remove the previous one
+                recentModules.remove(rm)
+                break
+
+        recentModules.insert(0, m)
+        if len(recentModules) > 10:
+            recentModules.pop()
 
         return m
 
