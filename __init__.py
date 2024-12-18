@@ -1637,8 +1637,8 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
 
         diffMenu = menu.addMenu("Diff")
-        diffMenu.addAction("vs File", lambda: self.diffModule(referenceSource="all"))
-        diffMenu.addAction("vs Server", lambda: self.diffModule(referenceSource="server"))
+        diffMenu.addAction("vs File", lambda: self.diffModule())
+        diffMenu.addAction("vs Server", lambda: self.diffModule(reference="server"))
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
         menu.addAction("Send to server", self.treeWidget.sendModuleToServer)
@@ -1653,7 +1653,7 @@ class RigBuilderWindow(QFrame):
 
         return menu
     
-    def diffModule(self, *, referenceSource=None):
+    def diffModule(self, *, reference=None):
         import webbrowser
         import html
         import difflib
@@ -1665,7 +1665,7 @@ class RigBuilderWindow(QFrame):
         
         module = selectedItems[0].module
         
-        path = module.referenceFile(source=referenceSource)
+        path = module.referenceFile(source=reference) if reference else module.filePath()
         if path:
             path = os.path.normpath(path)
             currentXml = module.toXml()
