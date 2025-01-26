@@ -3,6 +3,7 @@ import json
 import re
 import os
 import subprocess
+import inspect
 import sys
 from xml.sax.saxutils import escape
 
@@ -27,11 +28,13 @@ if DCC == "maya":
 
 updateFilesThread = None
 
+trackFileChangesThreads = {} # by file path
+
 def sendToServer(module):
     '''
     Send module to server with SVN, Git, Perforce or other VCS.
     '''
-    module.sendToServer() # rewrite file on server
+    module.sendToServer() # copy file to server and add to VCS
     return True
 
 def updateFilesFromServer():
@@ -1577,6 +1580,13 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
 
+        vscodeBtn = QPushButton("Edit in VSCode")
+        vscodeBtn.clicked.connect(self.editInVSCode)
+        codeWidget = QWidget()
+        codeWidget.setLayout(QVBoxLayout())
+        codeWidget.layout().addWidget(vscodeBtn)
+        codeWidget.layout().addWidget(self.codeEditorWidget)
+
         self.runBtn = QPushButton("Run!")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
         self.runBtn.clicked.connect(self.runModuleClicked)
@@ -1601,7 +1611,7 @@ class RigBuilderWindow(QFrame):
 
         self.vsplitter = WideSplitter(Qt.Vertical)
         self.vsplitter.addWidget(hsplitter)
-        self.vsplitter.addWidget(self.codeEditorWidget)
+        self.vsplitter.addWidget(codeWidget)
         self.vsplitter.addWidget(self.logWidget)
         self.vsplitter.setSizes([500, 0, 0])
 
@@ -1652,7 +1662,74 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Documentation", self.showDocumenation)
 
         return menu
-    
+
+    def editInVSCode(self):
+        def getFunctionDefinition(f, *, name=None): # f(a,b,c=1) => 'def f(a,b,c=1):pass'
+            signature = inspect.signature(f)
+            args = []
+            for p in signature.parameters.values():
+                if p.default == p.empty:
+                    args.append(p.name)
+                else:
+                    args.append("{}={}".format(p.name, p.default))
+            return "def {}({}):pass".format(name or f.__name__, ", ".join(args))
+        
+        def onFileChangeCallback(module, filePath):    
+            with open(filePath, "r") as f:
+                lines = f.read().splitlines()
+
+            code = "\n".join(lines[1:]) # skip first line: import predefined things
+            code = re.sub(r"\battr_(\w+)\b", r'@\1', code)
+            module.setRunCode(code)
+            self.codeEditorWidget.updateState()
+
+        selectedItems = self.treeWidget.selectedItems()
+        if not selectedItems:
+            return
+        
+        setupVscode(RigBuilderLocalPath+"/vscode/.vscode")        
+        
+        module = selectedItems[0].module
+
+        # generate predefined things
+        fileName = module.path().replace("/", "__")
+        predefinedFile = "{}/vscode/{}_predef.py".format(RigBuilderLocalPath, fileName)
+        moduleFile = "{}/vscode/{}.py".format(RigBuilderLocalPath, fileName)
+
+        predefinedCode = []
+
+        # expose attributes
+        for a in module.attributes():
+            predefinedCode.append("attr_{} = {}".format(a.name(), json.dumps(a.get()))) # not initialized
+            predefinedCode.append(getFunctionDefinition(a.set, name="attr_set_"+a.name()))
+            predefinedCode.append("attr_{}_data = {}".format(a.name(), json.dumps(a.data())))
+
+        # expose API
+        for k, v in ModulesAPI.items():
+            if callable(v):
+                predefinedCode.append(getFunctionDefinition(v))
+            else:
+                predefinedCode.append("{} = None".format(k)) # not initialized
+
+        with open(predefinedFile, "w") as f:
+            f.write("\n".join(predefinedCode))
+
+        with open(moduleFile, "w") as f:
+            predefinedModule = os.path.splitext(os.path.basename(predefinedFile))[0]
+            code = re.sub(r'@(\w+)', r'attr_\1', module.runCode())
+            f.write("\n".join(["from {} import * # must be the first line".format(predefinedModule), # first line
+                               code]))
+        
+        if moduleFile in trackFileChangesThreads:
+            trackFileChangesThreads[moduleFile].terminate()
+        
+        th = TrackFileChangesThread(moduleFile)
+        th.somethingChanged.connect(lambda module=module, path=moduleFile: onFileChangeCallback(module, path))
+        th.start()
+        trackFileChangesThreads[moduleFile] = th
+        
+        subprocess.Popen([settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
     def diffModule(self, *, reference=None):
         import webbrowser
         import html
@@ -1897,9 +1974,75 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
 
     return w
 
+def setupVscode(folder): # path to .vscode folder
+    defaultSettings = {
+        "python.autoComplete.extraPaths": [],
+        "python.analysis.extraPaths": [],
+        "github.copilot.editor.enableAutoCompletions": True,
+        "github.copilot.advanced": {}
+    }
+
+    if not os.path.exists(folder):
+        os.makedirs(folder)    
+
+    # get settings
+    settingsFile = folder + "/settings.json"
+    if os.path.exists(settingsFile):
+        with open(settingsFile, "r") as f:
+            settings = json.load(f)
+    else:
+        settings = dict(defaultSettings) # copy
+
+    # add paths
+    for p in sys.path:
+        p = p.replace("\\", "/")
+        for section in ["python.autoComplete.extraPaths", "python.analysis.extraPaths"]:
+            if p not in settings[section]:
+                settings[section].append(p)
+
+    with open(settingsFile, "w") as f:
+        json.dump(settings, f, indent=4)
+
+def cleanupVscode():
+    vscodeFolder = RigBuilderLocalPath+"/vscode"
+    if not os.path.exists(vscodeFolder):
+        return
+    
+    for f in os.listdir(vscodeFolder):
+        if f.endswith(".py"): # remove python files
+            os.remove(os.path.join(vscodeFolder, f))
+
+class TrackFileChangesThread(QThread):
+    somethingChanged = Signal()
+
+    def __init__(self, filePath):
+        super().__init__()
+        self.filePath = filePath
+
+    def run(self):
+        lastModified = os.path.getmtime(self.filePath)
+        while True:
+            currentModified = os.path.getmtime(self.filePath)
+            if currentModified != lastModified:
+                self.somethingChanged.emit()
+                lastModified = currentModified
+            time.sleep(1)
+
+# initializations
+
+if not os.path.exists(RigBuilderLocalPath+"/settings.json"):
+    defaultSettings = {"vscode": "code"}
+    with open(RigBuilderLocalPath+"/settings.json", "w") as f:
+        json.dump(defaultSettings, f, indent=4)
+
+with open(RigBuilderLocalPath+"/settings.json", "r") as f:
+    settings = json.load(f)
+
 ModulesAPI.update(widgets.WidgetsAPI)
 
-if not os.path.exists(RigBuilderLocalPath):
+if not os.path.exists(RigBuilderLocalPath+"/modules"):
     os.makedirs(RigBuilderLocalPath+"/modules")
+
+cleanupVscode()
 
 mainWindow = RigBuilderWindow()
