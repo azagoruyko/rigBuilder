@@ -3,9 +3,16 @@ import re
 from contextlib import contextmanager
 import json
 
-from PySide2.QtGui import *
-from PySide2.QtCore import *
-from PySide2.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+
+def getFontWidth(fontMetrics, text):
+    """Get text width using appropriate method for Qt version"""
+    if hasattr(fontMetrics, 'horizontalAdvance'):
+        return fontMetrics.horizontalAdvance(text)
+    else:
+        return fontMetrics.width(text)
 
 JsonColors = {"none": QColor("#AAAAAA"),
               "bool": QColor("#CDEB8B"),
@@ -65,10 +72,7 @@ def smartConversion(x):
         return str(x)
 
 def fromSmartConversion(x):
-    if sys.version_info.major > 2:
-        return json.dumps(x) if not isinstance(x, str) else x
-    else:
-        return json.dumps(x) if type(x) not in [str, unicode] else x
+    return json.dumps(x) if not isinstance(x, str) else x
     
 def copyJson(data):
     if data is None:
@@ -81,9 +85,6 @@ def copyJson(data):
         return {k:copyJson(data[k]) for k in data}
 
     elif type(data) in [int, float, bool, str]:
-        return data
-
-    elif sys.version_info.major < 3 and type(data) is unicode: # compatibility with python 2.7
         return data
 
     else:
@@ -127,7 +128,7 @@ def blockedWidgetContext(widget):
     widget.blockSignals(False)
 
 def centerWindow(window):
-    screen = QDesktopWidget().screenGeometry()
+    screen = QApplication.primaryScreen().geometry()
     cp = screen.center()
     geom = window.frameGeometry()
     geom.moveCenter(cp)

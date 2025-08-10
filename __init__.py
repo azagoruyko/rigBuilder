@@ -5,13 +5,14 @@ import os
 import subprocess
 import inspect
 import sys
+import shutil
 from xml.sax.saxutils import escape
 
-from PySide2.QtGui import *
-from PySide2.QtCore import *
-from PySide2.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 
-from .classes import *
+from .core import *
 from .editor import *
 from . import widgets
 from .utils import *
@@ -19,12 +20,20 @@ from .utils import *
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 ParentWindow = None
 
+def get_maya_main_window():
+    """Get Maya main window for PySide6"""
+    try:
+        import maya.OpenMayaUI as omui
+        from shiboken6 import wrapInstance
+        return wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
+    except ImportError:
+        return None
+
 if DCC == "maya":
     import maya.cmds as cmds
     import maya.OpenMayaUI as omui
     import maya.OpenMaya as om
-    from shiboken2 import wrapInstance
-    ParentWindow = wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
+    ParentWindow = get_maya_main_window()
 
 updateFilesThread = None
 
@@ -342,7 +351,7 @@ class AttributesTabWidget(QTabWidget):
 
     def editAttributes(self):
         dialog = EditAttributesDialog(self.moduleItem, self.currentIndex(), parent=mainWindow)
-        dialog.exec_()
+        dialog.exec()
 
         self.mainWindow.codeEditorWidget.updateState()
         self.updateTabs()
@@ -722,9 +731,9 @@ class TreeWidget(QTreeWidget):
         fontMetrics = QFontMetrics(self.font())
         viewport = self.viewport()
 
-        painter = QPainter(viewport)
-        painter.setPen(QColor(90,90,90))
-        painter.drawText(viewport.width() - fontMetrics.width(label)-10, viewport.height()-10, label)
+        with QPainter(viewport) as painter:
+            painter.setPen(QColor(90,90,90))
+            painter.drawText(viewport.width() - getFontWidth(fontMetrics, label)-10, viewport.height()-10, label)
 
     def dragEnterEvent(self, event):
         super().dragEnterEvent(event)
@@ -1013,7 +1022,7 @@ class TreeWidget(QTreeWidget):
         if modulesFrom:
             self.moduleListDialog.modulesFromWidget.setCurrentIndex({"server": 0, "local": 1}[modulesFrom])
 
-        self.moduleListDialog.exec_()
+        self.moduleListDialog.exec()
 
     def event(self, event):
         if event.type() == QEvent.KeyPress:
@@ -1235,7 +1244,7 @@ class EditAttributesWidget(QWidget):
     def addTemplateAttribute(self):
         selector = TemplateSelectorDialog(parent=mainWindow)
         selector.selectedTemplate.connect(lambda t: self.insertCustomWidget(t))
-        selector.exec_()
+        selector.exec()
 
     def insertCustomWidget(self, template, row=None):
         if not widgets.TemplateWidgets.get(template):
@@ -1250,7 +1259,7 @@ class EditAttributesWidget(QWidget):
 
     def resizeNameFields(self):
         fontMetrics = self.fontMetrics()
-        maxWidth = max([fontMetrics.width(self.attributesLayout.itemAt(k).widget().nameWidget.text()) for k in range(self.attributesLayout.count())])
+        maxWidth = max([getFontWidth(fontMetrics, self.attributesLayout.itemAt(k).widget().nameWidget.text()) for k in range(self.attributesLayout.count())])
         for k in range(self.attributesLayout.count()):
             w = self.attributesLayout.itemAt(k).widget()
             w.nameWidget.setFixedWidth(maxWidth)
@@ -1449,27 +1458,22 @@ class LogHighligher(QSyntaxHighlighter):
 
         warningFormat = QTextCharFormat()
         warningFormat.setForeground(QColor(250, 150, 90))
-        warningRegexp = QRegExp("\\b\\w*warning\\b")
-        warningRegexp.setCaseSensitivity(Qt.CaseInsensitive)
-        self.highlightingRules.append((warningRegexp, warningFormat))
+        self.highlightingRules.append(("(?i)\\b\\w*warning\\b", warningFormat))
 
         errorFormat = QTextCharFormat()
         errorFormat.setForeground(QColor(250, 90, 90))
-        errorRegexp = QRegExp("\\b\\w*error\\b")
-        errorRegexp.setCaseSensitivity(Qt.CaseInsensitive)
-        self.highlightingRules.append((errorRegexp, errorFormat))
+        self.highlightingRules.append(("(?i)\\b\\w*error\\b", errorFormat))
 
     def highlightBlock(self, text):
         for pattern, format in self.highlightingRules:
             if not pattern:
                 continue
 
-            expression = QRegExp(pattern)
-            index = expression.indexIn(text)
-            while index >= 0:
-                length = expression.matchedLength()
-                self.setFormat(index, length, format)
-                index = expression.indexIn(text, index + length)
+            expression = QRegularExpression(pattern)
+            iterator = expression.globalMatch(text)
+            while iterator.hasNext():
+                match = iterator.next()
+                self.setFormat(match.capturedStart(), match.capturedLength(), format)
 
         self.setCurrentBlockState(0)
 
@@ -1490,11 +1494,11 @@ class WideSplitterHandle(QSplitterHandle):
         super().__init__(orientation, parent, **kwargs)
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        brush = QBrush()
-        brush.setStyle(Qt.Dense6Pattern)
-        brush.setColor(QColor(150, 150, 150))
-        painter.fillRect(event.rect(), QBrush(brush))
+        with QPainter(self) as painter:
+            brush = QBrush()
+            brush.setStyle(Qt.Dense6Pattern)
+            brush.setColor(QColor(150, 150, 150))
+            painter.fillRect(event.rect(), QBrush(brush))
 
 class WideSplitter(QSplitter):
     def __init__(self, orientation, **kwargs):
@@ -1728,7 +1732,14 @@ class RigBuilderWindow(QFrame):
         th.start()
         trackFileChangesThreads[moduleFile] = th
         
-        subprocess.Popen([settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if not shutil.which(settings["vscode"]):
+            QMessageBox.warning(self, "Editor Error", f"Editor executable not found: {settings['vscode']}\n\nPlease install the editor or update the path in settings.json")
+            return
+            
+        try:
+            subprocess.Popen([settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception as e:
+            QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
     def diffModule(self, *, reference=None):
         import webbrowser
@@ -1938,6 +1949,17 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.endProgress()
         self.attributesTabWidget.updateTabs()
 
+    def closeEvent(self, event):
+        # Terminate all file tracking threads before closing
+        for thread in trackFileChangesThreads.values():
+            if thread.isRunning():
+                thread.terminate()
+                thread.wait(1000)  # Wait up to 1 second for thread to finish
+        trackFileChangesThreads.clear()
+        
+        # Call parent close event
+        super().closeEvent(event)
+
 def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, relative path, uid
     module = Module.loadModule(spec)
     if not module:
@@ -2028,21 +2050,24 @@ class TrackFileChangesThread(QThread):
                 lastModified = currentModified
             time.sleep(1)
 
-# initializations
+def _initialize():
+    """Initialize rigBuilder directories and settings"""
+    # Create local directory structure
+    os.makedirs(RigBuilderLocalPath+"/modules", exist_ok=True)
+    
+    # Initialize settings file
+    settings_path = RigBuilderLocalPath+"/settings.json"
+    if not os.path.exists(settings_path):
+        with open(settings_path, "w") as f:
+            json.dump({"vscode": "code"}, f, indent=4)
+    
+    with open(settings_path, "r") as f:
+        global settings
+        settings = json.load(f)
+    
+    # Update API and cleanup
+    ModulesAPI.update(widgets.WidgetsAPI)
+    cleanupVscode()
 
-if not os.path.exists(RigBuilderLocalPath+"/settings.json"):
-    defaultSettings = {"vscode": "code"}
-    with open(RigBuilderLocalPath+"/settings.json", "w") as f:
-        json.dump(defaultSettings, f, indent=4)
-
-with open(RigBuilderLocalPath+"/settings.json", "r") as f:
-    settings = json.load(f)
-
-ModulesAPI.update(widgets.WidgetsAPI)
-
-if not os.path.exists(RigBuilderLocalPath+"/modules"):
-    os.makedirs(RigBuilderLocalPath+"/modules")
-
-cleanupVscode()
-
+_initialize()
 mainWindow = RigBuilderWindow()

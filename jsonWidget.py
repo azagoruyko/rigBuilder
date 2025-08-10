@@ -1,6 +1,6 @@
-from PySide2.QtWidgets import *
-from PySide2.QtCore import *
-from PySide2.QtGui import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 import json
 import re
 import os
@@ -30,7 +30,11 @@ class EditJsonTextWindow(QDialog):
         self.textWidget = QTextEdit()
         self.textWidget.setPlainText(json.dumps(data))
         self.textWidget.setReadOnly(readOnly)
-        self.textWidget.setTabStopWidth(16)
+        # Qt compatibility: setTabStopWidth (Qt5) vs setTabStopDistance (Qt6)
+        if hasattr(self.textWidget, 'setTabStopDistance'):
+            self.textWidget.setTabStopDistance(16)
+        else:
+            self.textWidget.setTabStopWidth(16)
         self.textWidget.setAcceptRichText(False)
         self.textWidget.setWordWrapMode(QTextOption.NoWrap)
 

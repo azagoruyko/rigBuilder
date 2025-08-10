@@ -1,6 +1,6 @@
-from PySide2.QtGui import *
-from PySide2.QtCore import *
-from PySide2.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 
 import sys
 import os
@@ -12,10 +12,7 @@ from .jsonWidget import JsonWidget
 
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 
-if sys.version_info.major > 2:
-    RootPath = os.path.dirname(__file__) # Rig Builder root folder
-else:
-    RootPath = os.path.dirname(__file__.decode(sys.getfilesystemencoding())) # legacy
+RootPath = os.path.dirname(__file__) # Rig Builder root folder
 
 if DCC == "maya":
     import maya.cmds as cmds
@@ -56,7 +53,11 @@ class EditTextDialog(QDialog):
 
         if not python:
             self.textWidget = QTextEdit()            
-            self.textWidget.setTabStopWidth(16)
+            # Qt compatibility: setTabStopWidth (Qt5) vs setTabStopDistance (Qt6)
+            if hasattr(self.textWidget, 'setTabStopDistance'):
+                self.textWidget.setTabStopDistance(16)
+            else:
+                self.textWidget.setTabStopWidth(16)
             self.textWidget.setAcceptRichText(False)
             self.textWidget.setWordWrapMode(QTextOption.NoWrap)            
         else:
@@ -1740,6 +1741,39 @@ def comboBox_items(data):
 def comboBox_setItems(data, items):
     data["items"] = items
 
+def runButtonCommand(module, buttonLabel):
+    """Execute button command by label.
+    
+    Args:
+        module: Module object containing attributes
+        buttonLabel: Label text of the button to execute
+    
+    Returns:
+        dict: Environment dictionary after execution
+    """
+    for attr in module.attributes():
+        if attr.template() in ["button", "lineEditAndButton"]:
+            data = attr.localData()
+            if data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel:
+                command = data.get("buttonCommand") or data.get("command", "")
+                if command:
+                    env = module.getEnv()
+                    if attr.template() == "lineEditAndButton":
+                        env["value"] = smartConversion(data.get("value", ""))
+                    
+                    localEnv = dict(WidgetsAPI)
+                    localEnv.update(env)
+                    exec(command, localEnv)
+                    
+                    # Update value for lineEditAndButton
+                    if attr.template() == "lineEditAndButton":
+                        data["value"] = localEnv.get("value", data.get("value", ""))
+                        attr.setData(data)
+                    
+                    return localEnv
+    
+    raise ValueError(f"Button with label '{buttonLabel}' not found in module '{module.name()}'")
+
 WidgetsAPI = {
     "listLerp": listLerp,
     "clamp": clamp,
@@ -1753,6 +1787,9 @@ WidgetsAPI = {
     "listBox_setSelected": listBox_setSelected,
     "comboBox_items": comboBox_items,
     "comboBox_setItems": comboBox_setItems,
+    
+    # button commands
+    "runButtonCommand": runButtonCommand,
 
     # obsolete
     "evaluateBezierCurve": evaluateBezierCurve,

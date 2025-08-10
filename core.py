@@ -5,18 +5,20 @@ import glob
 import json
 import uuid
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Union, Any, Callable, TYPE_CHECKING
 from .utils import copyJson
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element
 
 ModulesAPI = {} # updated at the end
 
-if sys.version_info.major > 2:
-    RigBuilderPath = os.path.dirname(__file__)
-    RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder")
-else:
-    RigBuilderPath = os.path.dirname(__file__.decode(sys.getfilesystemencoding()))
-    RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder").decode(sys.getfilesystemencoding())
+RigBuilderPath = os.path.dirname(__file__)
+RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder")
 
-def getUidFromFile(path):
+def getUidFromFile(path: str) -> Optional[str]:
+    """Extract UID from XML file."""
     if path.endswith(".xml"):
         with open(path, "r") as f:
             l = f.readline() # read first line
@@ -24,13 +26,14 @@ def getUidFromFile(path):
         if r:
             return r.group(1)
 
-def calculateRelativePath(path, root):
+def calculateRelativePath(path: str, root: str) -> str:
+    """Calculate relative path from root directory."""
     path = os.path.normpath(path)
     path = path.replace(os.path.normpath(root)+"\\", "")
     return path
 
-def categorizeFilesByModTime(files):
-    from datetime import datetime, timedelta
+def categorizeFilesByModTime(files: List[str]) -> tuple[Dict[str, List[str]], int]:
+    """Categorize files by modification time into time-based groups."""
     now = datetime.now()
 
     categories = {
@@ -44,14 +47,14 @@ def categorizeFilesByModTime(files):
         mod_time = datetime.fromtimestamp(os.path.getmtime(file))
         time_diff = now - mod_time
 
-        count += 1
         if time_diff <= timedelta(days=1):
             categories["Less 1 day ago"].append(file)
+            count += 1
         elif time_diff <= timedelta(weeks=1):
             categories["Less 1 week ago"].append(file)
+            count += 1
         else:
             categories["Others"].append(file)
-            count -= 1
 
     return categories, count
 
@@ -72,7 +75,8 @@ class Attribute(object):
         self._module = None
         self._data = {}
 
-    def copy(self):
+    def copy(self) -> 'Attribute':
+        """Create a deep copy of the attribute."""
         attr = Attribute()
         attr._name = self._name
         attr._category = self._category
@@ -84,79 +88,102 @@ class Attribute(object):
         attr._data = copyJson(self._data)
         return attr
 
-    def name(self):
+    def name(self) -> str:
+        """Get attribute name."""
         return self._name
     
-    def setName(self, name):
+    def setName(self, name: str):
+        """Set attribute name and mark as modified."""
         if name != self._name:
             self._name = name
             self._modified = True
     
-    def category(self):
+    def category(self) -> str:
+        """Get attribute category."""
         return self._category
     
-    def setCategory(self, category):
+    def setCategory(self, category: str):
+        """Set attribute category and mark as modified."""
         if category != self._category:
             self._category = category
             self._modified = True
     
-    def template(self):
+    def template(self) -> str:
+        """Get attribute widget template type."""
         return self._template
     
-    def setTemplate(self, template):
+    def setTemplate(self, template: str):
+        """Set attribute widget template type and mark as modified."""
         if template != self._template:
             self._template = template
             self._modified = True
     
-    def connect(self):
+    def connect(self) -> str:
+        """Get attribute connection path."""
         return self._connect
     
-    def setConnect(self, connect):
+    def setConnect(self, connect: str):
+        """Set attribute connection path and mark as modified."""
         if connect != self._connect:
             self._connect = connect
             self._modified = True
     
-    def expression(self):
+    def expression(self) -> str:
+        """Get attribute Python expression."""
         return self._expression
     
-    def setExpression(self, expression):
+    def setExpression(self, expression: str):
+        """Set attribute Python expression and mark as modified."""
         if expression != self._expression:
             self._expression = expression
             self._modified = True
     
-    def modified(self):
+    def modified(self) -> bool:
+        """Check if attribute has been modified."""
         return self._modified
     
-    def module(self):
+    def module(self) -> Optional['Module']:
+        """Get parent module that owns this attribute."""
         return self._module
     
-    def _defaultValue(self):
+    def _defaultValue(self) -> Any:
+        """Get default value from attribute data."""
+        if "default" not in self._data:
+            return
         return copyJson(self._data[self._data["default"]])
     
-    def _setDefaultValue(self, value):
+    def _setDefaultValue(self, value: Any):
+        """Set default value in attribute data."""
+        if "default" not in self._data:
+            return
         newValue = copyJson(value)
         if newValue != self._defaultValue():
             self._data[self._data["default"]] = newValue
             self._modified = True
     
-    def data(self): # return actual read-only copy of all data
+    def data(self) -> Dict[str, Any]: # return actual read-only copy of all data
+        """Get read-only copy of all attribute data."""
         self.pull()
         return copyJson(self._data)
     
-    def localData(self):
+    def localData(self) -> Dict[str, Any]:
+        """Get copy of local data without pulling from connections."""
         return copyJson(self._data)
     
-    def setLocalData(self, data):
+    def setLocalData(self, data: Dict[str, Any]):
+        """Set local data without pushing to connections."""
         newData = copyJson(data)
         if newData != self._data:
             self._data = newData
             self._modified = True
     
-    def setData(self, data):
+    def setData(self, data: Dict[str, Any]):
+        """Set data and push to connections."""
         self.setLocalData(data)
         self.push()
 
     def pull(self):
+        """Pull data from connection source and execute expression."""
         if self._connect:
             srcAttr = self.findConnectionSource()
             if srcAttr:
@@ -167,17 +194,20 @@ class Attribute(object):
         self.executeExpression()
 
     def push(self):
+        """Push data to connection source."""
         if self._connect:
             srcAttr = self.findConnectionSource()
             if srcAttr:
                 srcAttr._setDefaultValue(self._defaultValue())            
                 srcAttr.push()
 
-    def get(self, key=None):
+    def get(self, key: Optional[str] = None) -> Any:
+        """Get attribute value or specific data key."""
         self.pull()
         return self._defaultValue() if not key else copyJson(self._data.get(key))
         
-    def set(self, value, key=None):
+    def set(self, value: Any, key: Optional[str] = None):
+        """Set attribute value or specific data key."""
         try:
             valueCopy = copyJson(value)
         except TypeError:
@@ -193,6 +223,7 @@ class Attribute(object):
                 self.push()
 
     def executeExpression(self):
+        """Execute Python expression on attribute data."""
         if not self._expression:
             return
         
@@ -206,13 +237,15 @@ class Attribute(object):
         else:
             self._setDefaultValue(localEnv["value"])
 
-    def findConnectionSource(self):
+    def findConnectionSource(self) -> Optional['Attribute']:
+        """Find source attribute for connection."""
         if self._module and self._module._parent and self._connect:
             srcAttr = self._module._parent.findAttributeByPath(self._connect)
             return srcAttr
 
-    def listConnections(self):
-        def _listConnections(currentModule):
+    def listConnections(self) -> List['Attribute']:
+        """List all attributes that connect to this attribute."""
+        def _listConnections(currentModule: 'Module') -> List['Attribute']:
             connections = []
             for ch in currentModule._children:
                 if ch is not self._module: # not self
@@ -226,7 +259,8 @@ class Attribute(object):
             return connections
         return _listConnections(self._module.root())           
 
-    def toXml(self, *, keepConnection=True):
+    def toXml(self, *, keepConnection: bool = True) -> str:
+        """Convert attribute to XML string representation."""
         attrs = [("name", self._name),
                  ("template", self._template),
                  ("category", self._category),
@@ -242,7 +276,8 @@ class Attribute(object):
         return header.format(attribs=attrsStr, data=json.dumps(data))
     
     @staticmethod
-    def fromXml(root):
+    def fromXml(root: 'Element') -> 'Attribute':
+        """Create attribute from XML element."""
         attr = Attribute()
         attr._name = root.attrib["name"]
         attr._template = root.attrib["template"]
@@ -258,17 +293,17 @@ class Dict(dict):
     def __init__(self):
         pass
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return self.get(name)
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any):
         self[name] = value
 
 class AttrsWrapper(object): # attributes getter/setter
-    def __init__(self, module):
+    def __init__(self, module: 'Module'):
         self._module = module
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Attribute:
         module = object.__getattribute__(self, "_module")
         attr = module.findAttribute(name)
         if attr:
@@ -276,7 +311,7 @@ class AttrsWrapper(object): # attributes getter/setter
         else:
             raise AttributeError("Attribute '{}' not found".format(name))
 
-    def __setattr__(self, name, value): # for code like 'module.attr.input = value'
+    def __setattr__(self, name: str, value: Any): # for code like 'module.attr.input = value'
         if name == "_module":
             object.__setattr__(self, "_module", value)
         else:
@@ -288,16 +323,16 @@ class AttrsWrapper(object): # attributes getter/setter
                 raise AttributeError("Attribute '{}' not found".format(name))
 
 class DataAccessor(): # for accessing data with @_data suffix inside a module's code
-    def __init__(self, attr):
+    def __init__(self, attr: Attribute):
         self._attr = attr
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> Any:
         return self._attr.get(name)
 
-    def __setitem__(self, name, value):
+    def __setitem__(self, name: str, value: Any):
         self._attr.set(value, name)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return json.dumps(self._attr.data())
 
 class Module(object):
@@ -309,7 +344,7 @@ class Module(object):
     glob = Dict() # global memory
     env = {}
 
-    def __init__(self, spec=None):
+    def __init__(self):
         self._uid = "" # unique ids are assigned while saving
 
         self._name = ""
@@ -326,10 +361,8 @@ class Module(object):
 
         self.attr = AttrsWrapper(self) # attributes accessor
 
-        if spec:
-            self = Module.loadModule(spec)
-
-    def copy(self):
+    def copy(self) -> 'Module':
+        """Create a deep copy of the module."""
         module = Module()
         module._name = self._name
         module._uid = self._uid
@@ -348,105 +381,131 @@ class Module(object):
         module._modified = self._modified
         return module
     
-    def name(self):
+    def name(self) -> str:
+        """Get module name."""
         return self._name
     
-    def setName(self, name):
+    def setName(self, name: str):
+        """Set module name."""
         self._name = name
 
-    def uid(self):
+    def uid(self) -> str:
+        """Get module unique identifier."""
         return self._uid
     
-    def parent(self):
+    def parent(self) -> Optional['Module']:
+        """Get parent module in hierarchy."""
         return self._parent
     
-    def filePath(self):
+    def filePath(self) -> str:
+        """Get file path where module was loaded from."""
         return self._filePath
     
-    def modified(self):
+    def modified(self) -> bool:
+        """Check if module has been modified."""
         return self._modified
     
-    def muted(self):
+    def muted(self) -> bool:
+        """Check if module is muted (won't execute)."""
         return self._muted
 
     def mute(self):
+        """Mute module to prevent execution."""
         self._muted = True
 
     def unmute(self):
+        """Unmute module to allow execution."""
         self._muted = False
 
-    def runCode(self):
+    def runCode(self) -> str:
+        """Get module Python execution code."""
         return self._runCode
     
-    def setRunCode(self, code):
+    def setRunCode(self, code: str):
+        """Set module Python execution code."""
         self._runCode = code
         self._modified = True
 
-    def root(self):
+    def root(self) -> 'Module':
+        """Get root module in hierarchy."""
         return self._parent.root() if self._parent else self
 
-    def children(self):
+    def children(self) -> List['Module']:
+        """Get list of child modules."""
         return list(self._children)
 
-    def child(self, nameOrIndex):
+    def child(self, nameOrIndex: Union[str, int]) -> Optional['Module']:
+        """Get child module by name or index."""
         if type(nameOrIndex) == int:
             return self.children()[nameOrIndex]
 
         elif type(nameOrIndex) == str:
             return self.findChild(nameOrIndex)
             
-    def insertChild(self, idx, child):
+    def insertChild(self, idx: int, child: 'Module'):
+        """Insert child module at specific index."""
         child._parent = self
         self._children.insert(idx, child)
         self._modified = True
 
-    def addChild(self, child):
+    def addChild(self, child: 'Module'):
+        """Add child module at the end."""
         self.insertChild(len(self._children), child)
 
-    def removeChild(self, child):
+    def removeChild(self, child: 'Module'):
+        """Remove child module from children list."""
         child._parent = None
         self._children.remove(child)
         self._modified = True
 
     def removeChildren(self):
+        """Remove all child modules."""
         for ch in self._children:
             ch._parent = None
         self._children = []
         self._modified = True
 
-    def findChild(self, name):
+    def findChild(self, name: str) -> Optional['Module']:
+        """Find child module by name."""
         for ch in self._children:
             if ch._name == name:
                 return ch
 
-    def attributes(self):
+    def attributes(self) -> List[Attribute]:
+        """Get list of module attributes."""
         return list(self._attributes)
 
-    def insertAttribute(self, idx, attr):
+    def insertAttribute(self, idx: int, attr: Attribute):
+        """Insert attribute at specific index."""
         attr._module = self
         self._attributes.insert(idx, attr)
         self._modified = True
 
-    def addAttribute(self, attr):
+    def addAttribute(self, attr: Attribute):
+        """Add attribute at the end."""
         self.insertAttribute(len(self._attributes), attr)
 
-    def removeAttribute(self, attr):
+    def removeAttribute(self, attr: Attribute):
+        """Remove attribute from module."""
         attr._module = None
         self._attributes.remove(attr)
         self._modified = True
 
     def removeAttributes(self):
+        """Remove all attributes from module."""
         for a in self._attributes:
             a._module = None
         self._attributes = []
         self._modified = True
 
-    def findAttribute(self, name):
+    def findAttribute(self, name: str) -> Optional[Attribute]:
+        """Find attribute by name."""
         for a in self._attributes:
             if a._name == name:
                 return a
             
-    def _clearModificationFlag(self, *, modules=True, attributes=True, recursive=True):
+    def _clearModificationFlag(self, *, modules: bool = True, attributes: bool = True, recursive: bool = True):
+        """Clear modification flags for module and its components."""
         if modules:
             self._modified = False
 
@@ -460,19 +519,23 @@ class Module(object):
             else:
                 ch._clearModificationFlag(recursive=False, modules=False, attributes=attributes)
     
-    def ch(self, path, key=None):
+    def ch(self, path: str, key: Optional[str] = None) -> Any:
+        """Get attribute value by path."""
         attr = self.findAttributeByPath(path)
         return attr.get(key)
     
-    def chdata(self, path):
+    def chdata(self, path: str) -> Dict[str, Any]:
+        """Get attribute data by path."""
         attr = self.findAttributeByPath(path)
         return attr.data() # actual read-only copy
     
-    def chset(self, path, value, key=None):
+    def chset(self, path: str, value: Any, key: Optional[str] = None):
+        """Set attribute value by path."""
         attr = self.findAttributeByPath(path)
         attr.set(value, key)       
 
-    def toXml(self, *, keepConnections=True):
+    def toXml(self, *, keepConnections: bool = True) -> str:
+        """Convert module to XML string representation."""
         attrs = [("name", self._name),
                  ("muted", int(self._muted)),
                  ("uid", self._uid)]
@@ -497,7 +560,8 @@ class Module(object):
         return "\n".join(template)
 
     @staticmethod
-    def fromXml(root):
+    def fromXml(root: 'Element') -> 'Module':
+        """Create module from XML element."""
         module = Module()
         module._name = root.attrib["name"]
         module._uid = root.attrib.get("uid", "")
@@ -514,19 +578,23 @@ class Module(object):
         module._modified = False
         return module
 
-    def loadedFromServer(self):
+    def loadedFromServer(self) -> bool:
+        """Check if module was loaded from server."""
         return self._filePath.startswith(os.path.normpath(RigBuilderPath+"/modules/"))
 
-    def loadedFromLocal(self):
+    def loadedFromLocal(self) -> bool:
+        """Check if module was loaded from local path."""
         return self._filePath.startswith(os.path.normpath(RigBuilderLocalPath+"/modules/"))
 
-    def referenceFile(self, *, source=None):
+    def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
+        """Get reference file path based on source preference."""
         local = Module.LocalUids.get(self._uid)
         server = Module.ServerUids.get(self._uid)
         path = {"all": local or server, "server": server, "local": local, "":self._filePath}.get(source or Module.UpdateSource)
         return path
 
-    def relativePath(self):
+    def relativePath(self) -> str:
+        """Get relative path from modules directory."""
         if self.loadedFromServer():
             return calculateRelativePath(self._filePath, RigBuilderPath+"/modules")
         elif self.loadedFromLocal():
@@ -534,7 +602,8 @@ class Module(object):
         else:
             return self._filePath
 
-    def relativePathString(self): # relative loaded path or ../folder/child/module.xml
+    def relativePathString(self) -> str: # relative loaded path or ../folder/child/module.xml
+        """Get display string for relative path."""
         if not self._filePath:
             return ""
 
@@ -552,7 +621,8 @@ class Module(object):
 
         return path.replace(".xml", "")
 
-    def getSavePath(self):
+    def getSavePath(self) -> str:
+        """Get path for saving module."""
         if self.loadedFromServer():
             relativePath = os.path.relpath(self._filePath, RigBuilderPath+"/modules")
             return os.path.normpath(RigBuilderLocalPath+"/modules/"+relativePath)
@@ -561,11 +631,13 @@ class Module(object):
             return self._filePath
         
     def embed(self):
+        """Embed module by clearing UID and file path."""
         self._uid = ""
         self._filePath = ""
         self._modified = True
 
     def update(self):
+        """Update module from reference file."""
         origPath = self.referenceFile()
         if origPath:
             origModule = Module.loadFromFile(origPath)
@@ -597,7 +669,8 @@ class Module(object):
         for ch in self._children:
             ch.update()
 
-    def sendToServer(self): # save the module on server, remove locally
+    def sendToServer(self) -> Optional[str]: # save the module on server, remove locally
+        """Save module to server and remove local copy."""
         if self.loadedFromLocal():
             savePath = os.path.normpath(RigBuilderPath+"/modules/"+self.relativePath())
             if not os.path.exists(os.path.dirname(savePath)):
@@ -605,13 +678,17 @@ class Module(object):
 
             oldPath = self._filePath
             self.saveToFile(savePath)
-            os.unlink(oldPath) # remove local file
+            try:
+                os.unlink(oldPath) # remove local file
+            except OSError:
+                pass  # file might already be deleted
 
             Module.ServerUids[self._uid] = savePath
             Module.LocalUids.pop(self._uid, None) # remove from local uids
             return savePath
 
-    def saveToFile(self, fileName, *, newUid=False):
+    def saveToFile(self, fileName: str, *, newUid: bool = False):
+        """Save module to file."""
         if not self._uid or newUid:
             self._uid = uuid.uuid4().hex
         
@@ -622,14 +699,16 @@ class Module(object):
         self._clearModificationFlag()
 
     @staticmethod
-    def loadFromFile(fileName):
+    def loadFromFile(fileName: str) -> 'Module':
+        """Load module from XML file."""
         m = Module.fromXml(ET.parse(fileName).getroot())
         m._filePath = os.path.normpath(fileName)
         m._muted = False
         return m
 
     @staticmethod
-    def loadModule(spec): # spec can be full path, relative path or uid
+    def loadModule(spec: str) -> 'Module': # spec can be full path, relative path or uid
+        """Load module by spec (path, relative path, or UID)."""
         modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec) # check local, then server uids
         
         if not modulePath: # otherwise, find by path
@@ -654,7 +733,8 @@ class Module(object):
         return module
 
     @staticmethod
-    def listModules(path):
+    def listModules(path: str) -> List[str]:
+        """List all module files in directory recursively."""
         files = []
         for f in sorted(glob.iglob(path+"/*")):
             if os.path.isdir(f):
@@ -665,12 +745,13 @@ class Module(object):
 
         return files
 
-    def path(self, inclusive=True):
+    def path(self, inclusive: bool = True) -> str:
+        """Get full path of module in hierarchy."""
         if not self._parent:
             return self._name
         return self._parent.path() + ("/" + self._name if inclusive else "")
 
-    def findAttributeByPath(self, path):
+    def findAttributeByPath(self, path: str) -> Attribute:
         '''
         Return attribute by path, where path is /a/b/c, where c is attr, a/b is a parent relative path
         '''
@@ -700,7 +781,8 @@ class Module(object):
         
         return attr
 
-    def getEnv(self):        
+    def getEnv(self) -> Dict[str, Any]:        
+        """Get execution environment for module."""
         env = dict(ModulesAPI)
         env.update({"module": self, 
                     "ch": self.ch, 
@@ -708,7 +790,8 @@ class Module(object):
                     "chset": self.chset})
         return env
 
-    def run(self, *, uiCallback=None):
+    def run(self, *, uiCallback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
+        """Execute module code and run child modules."""
         localEnv = dict(Module.env or {})
         localEnv.update(self.getEnv())
 
@@ -739,18 +822,19 @@ class Module(object):
 
     @staticmethod
     def updateUidsCache():
+        """Update cached UIDs from local and server directories."""
         Module.ServerUids = Module.findUids(RigBuilderPath + "/modules")
         Module.LocalUids = Module.findUids(RigBuilderLocalPath + "/modules")
 
     @staticmethod
-    def findUids(path):
+    def findUids(path: str) -> Dict[str, str]:
+        """Find all UIDs and their file paths in directory."""
         uids = {}
 
         for fpath in sorted(glob.iglob(path+"/*")):
             if os.path.isdir(fpath):
                 dirUids = Module.findUids(fpath)
-                for k in dirUids:
-                    uids[k] = dirUids[k]
+                uids.update(dirUids)
 
             elif fpath.endswith(".xml"):
                 uid = getUidFromFile(fpath)
@@ -759,13 +843,16 @@ class Module(object):
 
         return uids
 
-def printError(msg):
+def printError(msg: str):
+    """Print error message and raise RuntimeError."""
     raise RuntimeError(msg)
 
-def printWarning(msg):
+def printWarning(msg: str):
+    """Print warning message."""
     print("Warning: "+msg)
 
 def exitModule():
+    """Exit current module execution."""
     raise ExitModuleException()
 
 ModulesAPI.update({

@@ -1,9 +1,10 @@
-from PySide2.QtGui import *
-from PySide2.QtCore import *
-from PySide2.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+
 
 import re
-from .utils import clamp, getActions, setActionsLocalShortcut, wordAtCursor, findBracketSpans, fontSize, setFontSize
+from .utils import clamp, getActions, setActionsLocalShortcut, wordAtCursor, findBracketSpans, fontSize, setFontSize, getFontWidth
 
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):
@@ -13,17 +14,15 @@ class PythonHighlighter(QSyntaxHighlighter):
 
         assignFormat = QTextCharFormat()
         assignFormat.setForeground(QColor(200, 150, 100))
-        assignRegexp = QRegExp("\\b(\\w+)\\s*(?=[-+*/]*=)")
-        assignRegexp.setMinimal(True)
-        self.highlightingRules.append((assignRegexp, assignFormat))
+        self.highlightingRules.append(("\\b(\\w+)\\s*(?=[-+*/]*=)", assignFormat))
 
         numFormat = QTextCharFormat()
         numFormat.setForeground(QColor(150, 200, 150))
-        self.highlightingRules.append((QRegExp("\\b(0x[0-9]+)\\b|\\b[0-9\\.]+f*\\b"), numFormat))
+        self.highlightingRules.append(("\\b(0x[0-9]+)\\b|\\b[0-9\\.]+f*\\b", numFormat))
 
         functionFormat = QTextCharFormat()
         functionFormat.setForeground(QColor(100, 150, 200))
-        self.highlightingRules.append((QRegExp("\\b\\w+(?=\\s*\\()"), functionFormat))
+        self.highlightingRules.append(("\\b\\w+(?=\\s*\\()", functionFormat))
 
         keywordFormat = QTextCharFormat()
         keywordFormat.setForeground(QColor(150, 130, 200))
@@ -36,23 +35,23 @@ class PythonHighlighter(QSyntaxHighlighter):
                                              "assert", "del", "global", "not", "with",
                                              "async", "elif", "if", "or", "yield", "print", "self"]]
 
-        self.highlightingRules += [(QRegExp(pattern), keywordFormat) for pattern in keywords]
+        self.highlightingRules += [(pattern, keywordFormat) for pattern in keywords]
 
         boolFormat = QTextCharFormat()
         boolFormat.setForeground(QColor(200, 100, 50))
-        self.highlightingRules.append((QRegExp("\\bTrue\\b|\\bFalse\\b|\\bNone\\b"), boolFormat))
+        self.highlightingRules.append(("\\bTrue\\b|\\bFalse\\b|\\bNone\\b", boolFormat))
 
         attrFormat = QTextCharFormat()
         attrFormat.setForeground(QColor(100, 180, 180))
-        self.highlightingRules.append((QRegExp("@\\b\\w+\\b"), attrFormat))
+        self.highlightingRules.append(("@\\b\\w+\\b", attrFormat))
 
         self.quotationFormat = QTextCharFormat()
         self.quotationFormat.setForeground(QColor(130, 200, 130))
-        self.highlightingRules.append((QRegExp("(\"(\\\\\"|[^\"])*\")|(\'(\\\\\'|[^\'])*\')"), self.quotationFormat))
+        self.highlightingRules.append(("(\"(\\\\\"|[^\"])*\")|(\'(\\\\\'|[^\'])*\')", self.quotationFormat))
 
         singleLineCommentFormat = QTextCharFormat()
         singleLineCommentFormat.setForeground(QColor(90, 90, 90))
-        self.highlightingRules.append((QRegExp("#[^\\n]*"), singleLineCommentFormat))
+        self.highlightingRules.append(("#[^\\n]*", singleLineCommentFormat))
 
         self.multiLineCommentFormat = QTextCharFormat()
         self.multiLineCommentFormat.setForeground(QColor(170, 170, 100))
@@ -67,51 +66,61 @@ class PythonHighlighter(QSyntaxHighlighter):
             if not pattern:
                 continue
 
-            expression = QRegExp(pattern)
-            index = expression.indexIn(text)
-            while index >= 0:
-                length = expression.matchedLength()
-                self.setFormat(index, length, format)
-                index = expression.indexIn(text, index + length)
+            expression = QRegularExpression(pattern)
+            iterator = expression.globalMatch(text)
+            while iterator.hasNext():
+                match = iterator.next()
+                self.setFormat(match.capturedStart(), match.capturedLength(), format)
 
         self.setCurrentBlockState(0)
 
         # Do multi-line strings
-        in_multiline = self.match_multiline(text, QRegExp("'''"), 1, self.multiLineCommentFormat)
+        in_multiline = self.match_multiline(text, "'''", 1, self.multiLineCommentFormat)
         if not in_multiline:
-            in_multiline = self.match_multiline(text, QRegExp('"""'), 2, self.multiLineCommentFormat)
+            in_multiline = self.match_multiline(text, '"""', 2, self.multiLineCommentFormat)
 
         if self.highlightedWordRegexp:
-            expression = QRegExp(self.highlightedWordRegexp)
-            index = expression.indexIn(text)
-            while index >= 0:
-                length = expression.matchedLength()
-                self.setFormat(index, length, self.highlightedWordFormat)
-                index = expression.indexIn(text, index + length)
+            expression = QRegularExpression(self.highlightedWordRegexp)
+            iterator = expression.globalMatch(text)
+            while iterator.hasNext():
+                match = iterator.next()
+                self.setFormat(match.capturedStart(), match.capturedLength(), self.highlightedWordFormat)
 
-    def match_multiline(self, text, delimiter, in_state, style):
-        """Do highlighting of multi-line strings. ``delimiter`` should be a
-        ``QRegExp`` for triple-single-quotes or triple-double-quotes, and
+    def match_multiline(self, text, delimiter_pattern, in_state, style):
+        """Do highlighting of multi-line strings. ``delimiter_pattern`` should be a
+        string pattern for triple-single-quotes or triple-double-quotes, and
         ``in_state`` should be a unique integer to represent the corresponding
         state changes when inside those strings. Returns True if we're still
         inside a multi-line string when this function is finished.
         """
+        delimiter = QRegularExpression(delimiter_pattern)
+        
         # If inside triple-single quotes, start at 0
         if self.previousBlockState() == in_state:
             start = 0
             add = 0
         # Otherwise, look for the delimiter on this line
         else:
-            start = delimiter.indexIn(text)
-            # Move past this match
-            add = delimiter.matchedLength()
+            match = delimiter.match(text)
+            if match.hasMatch():
+                start = match.capturedStart()
+                add = match.capturedLength()
+            else:
+                start = -1
+                add = 0
         # As long as there's a delimiter match on this line...
         while start >= 0:
             # Look for the ending delimiter
-            end = delimiter.indexIn(text, start + add)
+            end_match = delimiter.match(text, start + add)
+            if end_match.hasMatch():
+                end = end_match.capturedStart()
+                end_length = end_match.capturedLength()
+            else:
+                end = -1
+                end_length = 0
             # Ending delimiter on this line?
             if end >= add:
-                length = end - start + add + delimiter.matchedLength()
+                length = end - start + add + end_length
                 self.setCurrentBlockState(0)
             # No; multi-line string
             else:
@@ -120,7 +129,11 @@ class PythonHighlighter(QSyntaxHighlighter):
             # Apply formatting
             self.setFormat(start, length, style)
             # Look for the next match
-            start = delimiter.indexIn(text, start + length)
+            next_match = delimiter.match(text, start + length)
+            if next_match.hasMatch():
+                start = next_match.capturedStart()
+            else:
+                start = -1
         # Return True if still inside a multi-line string, False otherwise
         if self.currentBlockState() == in_state:
             return True
@@ -156,20 +169,20 @@ class SwoopHighligher(QSyntaxHighlighter):
 
         linumFormat = QTextCharFormat()
         linumFormat.setForeground(QColor(180, 100, 120))
-        self.highlightingRules.append((QRegExp("^\\s*\\d+\\s+"), linumFormat))
+        self.highlightingRules.append(("^\\s*\\d+\\s+", linumFormat))
 
         headerFormat = QTextCharFormat()
         headerFormat.setForeground(QColor(120, 100, 180))
         headerFormat.setFontWeight(QFont.Bold)
-        self.highlightingRules.append((QRegExp("^[a-zA-Z][\\w -]*"), headerFormat))
+        self.highlightingRules.append(("^[a-zA-Z][\\w -]*", headerFormat))
 
         subHeaderFormat = QTextCharFormat()
         subHeaderFormat.setForeground(QColor(120, 180, 120))
-        self.highlightingRules.append((QRegExp("\\[[\\w ]+\\]$"), subHeaderFormat))
+        self.highlightingRules.append(("\\[[\\w ]+\\]$", subHeaderFormat))
 
         commentFormat = QTextCharFormat()
         commentFormat.setForeground(QColor(90, 90, 90))
-        self.highlightingRules.append((QRegExp("//.*$"), commentFormat))
+        self.highlightingRules.append(("//.*$", commentFormat))
 
         highlightedWordsFormat = QTextCharFormat()
         highlightedWordsFormat.setForeground(QColor(200, 200, 200))
@@ -181,12 +194,11 @@ class SwoopHighligher(QSyntaxHighlighter):
             if not pattern:
                 continue
 
-            expression = QRegExp(pattern)
-            index = expression.indexIn(text)
-            while index >= 0:
-                length = expression.matchedLength()
-                self.setFormat(index, length, format)
-                index = expression.indexIn(text, index + length)
+            expression = QRegularExpression(pattern)
+            iterator = expression.globalMatch(text)
+            while iterator.hasNext():
+                match = iterator.next()
+                self.setFormat(match.capturedStart(), match.capturedLength(), format)
 
         self.setCurrentBlockState(0)
 
@@ -563,7 +575,11 @@ class CodeEditorWidget(QTextEdit):
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
 
-        self.setTabStopWidth(32)
+        # Qt compatibility: setTabStopWidth (Qt5) vs setTabStopDistance (Qt6)
+        if hasattr(self, 'setTabStopDistance'):
+            self.setTabStopDistance(32)
+        else:
+            self.setTabStopWidth(32)
         self.setAcceptRichText(False)
         self.setWordWrapMode(QTextOption.NoWrap)
 
@@ -729,7 +745,8 @@ class CodeEditorWidget(QTextEdit):
         alt = event.modifiers() & Qt.AltModifier
 
         if ctrl:
-            d = event.delta() / abs(event.delta())
+            delta = event.angleDelta().y()
+            d = delta / abs(delta) if delta != 0 else 0
             font = self.font()
             sz = clamp(fontSize(font) + d, 8, 40)
             setFontSize(font, sz)
@@ -993,18 +1010,18 @@ class CodeEditorWidget(QTextEdit):
         cursor = self.textCursor()
         sel = cursor.selectedText()
 
-        reg = None
+        reg_pattern = None
         if sel:
-            reg = QRegExp("%s"%QRegExp.escape(sel))
+            reg_pattern = "%s" % QRegularExpression.escape(sel)
         else:
             word, _,_ = wordAtCursor(cursor)
             if word:
                 if word.startswith("@"):
-                    reg = QRegExp("@\\b%s\\b"%QRegExp.escape(word[1:]))
+                    reg_pattern = "@\\b%s\\b" % QRegularExpression.escape(word[1:])
                 else:
-                    reg = QRegExp("\\b%s\\b"%QRegExp.escape(word))
+                    reg_pattern = "\\b%s\\b" % QRegularExpression.escape(word)
 
-        self.syntax.highlightedWordRegexp = reg
+        self.syntax.highlightedWordRegexp = reg_pattern
 
         self.blockSignals(True)
         self.syntax.rehighlight()
@@ -1088,7 +1105,7 @@ class NumberBarWidget(QWidget):
     def updateState(self, *args):
         self.setFont(self.textWidget.font())
 
-        width = self.fontMetrics().width(str(self.highest_line)) + 19
+        width = getFontWidth(self.fontMetrics(), str(self.highest_line)) + 19
         self.setFixedWidth(width)
         self.update()
 
@@ -1116,7 +1133,7 @@ class NumberBarWidget(QWidget):
 
             # Draw the line number right justified at the y position of the
             # line. 3 is a magic padding number. drawText(x, y, text).
-            painter.drawText(self.width() - font_metrics.width(str(line_count)) - 3, round(position.y()) - contents_y + font_metrics.ascent(), str(line_count))
+            painter.drawText(self.width() - getFontWidth(font_metrics, str(line_count)) - 3, round(position.y()) - contents_y + font_metrics.ascent(), str(line_count))
             data = block.userData()
             if data and data.hasBookmark:
                 painter.drawText(3, round(position.y()) - contents_y + font_metrics.ascent(), "*")
