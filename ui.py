@@ -818,6 +818,17 @@ class ModuleItem(QTreeWidgetItem):
             elif attr.template() not in widgets.TemplateWidgets:
                 self.getLogger().error(f"Module '{module.name()}': Unknown template '{attr.template()}' for attribute '{attr.name()}'")
                 hasErrors = True
+            
+            # Check attribute connections
+            if attr.connect():
+                try:
+                    srcAttr = attr.findConnectionSource()
+                    if not srcAttr:
+                        self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' has invalid connection '{attr.connect()}'")
+                        hasErrors = True
+                except Exception as e:
+                    self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' connection error: {str(e)}")
+                    hasErrors = True
         
         return not hasErrors
     
@@ -2053,6 +2064,11 @@ class RigBuilderWindow(QFrame):
             if self.codeEditorWidget.isEnabled():
                 self.codeEditorWidget.moduleItem = item
                 self.codeEditorWidget.updateState()
+            
+            # Validate module and log errors
+            if not item.validateModule():
+                # Show log if validation failed
+                self.showLog()
             
             # Emit API signal
             self.moduleSelected.emit(item)
