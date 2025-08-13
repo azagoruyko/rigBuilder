@@ -1,4 +1,4 @@
-<module name="reparentConstraints" type="Tools/ReparentConstraints" muted="0" uid="6caf2ff361d4411c8863bb65637acd2f">
+<module name="reparentConstraints" muted="0" uid="6caf2ff361d4411c8863bb65637acd2f">
 <run><![CDATA[import pymel.core as pm
 
 # reparent constraints

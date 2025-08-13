@@ -1,4 +1,4 @@
-<module name="updateSkinJointsOrder" type="Tools/UpdateSkinJointsOrder" muted="0" uid="7c7821c84228436a910e421f8979a2d0">
+<module name="updateSkinJointsOrder" muted="0" uid="7c7821c84228436a910e421f8979a2d0">
 <run><![CDATA[import pymel.core as pm
 
 jointsFromGeo = pm.PyNode(@getOrderFromGeo)

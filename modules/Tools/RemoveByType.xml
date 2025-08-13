@@ -1,4 +1,4 @@
-<module name="removeByType" type="Tools/RemoveByType" muted="0" uid="5f92808bc38b40f4a3774649ada53fd5">
+<module name="removeByType" muted="0" uid="5f92808bc38b40f4a3774649ada53fd5">
 <run><![CDATA[import pymel.core as pm
 
 underTransform = pm.PyNode(@underTransform)

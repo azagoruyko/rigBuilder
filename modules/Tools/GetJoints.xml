@@ -1,4 +1,4 @@
-<module name="getJoints" type="Tools/GetJoints" muted="0" uid="9f20a01b042e46d389ce6774b7248fc3">
+<module name="getJoints" muted="0" uid="9f20a01b042e46d389ce6774b7248fc3">
 <run><![CDATA[import pymel.core as pm
 
 joints = []

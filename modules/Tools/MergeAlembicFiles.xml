@@ -1,4 +1,4 @@
-<module name="mergeAlembicFiles" type="Tools/MergeAlembicFiles" muted="0" uid="8842a3bb7e3c4fdaab8eb106ca7e1b4b">
+<module name="mergeAlembicFiles" muted="0" uid="8842a3bb7e3c4fdaab8eb106ca7e1b4b">
 <run><![CDATA[import pymel.core as pm
 import os
 

@@ -1,4 +1,4 @@
-<module name="selectUnusedNodes" type="Tools/SelectUnusedNodes" muted="0" uid="ab761cd64d194e00a36920a9780abbdc">
+<module name="selectUnusedNodes" muted="0" uid="ab761cd64d194e00a36920a9780abbdc">
 <run><![CDATA[import pymel.core as pm
 
 nodes = []

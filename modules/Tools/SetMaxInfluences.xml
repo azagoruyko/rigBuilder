@@ -1,4 +1,4 @@
-<module name="setMaxInfluences" type="Tools/SetMaxInfluences" muted="0" uid="ba683572a8564671832cbe81d0fc0b8c">
+<module name="setMaxInfluences" muted="0" uid="ba683572a8564671832cbe81d0fc0b8c">
 <run><![CDATA[import pymel.core as pm
 
 def setMaxInfluences(geo, maxinf=4):

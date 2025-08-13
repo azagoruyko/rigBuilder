@@ -1,4 +1,4 @@
-<module name="transferConnections" type="Tools/TransferConnections" muted="0" uid="af899998ea1544a8a63825cbd28d84e9">
+<module name="transferConnections" muted="0" uid="af899998ea1544a8a63825cbd28d84e9">
 <run><![CDATA[import pymel.core as pm
 import json
 

@@ -1,4 +1,4 @@
-<module name="averageSkinWeights" type="Tools/AverageSkinWeights" muted="0" uid="d73db96a87244fc5bca4875396ed3dd8">
+<module name="averageSkinWeights" muted="0" uid="d73db96a87244fc5bca4875396ed3dd8">
 <run><![CDATA[import pymel.core as pm
 import time
 

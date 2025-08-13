@@ -1,4 +1,4 @@
-<module name="updateOrig" type="Tools/UpdateOrig" muted="0" uid="c878100bf5724b20a74098b3a9340a04">
+<module name="updateOrig" muted="0" uid="c878100bf5724b20a74098b3a9340a04">
 <run><![CDATA[import pymel.core as pm
 
 sourceGeoList = [pm.PyNode(geo) for geo in @sourceGeoList]

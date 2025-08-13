@@ -1,4 +1,4 @@
-<module name="autoTangent" type="Tools/AutoTangents" muted="0" uid="fe8646386e674920b0dfd829b30e6736">
+<module name="autoTangent" muted="0" uid="fe8646386e674920b0dfd829b30e6736">
 <run><![CDATA[import pymel.core as pm
 import maya.cmds as cmds
 import math

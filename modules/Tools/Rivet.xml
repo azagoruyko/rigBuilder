@@ -1,4 +1,4 @@
-<module name="rivet" type="Tools/Rivet" muted="0" uid="88e30aae9d5745fcb70ee99e215ea28d">
+<module name="rivet" muted="0" uid="88e30aae9d5745fcb70ee99e215ea28d">
 <run><![CDATA[import pymel.core as pm
 
 class Rivet():

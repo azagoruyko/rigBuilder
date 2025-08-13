@@ -1,4 +1,4 @@
-<module name="bindMode" type="Tools/BindMode" muted="0" uid="c7ae99e054f94721afc9256cf449e180">
+<module name="bindMode" muted="0" uid="c7ae99e054f94721afc9256cf449e180">
 <run><![CDATA[import pymel.core as pm
 
 joints = [pm.PyNode(j) for j in @joints]

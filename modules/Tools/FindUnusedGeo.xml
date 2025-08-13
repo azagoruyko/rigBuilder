@@ -1,4 +1,4 @@
-<module name="findUnusedGeo" type="Tools/FindUnusedGeo" muted="0" uid="e705e52bf9284751a7ca2ce039a24722">
+<module name="findUnusedGeo" muted="0" uid="e705e52bf9284751a7ca2ce039a24722">
 <run><![CDATA[import pymel.core as pm
 
 pm.select(cl=True)

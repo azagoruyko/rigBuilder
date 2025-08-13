@@ -1,10 +1,10 @@
-<module name="replaceSkinJoint" type="Tools/ReplaceSkinJoint" muted="0" uid="b7606eb6a4484ca2a9131f7f9290d458">
+<module name="replaceSkinJoint" muted="0" uid="b7606eb6a4484ca2a9131f7f9290d458">
 <run><![CDATA[import pymel.core as pm
 
 sourceJoint = pm.PyNode(@sourceJoint)
 destinationJoint = pm.PyNode(@destinationJoint)
 
-for p in sourceJoint.wm.outputs(p=True, type="skinCluster"):
+for p in sourceJoint.wm.outputs(p=True,):
     destinationJoint.wm >> p
     
     if not destinationJoint.hasAttr("lockInfluenceWeights"):
