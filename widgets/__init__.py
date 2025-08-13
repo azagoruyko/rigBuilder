@@ -1758,7 +1758,7 @@ def runButtonCommand(module, buttonLabel):
             if data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel:
                 command = data.get("buttonCommand") or data.get("command", "")
                 if command:
-                    env = module.getEnv()
+                    env = module.env()
                     if attr.template() == "lineEditAndButton":
                         env["value"] = smartConversion(data.get("value", ""))
                     
