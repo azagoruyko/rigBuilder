@@ -17,6 +17,7 @@ from .core import *
 from .editor import *
 from . import widgets
 from .utils import *
+from .ui_utils import *
 
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 ParentWindow = None

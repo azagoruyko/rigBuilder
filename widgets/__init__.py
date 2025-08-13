@@ -7,6 +7,7 @@ import os
 import json
 import math
 from ..utils import *
+from ..ui_utils import *
 from ..editor import *
 from .jsonWidget import JsonWidget
 
