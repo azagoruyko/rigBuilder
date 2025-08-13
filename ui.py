@@ -2083,9 +2083,6 @@ class RigBuilderWindow(QFrame):
         def displayFiles(files, *, local):
             prefix = "local" if local else "server"
             for k, v in files.items():
-                if k == "Others":
-                    continue
-
                 if v:
                     template.append("<h3 style='background-color: #393939'>{}</h3>".format(escape(k)))
                     root = RigBuilderLocalPath+"/modules" if local else RigBuilderPath+"/modules"
