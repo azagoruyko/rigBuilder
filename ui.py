@@ -2093,13 +2093,13 @@ class RigBuilderWindow(QFrame):
                         relPath = calculateRelativePath(file, root).replace(".xml", "").replace("\\", "/")
                         template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
 
-        files, count = categorizeFilesByModTime(Module.LocalUids.values())
-        if count > 0:
+        files = categorizeFilesByModificationTime(Module.LocalUids.values())
+        if files:
             template.append("<h2 style='background-color: #444444'>Local modules</h2>")
             displayFiles(files, local=True)
 
-        files, count = categorizeFilesByModTime(Module.ServerUids.values())
-        if count > 0:
+        files = categorizeFilesByModificationTime(Module.ServerUids.values())
+        if files:
             template.append("<h2 style='background-color: #444444'>Server modules</h2>")
             displayFiles(files, local=False)
 

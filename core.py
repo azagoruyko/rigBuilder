@@ -1,11 +1,9 @@
 import os
-import sys
 import re
 import glob
 import json
 import uuid
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Union, Any, Callable, TYPE_CHECKING
 from .utils import copyJson
 
@@ -31,32 +29,6 @@ def calculateRelativePath(path: str, root: str) -> str:
     path = os.path.normpath(path)
     path = path.replace(os.path.normpath(root)+"\\", "")
     return path
-
-def categorizeFilesByModTime(files: List[str]) -> tuple[Dict[str, List[str]], int]:
-    """Categorize files by modification time into time-based groups."""
-    now = datetime.now()
-
-    categories = {
-        "Less 1 day ago": [],
-        "Less 1 week ago": [],
-        "Others": []
-    }
-
-    count = 0
-    for file in files:
-        mod_time = datetime.fromtimestamp(os.path.getmtime(file))
-        time_diff = now - mod_time
-
-        if time_diff <= timedelta(days=1):
-            categories["Less 1 day ago"].append(file)
-            count += 1
-        elif time_diff <= timedelta(weeks=1):
-            categories["Less 1 week ago"].append(file)
-            count += 1
-        else:
-            categories["Others"].append(file)
-
-    return categories, count
 
 class ExitModuleException(Exception):pass
 class AttributeResolverError(Exception):pass

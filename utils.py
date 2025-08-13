@@ -1,7 +1,10 @@
 import sys
+import os
 import re
 import json
 from contextlib import contextmanager
+from datetime import datetime, timedelta
+from typing import List, Dict
 
 def clamp(val: float, low: float, high: float) -> float:
     """Clamp value between low and high bounds."""
@@ -230,3 +233,24 @@ class SimpleUndo:
                     break
 
             self.undoEnabled = True
+
+
+def categorizeFilesByModificationTime(files: List[str], *, daysAgo: int = 1, weeksAgo: int = 1) -> Dict[str, List[str]]:
+    """Categorize files by modification time into time-based groups."""
+    now = datetime.now()
+
+    daysKey = f"Less than {daysAgo} day(s) ago"
+    weeksKey = f"Less than {weeksAgo} week(s) ago"
+    categories = {daysKey: [], weeksKey: []}
+
+    for file in files:
+        mod_time = datetime.fromtimestamp(os.path.getmtime(file))
+        time_diff = now - mod_time
+
+        if daysAgo and time_diff <= timedelta(days=daysAgo):
+            categories[daysKey].append(file)
+
+        elif weeksAgo and time_diff <= timedelta(weeks=weeksAgo):
+            categories[weeksKey].append(file)
+
+    return categories
