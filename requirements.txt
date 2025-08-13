@@ -1,0 +1,12 @@
+# Rig Builder Dependencies
+
+# Core UI Framework
+PySide6>=6.0.0
+
+# MCP Server Integration
+mcp>=1.0.0
+fastapi>=0.104.1
+uvicorn>=0.24.0
+pydantic>=2.0.0
+
+# Note: Maya users don't need PySide6 as it's included with Maya

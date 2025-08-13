@@ -6,6 +6,7 @@ import subprocess
 import inspect
 import sys
 import shutil
+import logging
 from xml.sax.saxutils import escape
 
 from PySide6.QtCore import *
@@ -20,24 +21,40 @@ from .utils import *
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
 ParentWindow = None
 
-def get_maya_main_window():
-    """Get Maya main window for PySide6"""
-    try:
-        import maya.OpenMayaUI as omui
-        from shiboken6 import wrapInstance
-        return wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
-    except ImportError:
-        return None
-
 if DCC == "maya":
     import maya.cmds as cmds
     import maya.OpenMayaUI as omui
     import maya.OpenMaya as om
-    ParentWindow = get_maya_main_window()
 
-updateFilesThread = None
+    def getMayaMainWindow():
+        """Get Maya main window for PySide6"""
+        try:
+            from shiboken6 import wrapInstance
+            return wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
+        except ImportError:
+            return
+    
+    ParentWindow = getMayaMainWindow()
 
+updateFilesThread = None 
 trackFileChangesThreads = {} # by file path
+
+
+# === GLOBAL LOGGING SYSTEM ===
+class RigBuilderLogHandler(logging.Handler):
+    """Custom log handler that redirects to logWidget."""
+    def __init__(self):
+        super().__init__()
+        self.logWidget = None
+        
+    def setLogWidget(self, logWidget):
+        """Connect handler to specific logWidget."""
+        self.logWidget = logWidget
+        
+    def emit(self, record):
+        if self.logWidget:
+            msg = self.format(record)
+            self.logWidget.write(msg + '\n')
 
 def sendToServer(module):
     '''
@@ -45,6 +62,22 @@ def sendToServer(module):
     '''
     module.sendToServer() # copy file to server and add to VCS
     return True
+
+class TrackFileChangesThread(QThread):
+    somethingChanged = Signal()
+
+    def __init__(self, filePath):
+        super().__init__()
+        self.filePath = filePath
+
+    def run(self):
+        lastModified = os.path.getmtime(self.filePath)
+        while True:
+            currentModified = os.path.getmtime(self.filePath)
+            if currentModified != lastModified:
+                self.somethingChanged.emit()
+                lastModified = currentModified
+            time.sleep(1)
 
 def updateFilesFromServer():
     def update():
@@ -81,18 +114,18 @@ class AttributesWidget(QWidget):
         self.setLayout(layout)
 
         def executor(cmd, env=None):
-            envUI = self.mainWindow.getEnvUI()
-            Module.env = envUI # update environment for runtime modules
+            envUI = self.mainWindow.envUI()
+            Module.globalEnv = envUI # update environment for runtime modules
 
             localEnv = dict(envUI)
-            localEnv.update(self.moduleItem.module.getEnv())
+            localEnv.update(self.moduleItem.module.env())
             localEnv.update(env or {})
 
             with captureOutput(self.mainWindow.logWidget):
                 try:
                     exec(cmd, localEnv)
                 except Exception as e:
-                    print("Error: "+str(e))
+                    self.mainWindow.logger.error(str(e))
                     self.mainWindow.showLog()
                 else:
                     if cmd: # in case command is specified, no command can be used for obtaining completions
@@ -180,7 +213,7 @@ class AttributesWidget(QWidget):
                     return f(self, attrWidgetIndex, *args, **kwargs)
                 
                 except Exception as e:
-                    print("Error: {}.{}: {}".format(self.moduleItem.module.name(), attr.name(), str(e)))
+                    self.mainWindow.logger.error(f"{self.moduleItem.module.name()}.{attr.name()}: {str(e)}")
 
                     if type(e) == AttributeResolverError:
                         widget.blockSignals(True)
@@ -293,7 +326,7 @@ class AttributesWidget(QWidget):
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        words = set(self.mainWindow.getEnvUI().keys()) | set(self.moduleItem.module.getEnv().keys())
+        words = set(self.mainWindow.envUI().keys()) | set(self.moduleItem.module.env().keys())
         placeholder = '# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]'
         w = widgets.EditTextDialog(attr.expression(), title="Edit expression for '{}'".format(attr.name()), placeholder=placeholder, words=words, python=True)
         w.saved.connect(save)
@@ -701,6 +734,130 @@ class ModuleItem(QTreeWidgetItem):
             for a in data["connections"]:
                 c = module.path().replace(a.module().path(inclusive=False), "") + "/" + srcAttr.name()
                 a.setConnect(c) # update connection path
+    
+    # === UI API METHODS ===
+    
+    def getLogger(self):
+        """Get logger from main window."""
+        treeWidget = self.treeWidget()
+        if treeWidget and treeWidget.mainWindow:
+            return treeWidget.mainWindow.logger        
+    
+    def addAttribute(self, name, template, category="General", **kwargs):
+        """Add attribute to this module. Returns Attribute instance."""
+        attribute = Attribute()
+        attribute.setName(name)
+        attribute.setTemplate(template)
+        attribute.setCategory(category)
+        
+        # Set additional properties from kwargs
+        if 'connect' in kwargs:
+            attribute.setConnect(kwargs['connect'])
+        if 'expression' in kwargs:
+            attribute.setExpression(kwargs['expression'])
+        if 'data' in kwargs:
+            attribute.setData(kwargs['data'])
+        elif 'defaultValue' in kwargs:
+            # Helper to set default value directly
+            defaultData = widgets.TemplateWidgets[template]().getDefaultData()
+            if 'default' in defaultData:
+                defaultData[defaultData['default']] = kwargs['defaultValue']
+            attribute.setData(defaultData)
+        
+        self.module.addAttribute(attribute)
+        self.emitDataChanged()
+        return attribute
+    
+    def removeAttribute(self, attrName):
+        """Remove attribute by name."""
+        attribute = self.module.findAttribute(attrName)
+        if attribute:
+            self.module.removeAttribute(attribute)
+            self.emitDataChanged()
+        else:
+            self.getLogger().warning(f"Module '{self.module.name()}': Attribute '{attrName}' not found")
+    
+    def findAttribute(self, attrName):
+        """Find attribute by name."""
+        return self.module.findAttribute(attrName)
+    
+    def attributes(self):
+        """Get all attributes for this module."""
+        return self.module.attributes()
+    
+    def run(self):
+        """Run this module programmatically."""
+        self.module.run()
+    
+    def validateModule(self):
+        """Validate this module and log any errors found. Returns True if valid."""
+        hasErrors = False
+        module = self.module
+        
+        # Check module name
+        if not re.match(r"^\w+$", module.name()):
+            self.getLogger().error(f"Module '{module.name()}': Invalid module name (only alphanumeric characters and underscore allowed)")
+            hasErrors = True
+        
+        # Check for duplicate child names
+        childNames = [ch.name() for ch in module.children()]
+        duplicates = [name for name in childNames if childNames.count(name) > 1]
+        if duplicates:
+            self.getLogger().error(f"Module '{module.name()}': Duplicate child module names: {list(set(duplicates))}")
+            hasErrors = True
+        
+        # Check attributes
+        for attr in module.attributes():
+            if not attr.name():
+                self.getLogger().error(f"Module '{module.name()}': Attribute with empty name found")
+                hasErrors = True
+            if not attr.template():
+                self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' has no template")
+                hasErrors = True
+            elif attr.template() not in widgets.TemplateWidgets:
+                self.getLogger().error(f"Module '{module.name()}': Unknown template '{attr.template()}' for attribute '{attr.name()}'")
+                hasErrors = True
+        
+        return not hasErrors
+    
+    def saveModule(self, filePath=None):
+        """Save this module to file."""
+        outputPath = filePath or self.module.getSavePath()
+        if not outputPath:
+            self.getLogger().error(f"Module '{self.module.name()}': No file path specified for saving")
+            return
+            
+        dirname = os.path.dirname(outputPath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+            
+        self.module.saveToFile(outputPath)
+        self.emitDataChanged()  # Update path display
+    
+    def addModule(self, childModule):
+        """Add child module. Returns ModuleItem for the child."""
+        if isinstance(childModule, str):
+            # Create new module with given name
+            module = Module()
+            module.setName(childModule)
+        else:
+            # Assume it's already a Module instance
+            module = childModule
+        
+        childItem = ModuleItem(module)
+        self.addChild(childItem)
+        self.module.addChild(module)
+        self.emitDataChanged()
+        return childItem
+    
+    def removeModule(self, childItem):
+        """Remove child module."""
+        if childItem in [self.child(i) for i in range(self.childCount())]:
+            self.removeChild(childItem)
+            self.module.removeChild(childItem.module)
+            self.emitDataChanged()
+        else:
+            self.getLogger().warning(f"Module '{self.module.name()}': Child module not found")
 
 class TreeWidget(QTreeWidget):
     def __init__(self, *, mainWindow=None, **kwargs):
@@ -708,6 +865,7 @@ class TreeWidget(QTreeWidget):
 
         self.mainWindow = mainWindow
         self.dragItems = [] # using in drag & drop
+        self.clipboard = []  # Module clipboard for copy/paste
 
         self.moduleListDialog = ModuleListDialog()
         self.moduleListDialog.moduleSelected.connect(self.addModuleFromBrowser)
@@ -766,8 +924,7 @@ class TreeWidget(QTreeWidget):
                         self.addTopLevelItem(self.makeItemFromModule(m))
 
                     except ET.ParseError as e:
-                        print(e)
-                        print("Error '{}': invalid module".format(path))
+                        self.mainWindow.logger.error(f"'{path}': {str(e)} - invalid module")
                         self.mainWindow.showLog()
         else:
             for item in self.dragItems:
@@ -795,7 +952,7 @@ class TreeWidget(QTreeWidget):
         return item
 
     def contextMenuEvent(self, event):
-        self.mainWindow.menu.popup(event.globalPos())
+        self.mainWindow.menu().popup(event.globalPos())
 
     def sendModuleToServer(self):
         selectedItems = self.selectedItems()
@@ -846,7 +1003,7 @@ class TreeWidget(QTreeWidget):
             self.addTopLevelItem(self.makeItemFromModule(m))
 
         except ET.ParseError:
-            print("Error '{}': invalid module".format(filePath))
+            self.mainWindow.logger.error(f"'{filePath}': invalid module")
             self.mainWindow.showLog()
 
     def saveModule(self):
@@ -975,15 +1132,76 @@ class TreeWidget(QTreeWidget):
         for item in newItems:
             item.setSelected(True)
 
-    def removeModule(self):
+    def copyModules(self):
+        """Copy selected modules to clipboard."""
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
+            
+        self.clipboard = []
+        for item in selectedItems:
+            self.clipboard.append(item.module.copy())
+        
+        self.mainWindow.logger.info(f"Copied {len(self.clipboard)} module(s)")
+
+    def cutModules(self):
+        """Cut selected modules to clipboard."""
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
+            
+        self.clipboard = []
+        for item in selectedItems:
+            self.clipboard.append(item.module.copy())
+        
+        self.mainWindow.logger.info(f"Cut {len(self.clipboard)} module(s)")
+        
+        # Remove the cut modules without confirmation
+        self.removeModule(askConfirmation=False)
+
+    def pasteModules(self):
+        """Paste modules from clipboard."""
+        if not self.clipboard:
+            return
+            
+        selectedItems = self.selectedItems()
+        parent = selectedItems[0] if selectedItems else None
+        
+        pastedItems = []
+        for module in self.clipboard:
+            newModule = module.copy()  # Make another copy to avoid reference issues
+            
+            # Ensure unique names
+            if parent:
+                existingNames = set([ch.name() for ch in parent.module.children()])
+                newModule.setName(findUniqueName(newModule.name(), existingNames))
+            
+            newItem = self.makeItemFromModule(newModule)
+            
+            if parent:
+                parent.addChild(newItem)
+                parent.module.addChild(newModule)
+            else:
+                self.addTopLevelItem(newItem)
+            
+            pastedItems.append(newItem)
+        
+        # Select pasted items
+        self.clearSelection()
+        for item in pastedItems:
+            item.setSelected(True)
+            
+        self.mainWindow.logger.info(f"Pasted {len(pastedItems)} module(s)")
+
+    def removeModule(self, *, askConfirmation=True):
         selectedItems = self.selectedItems()
         if not selectedItems:
             return
 
-        msg = "\n".join([item.module.name() for item in selectedItems])
-
-        if QMessageBox.question(self, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
-            return
+        if askConfirmation:
+            msg = "\n".join([item.module.name() for item in selectedItems])
+            if QMessageBox.question(self, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+                return
 
         for item in selectedItems:
             parent = item.parent()
@@ -1441,7 +1659,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.moduleItem:
             return
 
-        words = set(self.mainWindow.getEnvUI().keys()) | set(self.moduleItem.module.getEnv().keys())
+        words = set(self.mainWindow.envUI().keys()) | set(self.moduleItem.module.env().keys())
 
         for a in self.moduleItem.module.attributes():
             words.add("@" + a.name())
@@ -1559,7 +1777,15 @@ class MyProgressBar(QWidget):
             q = self.queue[-1] # get latest state
             self.updateWithState(q)
 
+
 class RigBuilderWindow(QFrame):
+    # === API SIGNALS ===
+    moduleSelected = Signal(object)  # ModuleItem
+    moduleAdded = Signal(object)     # ModuleItem  
+    moduleRemoved = Signal(object)   # ModuleItem
+    moduleChanged = Signal(object)   # ModuleItem
+    attributeChanged = Signal(object, object)  # ModuleItem, Attribute
+    
     def __init__(self):
         super().__init__(parent=ParentWindow)
 
@@ -1573,6 +1799,16 @@ class RigBuilderWindow(QFrame):
 
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        
+        # Create isolated logger for this window
+        self.logger = logging.getLogger(f'rigbuilder.window_{id(self)}')
+        self.logger.setLevel(logging.DEBUG)
+        
+        # Create isolated log handler for this window
+        self.logHandler = RigBuilderLogHandler()
+        self.logHandler.setLogWidget(self.logWidget)
+        self.logHandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        self.logger.addHandler(self.logHandler)
 
         self.attributesTabWidget = AttributesTabWidget(None, mainWindow=self)
         self.attributesTabWidget.hide()
@@ -1593,7 +1829,7 @@ class RigBuilderWindow(QFrame):
 
         self.runBtn = QPushButton("Run!")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
-        self.runBtn.clicked.connect(self.runModuleClicked)
+        self.runBtn.clicked.connect(self.runModule)
         self.runBtn.hide()
 
         self.infoWidget = QTextBrowser()
@@ -1601,6 +1837,7 @@ class RigBuilderWindow(QFrame):
         self.infoWidget.setOpenLinks(False)
         self.infoWidget.recentModules = []
         self.updateInfo()
+
 
         attrsToolsWidget = QWidget()
         attrsToolsWidget.setLayout(QVBoxLayout())
@@ -1617,7 +1854,7 @@ class RigBuilderWindow(QFrame):
         self.vsplitter.addWidget(hsplitter)
         self.vsplitter.addWidget(codeWidget)
         self.vsplitter.addWidget(self.logWidget)
-        self.vsplitter.setSizes([500, 0, 0])
+        self.vsplitter.setSizes([400, 0, 0])
 
         self.vsplitter.splitterMoved.connect(self.codeSplitterMoved)
         self.codeEditorWidget.setEnabled(False)
@@ -1625,8 +1862,7 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
 
-        self.menu = self.getMenu()
-        self.treeWidget.addActions(getActions(self.menu))
+        self.treeWidget.addActions(getActions(self.menu()))
         setActionsLocalShortcut(self.treeWidget)
 
         layout.addWidget(self.vsplitter)
@@ -1634,7 +1870,7 @@ class RigBuilderWindow(QFrame):
 
         centerWindow(self)
 
-    def getMenu(self):
+    def menu(self):
         menu = QMenu(self)
 
         menu.addAction("New", self.treeWidget.insertModule, "Insert")
@@ -1642,6 +1878,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
         menu.addAction("Save as", self.treeWidget.saveAsModule)
+        menu.addAction("Send to server", self.treeWidget.sendModuleToServer)
         menu.addSeparator()
 
         menu.addAction("Locate file", self.locateModuleFile)
@@ -1649,13 +1886,17 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
         menu.addSeparator()
+        menu.addAction("Copy", self.treeWidget.copyModules, "Ctrl+C")
+        menu.addAction("Cut", self.treeWidget.cutModules, "Ctrl+X")
+        if self.treeWidget.clipboard:
+            menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
+        menu.addSeparator()
 
         diffMenu = menu.addMenu("Diff")
         diffMenu.addAction("vs File", lambda: self.diffModule())
         diffMenu.addAction("vs Server", lambda: self.diffModule(reference="server"))
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
-        menu.addAction("Send to server", self.treeWidget.sendModuleToServer)
         menu.addAction("Embed", self.treeWidget.embedModule)
 
         menu.addSeparator()
@@ -1811,6 +2052,9 @@ class RigBuilderWindow(QFrame):
             if self.codeEditorWidget.isEnabled():
                 self.codeEditorWidget.moduleItem = item
                 self.codeEditorWidget.updateState()
+            
+            # Emit API signal
+            self.moduleSelected.emit(item)
 
     def infoLinkClicked(self, url):
         scheme = url.scheme()
@@ -1882,23 +2126,29 @@ class RigBuilderWindow(QFrame):
             self.vsplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
-    def getEnvUI(self):
+    def envUI(self):
         return {"beginProgress": self.progressBarWidget.beginProgress,
                 "stepProgress": self.progressBarWidget.stepProgress,
                 "endProgress": self.progressBarWidget.endProgress,
                 "currentTabIndex": self.attributesTabWidget.currentIndex()}    
 
-    def runModuleClicked(self):
-        if DCC == "maya":
-            cmds.undoInfo(ock=True) # run in undo chunk
-            self.runModule()
-            cmds.undoInfo(cck=True)
+    def runModule(self, moduleItem=None):
+        """Run module with full UI support (progress, undo, logging)."""
+        # Determine which module to run
+        if moduleItem:
+            currentItem = moduleItem
         else:
-            self.runModule()
+            selectedItems = self.selectedModules()
+            if not selectedItems:
+                self.logger.warning("No module selected for execution")
+                return
+            currentItem = selectedItems[0]
 
-    def runModule(self):
-        def uiCallback(mod):
-            self.progressBarWidget.stepProgress(self.progressCounter, mod.path())
+        self.logger.info(f"Running module: {currentItem.module.name()}")
+
+        def uiCallback(module):
+            self.logger.info(f"{module.path()} is running...")
+            self.progressBarWidget.stepProgress(self.progressCounter, module.path())
             self.progressCounter += 1
 
         def getChildrenCount(item):
@@ -1908,13 +2158,6 @@ class RigBuilderWindow(QFrame):
                 count += getChildrenCount(item.child(i))
             return count
 
-        selectedItems = self.treeWidget.selectedItems()
-
-        if not selectedItems:
-            return
-
-        currentItem = selectedItems[0]
-
         self.setFocus()
 
         self.logWidget.clear()
@@ -1922,8 +2165,6 @@ class RigBuilderWindow(QFrame):
 
         with captureOutput(self.logWidget):
             startTime = time.time()
-            timeStr = time.strftime("%H:%M", time.localtime(startTime))
-            print("Start running at " + timeStr)
 
             self.progressBarWidget.initialize()
             self.progressCounter = 0
@@ -1934,22 +2175,118 @@ class RigBuilderWindow(QFrame):
             muted = currentItem.module.muted()
             currentItem.module.unmute()
 
-            Module.env = self.getEnvUI() # for runtime module
+            Module.globalEnv = self.envUI() # for runtime module
 
+            # Run with Maya undo support if available
             try:
+                if DCC == "maya":
+                    cmds.undoInfo(ock=True) # open undo chunk
+                    
                 currentItem.module.run(uiCallback=uiCallback)
-            except Exception:
+                
+            except ModuleRuntimeError as e:
+                self.logger.error(str(e))
+            except Exception as e:
+                self.logger.error(f"Unexpected error in module '{currentItem.module.name()}': {str(e)}")
                 printErrorStack()
             finally:
+                if DCC == "maya":
+                    cmds.undoInfo(cck=True) # close undo chunk
+                    
                 if muted:
                     currentItem.module.mute()
 
-                print("Done in %.2fs"%(time.time() - startTime))
+                executionTime = time.time() - startTime
+                self.logger.info(f"Execution completed in {executionTime:.2f}s")
 
         self.progressBarWidget.endProgress()
         self.attributesTabWidget.updateTabs()
 
+    # === API METHODS FOR MODULE MANAGEMENT ===
+    
+    def addModule(self, moduleOrPath, parent=None):
+        """Add module to the tree. Returns ModuleItem or None if failed."""
+        try:
+            if isinstance(moduleOrPath, str):
+                # Load from file path
+                module = Module.loadFromFile(moduleOrPath)
+                module.update()
+            else:
+                # Assume it's already a Module instance
+                module = moduleOrPath
+            
+            moduleItem = self.treeWidget.makeItemFromModule(module)
+            
+            if parent:
+                parent.addChild(moduleItem)
+                parent.module.addChild(module)
+            else:
+                self.treeWidget.addTopLevelItem(moduleItem)
+            
+            self.moduleAdded.emit(moduleItem)
+            return moduleItem
+            
+        except Exception as e:
+            self.logger.error(f"Adding module: {e}")
+            return
+    
+    def removeModule(self, moduleItem):
+        """Remove module from tree."""
+        if not moduleItem:
+            self.logger.warning("Cannot remove module: moduleItem is None")
+            return
+            
+        parent = moduleItem.parent()
+        if parent:
+            parent.removeChild(moduleItem)
+            parent.module.removeChild(moduleItem.module)
+            parent.emitDataChanged()
+        else:
+            self.treeWidget.invisibleRootItem().removeChild(moduleItem)
+        
+        self.moduleRemoved.emit(moduleItem)
+    
+    def selectedModules(self):
+        """Get list of currently selected ModuleItems."""
+        return self.treeWidget.selectedItems()
+
+    def currentModule(self):
+        """Get currently selected module."""
+        return self.treeWidget.currentItem()
+    
+    def selectModule(self, moduleItem):
+        """Select specific module in tree."""
+        if moduleItem:
+            self.treeWidget.clearSelection()
+            moduleItem.setSelected(True)
+            self.treeWidget.setCurrentItem(moduleItem)
+    
+    def findModule(self, nameOrPath):
+        """Find module by name or path in tree."""
+        iterator = QTreeWidgetItemIterator(self.treeWidget)
+        while iterator.value():
+            item = iterator.value()
+            if isinstance(item, ModuleItem):
+                if (item.module.name() == nameOrPath or 
+                    item.module.path() == nameOrPath):
+                    return item
+            iterator += 1
+    
+    def createEmptyModule(self, name="module", parent=None):
+        """Create new empty module and add to tree."""
+        module = Module()
+        module.setName(name)
+        return self.addModule(module, parent)
+    
+    def loadModuleFromFile(self, filePath):
+        """Load module from XML file and add to tree."""
+        return self.addModule(filePath)
+
     def closeEvent(self, event):
+        # Stop MCP server if running
+        #if self.mcpServer:
+        #    self.mcpServer.stopServer()
+        
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
             if thread.isRunning():
@@ -1963,7 +2300,7 @@ class RigBuilderWindow(QFrame):
 def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, relative path, uid
     module = Module.loadModule(spec)
     if not module:
-        print("Cannot load '{}' module".format(spec))
+        print(f"Cannot load '{spec}' module")
         return
 
     if child is not None:
@@ -1974,7 +2311,7 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
             module = module.children()[child]
 
         if not module:
-            print("Cannot find '{}' child".format(child))
+            print(f"Cannot find '{child}' child")
             return
 
     w = RigBuilderWindow()
@@ -1996,7 +2333,7 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
 
     return w
 
-def setupVscode(folder): # path to .vscode folder
+def setupVscode(): # path to .vscode folder
     defaultSettings = {
         "python.autoComplete.extraPaths": [],
         "python.analysis.extraPaths": [],
@@ -2004,23 +2341,22 @@ def setupVscode(folder): # path to .vscode folder
         "github.copilot.advanced": {}
     }
 
-    if not os.path.exists(folder):
-        os.makedirs(folder)    
+    folder = RigBuilderLocalPath+"/vscode/.vscode"
+    os.makedirs(folder, exist_ok=True)
+    settingsFile = folder+"/settings.json"
 
-    # get settings
-    settingsFile = folder + "/settings.json"
     if os.path.exists(settingsFile):
         with open(settingsFile, "r") as f:
             settings = json.load(f)
     else:
-        settings = dict(defaultSettings) # copy
+        settings = defaultSettings
 
     # add paths
-    for p in sys.path:
-        p = p.replace("\\", "/")
+    for path in sys.path:
+        path = path.replace("\\", "/")
         for section in ["python.autoComplete.extraPaths", "python.analysis.extraPaths"]:
-            if p not in settings[section]:
-                settings[section].append(p)
+            if path not in settings[section]:
+                settings[section].append(path)
 
     with open(settingsFile, "w") as f:
         json.dump(settings, f, indent=4)
@@ -2034,40 +2370,7 @@ def cleanupVscode():
         if f.endswith(".py"): # remove python files
             os.remove(os.path.join(vscodeFolder, f))
 
-class TrackFileChangesThread(QThread):
-    somethingChanged = Signal()
+ModulesAPI.update(widgets.WidgetsAPI) # Update API
+cleanupVscode()
 
-    def __init__(self, filePath):
-        super().__init__()
-        self.filePath = filePath
-
-    def run(self):
-        lastModified = os.path.getmtime(self.filePath)
-        while True:
-            currentModified = os.path.getmtime(self.filePath)
-            if currentModified != lastModified:
-                self.somethingChanged.emit()
-                lastModified = currentModified
-            time.sleep(1)
-
-def _initialize():
-    """Initialize rigBuilder directories and settings"""
-    # Create local directory structure
-    os.makedirs(RigBuilderLocalPath+"/modules", exist_ok=True)
-    
-    # Initialize settings file
-    settings_path = RigBuilderLocalPath+"/settings.json"
-    if not os.path.exists(settings_path):
-        with open(settings_path, "w") as f:
-            json.dump({"vscode": "code"}, f, indent=4)
-    
-    with open(settings_path, "r") as f:
-        global settings
-        settings = json.load(f)
-    
-    # Update API and cleanup
-    ModulesAPI.update(widgets.WidgetsAPI)
-    cleanupVscode()
-
-_initialize()
-mainWindow = RigBuilderWindow()
+mainWindow = RigBuilderWindow() # Initialize main window

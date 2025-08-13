@@ -63,6 +63,7 @@ class AttributeResolverError(Exception):pass
 class AttributeExpressionError(Exception):pass
 class ModuleNotFoundError(Exception):pass
 class CopyJsonError(Exception):pass
+class ModuleRuntimeError(Exception):pass
 
 class Attribute(object):
     def __init__(self):
@@ -227,7 +228,7 @@ class Attribute(object):
         if not self._expression:
             return
         
-        localEnv = dict(self._module.getEnv())
+        localEnv = dict(self._module.env())
         localEnv.update({"data": self._data, "value": self._defaultValue()})
 
         try:
@@ -342,7 +343,7 @@ class Module(object):
     ServerUids = {}
 
     glob = Dict() # global memory
-    env = {}
+    globalEnv = {}
 
     def __init__(self):
         self._uid = "" # unique ids are assigned while saving
@@ -781,7 +782,7 @@ class Module(object):
         
         return attr
 
-    def getEnv(self) -> Dict[str, Any]:        
+    def env(self) -> Dict[str, Any]:        
         """Get execution environment for module."""
         env = dict(ModulesAPI)
         env.update({"module": self, 
@@ -792,8 +793,8 @@ class Module(object):
 
     def run(self, *, uiCallback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
         """Execute module code and run child modules."""
-        localEnv = dict(Module.env or {})
-        localEnv.update(self.getEnv())
+        localEnv = dict(Module.globalEnv or {})
+        localEnv.update(self.env())
 
         attrPrefix = "attr_"
         for attr in self._attributes:
@@ -801,7 +802,6 @@ class Module(object):
             localEnv[attrPrefix+"set_"+attr._name] = attr.set
             localEnv[attrPrefix+attr._name+"_data"] = DataAccessor(attr)
 
-        print("{} is running...".format(self.path()))
 
         if callable(uiCallback):
             uiCallback(self)
@@ -813,6 +813,8 @@ class Module(object):
             exec(runCode, localEnv)
         except ExitModuleException:
             pass
+        except Exception as e:
+            raise ModuleRuntimeError(f"Module '{self.name()}': {str(e)}") from e
 
         for ch in self._children:
             if not ch.muted():
@@ -867,3 +869,37 @@ ModulesAPI.update({
     "warning": printWarning})
 
 Module.updateUidsCache()
+
+"""Initialize rigBuilder directories and settings"""
+# Create local directory structure
+os.makedirs(RigBuilderLocalPath+"/modules", exist_ok=True)
+
+# Initialize settings file
+settingsFile = RigBuilderLocalPath+"/settings.json"
+
+# Default settings structure
+defaultSettings = {
+    "vscode": "code",
+    "ai": {
+        "apiKey": "",
+        "model": "claude-3-sonnet-20240229",
+        "enabled": True
+    }
+}
+
+if not os.path.exists(settingsFile):
+    # Create new settings file
+    with open(settingsFile, "w") as f:
+        json.dump(defaultSettings, f, indent=4)
+    Settings = defaultSettings
+else:
+    # Load existing settings
+    with open(settingsFile, "r") as f:
+        Settings = json.load(f)
+    
+    # Update settings with missing keys
+    if "ai" not in Settings:
+        Settings["ai"] = defaultSettings["ai"]
+    
+        with open(settingsFile, "w") as f:
+            json.dump(Settings, f, indent=4)
