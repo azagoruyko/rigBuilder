@@ -5,7 +5,7 @@ import json
 import re
 import os
 
-from .utils import clamp, getActions, centerWindow, setActionsLocalShortcut, SimpleUndo, SearchReplaceDialog, JsonColors, findUniqueName
+from ..utils import clamp, getActions, centerWindow, setActionsLocalShortcut, SimpleUndo, SearchReplaceDialog, JsonColors, findUniqueName
 
 RootDirectory = os.path.dirname(__file__)
 

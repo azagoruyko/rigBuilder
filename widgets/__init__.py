@@ -6,8 +6,8 @@ import sys
 import os
 import json
 import math
-from .utils import *
-from .editor import *
+from ..utils import *
+from ..editor import *
 from .jsonWidget import JsonWidget
 
 DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
