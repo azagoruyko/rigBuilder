@@ -1930,6 +1930,17 @@ class RigBuilderWindow(QFrame):
                 else:
                     args.append("{}={}".format(p.name, p.default))
             return "def {}({}):pass".format(name or f.__name__, ", ".join(args))
+
+        def getVariableValue(v):
+            if type(v) == str:
+                return '"' + v + '"'
+
+            try:
+                _ = json.dumps(v) # check if v is JSON serializable
+            except:
+                return None
+
+            return v
         
         def onFileChangeCallback(module, filePath):    
             with open(filePath, "r") as f:
@@ -1944,7 +1955,7 @@ class RigBuilderWindow(QFrame):
         if not selectedItems:
             return
         
-        setupVscode(RigBuilderLocalPath+"/vscode/.vscode")        
+        setupVscode()        
         
         module = selectedItems[0].module
 
@@ -1957,16 +1968,20 @@ class RigBuilderWindow(QFrame):
 
         # expose attributes
         for a in module.attributes():
-            predefinedCode.append("attr_{} = {}".format(a.name(), json.dumps(a.get()))) # not initialized
+            predefinedCode.append("attr_{} = {}".format(a.name(), getVariableValue(a.get())))
             predefinedCode.append(getFunctionDefinition(a.set, name="attr_set_"+a.name()))
-            predefinedCode.append("attr_{}_data = {}".format(a.name(), json.dumps(a.data())))
+            predefinedCode.append("attr_{}_data = {}".format(a.name(), a.data()))
 
         # expose API
-        for k, v in ModulesAPI.items():
+        env = {}
+        env.update(module.env())
+        env.update(self.envUI()) # ui functions
+
+        for k, v in env.items():
             if callable(v):
                 predefinedCode.append(getFunctionDefinition(v))
             else:
-                predefinedCode.append("{} = None".format(k)) # not initialized
+                predefinedCode.append("{} = {}".format(k, getVariableValue(v)))
 
         with open(predefinedFile, "w") as f:
             f.write("\n".join(predefinedCode))
@@ -1974,8 +1989,8 @@ class RigBuilderWindow(QFrame):
         with open(moduleFile, "w") as f:
             predefinedModule = os.path.splitext(os.path.basename(predefinedFile))[0]
             code = re.sub(r'@(\w+)', r'attr_\1', module.runCode())
-            f.write("\n".join(["from {} import * # must be the first line".format(predefinedModule), # first line
-                               code]))
+            importLine = "from .{} import * # must be the first line".format(predefinedModule)
+            f.write("\n".join([importLine, code]))
         
         if moduleFile in trackFileChangesThreads:
             trackFileChangesThreads[moduleFile].terminate()
@@ -1985,12 +2000,12 @@ class RigBuilderWindow(QFrame):
         th.start()
         trackFileChangesThreads[moduleFile] = th
         
-        if not shutil.which(settings["vscode"]):
-            QMessageBox.warning(self, "Editor Error", f"Editor executable not found: {settings['vscode']}\n\nPlease install the editor or update the path in settings.json")
+        if not shutil.which(Settings["vscode"]):
+            QMessageBox.warning(self, "Editor Error", f"Editor executable not found: {Settings['vscode']}\n\nPlease install the editor or update the path in settings.json")
             return
             
         try:
-            subprocess.Popen([settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([Settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -2347,22 +2362,21 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
 
     return w
 
-def setupVscode(folder): # path to .vscode folder
-    defaultSettings = {
+def setupVscode(): # path to .vscode folder
+    settings = {
         "python.autoComplete.extraPaths": [],
         "python.analysis.extraPaths": [],
         "github.copilot.editor.enableAutoCompletions": True,
         "github.copilot.advanced": {}
     }
 
+    folder = RigBuilderLocalPath+"/vscode/.vscode"
     os.makedirs(folder, exist_ok=True)
     settingsFile = folder+"/settings.json"
 
-    if os.path.exists(settingsFile):
+    if os.path.exists(settingsFile):        
         with open(settingsFile, "r") as f:
-            settings = json.load(f)
-    else:
-        settings = defaultSettings
+            settings.update(json.load(f))
 
     # add paths
     for path in sys.path:
