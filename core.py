@@ -851,36 +851,20 @@ ModulesAPI.update({
 
 Module.updateUidsCache()
 
-"""Initialize rigBuilder directories and settings"""
+# Initialize directories and settings
+
 # Create local directory structure
 os.makedirs(RigBuilderLocalPath+"/modules", exist_ok=True)
 
-# Initialize settings file
 settingsFile = RigBuilderLocalPath+"/settings.json"
 
-# Default settings structure
-defaultSettings = {
-    "vscode": "code",
-    "ai": {
-        "apiKey": "",
-        "model": "claude-3-sonnet-20240229",
-        "enabled": True
-    }
+Settings = {
+    "vscode": "code"
 }
 
-if not os.path.exists(settingsFile):
-    # Create new settings file
-    with open(settingsFile, "w") as f:
-        json.dump(defaultSettings, f, indent=4)
-    Settings = defaultSettings
-else:
-    # Load existing settings
+if os.path.exists(settingsFile):
     with open(settingsFile, "r") as f:
-        Settings = json.load(f)
-    
-    # Update settings with missing keys
-    if "ai" not in Settings:
-        Settings["ai"] = defaultSettings["ai"]
-    
-        with open(settingsFile, "w") as f:
-            json.dump(Settings, f, indent=4)
+        Settings.update(json.load(f))
+else:
+    with open(settingsFile, "w") as f:
+        json.dump(Settings, f, indent=4)
