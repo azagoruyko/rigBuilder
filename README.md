@@ -42,7 +42,7 @@ python run.py
 
 **Requirements:** Python 3.7+, PySide6
 
-**DCC Integration:** Import `rigBuilder` module and call `rigBuilder.ui.mainWindow.show()`
+**DCC Integration:** Import `rigBuilder.ui` module and call `rigBuilder.ui.mainWindow.show()`
 
 ## How it works
 
