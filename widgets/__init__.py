@@ -54,11 +54,7 @@ class EditTextDialog(QDialog):
 
         if not python:
             self.textWidget = QTextEdit()            
-            # Qt compatibility: setTabStopWidth (Qt5) vs setTabStopDistance (Qt6)
-            if hasattr(self.textWidget, 'setTabStopDistance'):
-                self.textWidget.setTabStopDistance(16)
-            else:
-                self.textWidget.setTabStopWidth(16)
+            self.textWidget.setTabStopDistance(16)
             self.textWidget.setAcceptRichText(False)
             self.textWidget.setWordWrapMode(QTextOption.NoWrap)            
         else:
@@ -470,15 +466,15 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
             self.templates["Get selected"] = {"label": "<", "command":"import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"}
             defaultCmd = self.templates["Get selected"]
 
-        self.templates["Get open file"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
+        self.templates["Get open file"] = {"label": "...", "command":'''from PySide6.QtWidgets import QFileDialog;import os
 path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
 value = path or value'''}
 
-        self.templates["Get save file"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
+        self.templates["Get save file"] = {"label": "...", "command":'''from PySide6.QtWidgets import QFileDialog;import os
 path,_ = QFileDialog.getSaveFileName(None, "Save file", os.path.expandvars(value))
 value = path or value'''}
 
-        self.templates["Get existing directory"] = {"label": "...", "command":'''from PySide2.QtWidgets import QFileDialog;import os
+        self.templates["Get existing directory"] = {"label": "...", "command":'''from PySide6.QtWidgets import QFileDialog;import os
 path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
 value = path or value'''}
 

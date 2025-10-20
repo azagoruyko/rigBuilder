@@ -576,11 +576,7 @@ class CodeEditorWidget(QTextEdit):
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
 
-        # Qt compatibility: setTabStopWidth (Qt5) vs setTabStopDistance (Qt6)
-        if hasattr(self, 'setTabStopDistance'):
-            self.setTabStopDistance(32)
-        else:
-            self.setTabStopWidth(32)
+        self.setTabStopDistance(32)
         self.setAcceptRichText(False)
         self.setWordWrapMode(QTextOption.NoWrap)
 
