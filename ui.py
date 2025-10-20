@@ -2347,7 +2347,7 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
 
     return w
 
-def setupVscode(): # path to .vscode folder
+def setupVscode(folder): # path to .vscode folder
     defaultSettings = {
         "python.autoComplete.extraPaths": [],
         "python.analysis.extraPaths": [],
@@ -2355,7 +2355,6 @@ def setupVscode(): # path to .vscode folder
         "github.copilot.advanced": {}
     }
 
-    folder = RigBuilderLocalPath+"/vscode/.vscode"
     os.makedirs(folder, exist_ok=True)
     settingsFile = folder+"/settings.json"
 
