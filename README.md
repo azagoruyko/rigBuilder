@@ -11,6 +11,9 @@
 
 Create custom interfaces for your Python scripts using drag-and-drop modules. Works standalone or inside any application that supports PySide/Qt.
 
+**PySide2 is not supported since v5.0.0 tag.**
+
+
 ![rb_example](https://github.com/user-attachments/assets/51961be9-ae99-4fae-aa70-1080305c286d)
 
 ## What it does
