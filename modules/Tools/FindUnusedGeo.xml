@@ -7,13 +7,13 @@ if @nurbs:
     for typ in ["nurbsSurface", "nurbsCurve"]:
         for n in pm.ls(type="nurbsSurface"):
             if not n.create.listConnections() and not n.local.listConnections() and not n.worldSpace.listConnections() and n.intermediateObject.get():
-                print n
+                print(n)
                 pm.select(n,add=True)
 
 if @mesh:    
     for n in pm.ls(type="mesh"):
         if not n.inMesh.listConnections() and not n.outMesh.listConnections() and not n.worldMesh.listConnections() and n.intermediateObject.get():
-            print n
+            print(n)
             pm.select(n,add=True)]]></run>
 <attributes>
 <attr name="nurbs" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>

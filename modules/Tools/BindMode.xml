@@ -15,7 +15,7 @@ if not @mode: # make rebind
             if not pm.isConnected(j.worldInverseMatrix, skin.bindPreMatrix[idx]):
                 j.worldInverseMatrix >> skin.bindPreMatrix[idx]
     
-    print "Go to Bind mode"
+    print("Go to Bind mode")
     @set_mode("Bind")
 else:
     for j in joints:
@@ -29,7 +29,7 @@ else:
                 
             skin.bindPreMatrix[idx].set(matrix)
     
-    print "Exit Bind mode"
+    print("Exit Bind mode")
     @set_mode("")
         ]]></run>
 <attributes>
