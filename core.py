@@ -829,6 +829,8 @@ def exitModule():
     """Exit current module execution."""
     raise ExitModuleException()
 
+functionPlaceholder = lambda *args, **kwargs: None
+
 ModulesAPI.update({
     "module":None, # updated at runtime
     "Module": Module,
@@ -838,7 +840,14 @@ ModulesAPI.update({
     "copyJson": copyJson,
     "exit": exitModule,
     "error": printError,
-    "warning": printWarning})
+    "warning": printWarning,
+
+    # ui functions
+    "beginProgress": functionPlaceholder,
+    "stepProgress": functionPlaceholder,
+    "endProgress": functionPlaceholder,
+    "currentTabIndex": 0
+    })
 
 Module.updateUidsCache()
 
