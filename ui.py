@@ -809,9 +809,6 @@ class ModuleItem(QTreeWidgetItem):
         
         # Check attributes
         for attr in module.attributes():
-            if not attr.name():
-                self.getLogger().error(f"Module '{module.name()}': Attribute with empty name found")
-                hasErrors = True
             if not attr.template():
                 self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' has no template")
                 hasErrors = True
