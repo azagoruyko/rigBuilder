@@ -15,7 +15,7 @@ from PySide6.QtWidgets import *
 
 from .core import *
 from .editor import *
-from . import widgets
+from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
 from .ui_utils import *
 
@@ -39,7 +39,6 @@ if DCC == "maya":
 
 updateFilesThread = None 
 trackFileChangesThreads = {} # by file path
-
 
 # === GLOBAL LOGGING SYSTEM ===
 class RigBuilderLogHandler(logging.Handler):
@@ -114,17 +113,15 @@ class AttributesWidget(QWidget):
         layout.setColumnStretch(1, 1)
         self.setLayout(layout)
 
-        def executor(cmd, env=None):
-            envUI = self.mainWindow.envUI()
-            Module.globalEnv = envUI # update environment for runtime modules
-
-            localEnv = dict(envUI)
-            localEnv.update(self.moduleItem.module.env())
-            localEnv.update(env or {})
+        def executor(cmd, context=None):
+            ctx = {}
+            ctx.update(self.moduleItem.module.context())
+            if context:
+                ctx.update(context)
 
             with captureOutput(self.mainWindow.logWidget):
                 try:
-                    exec(cmd, localEnv)
+                    exec(cmd, ctx)
                 except Exception as e:
                     self.mainWindow.logger.error(str(e))
                     self.mainWindow.showLog()
@@ -132,10 +129,10 @@ class AttributesWidget(QWidget):
                     if cmd: # in case command is specified, no command can be used for obtaining completions
                         self.updateWidgets()
                         self.updateWidgetStyles()
-            return localEnv
+            return ctx
 
         for idx, a in enumerate(attributes):
-            templateWidget = widgets.TemplateWidgets[a.template()](executor=executor)
+            templateWidget = TemplateWidgets[a.template()](executor=executor)
             nameWidget = QLabel(a.name())
 
             self._attributeAndWidgets.append((a, nameWidget, templateWidget))
@@ -315,7 +312,7 @@ class AttributesWidget(QWidget):
             _save(self, attrWidgetIndex)
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        w = widgets.EditJsonDialog(attr.localData(), title="Edit data")
+        w = EditJsonDialog(attr.localData(), title="Edit data")
         w.saved.connect(save)
         w.show()
 
@@ -327,9 +324,9 @@ class AttributesWidget(QWidget):
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        words = set(self.mainWindow.envUI().keys()) | set(self.moduleItem.module.env().keys())
+        words = set(self.moduleItem.module.context().keys())
         placeholder = '# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]'
-        w = widgets.EditTextDialog(attr.expression(), title="Edit expression for '{}'".format(attr.name()), placeholder=placeholder, words=words, python=True)
+        w = EditTextDialog(attr.expression(), title="Edit expression for '{}'".format(attr.name()), placeholder=placeholder, words=words, python=True)
         w.saved.connect(save)
         w.show()
 
@@ -341,7 +338,7 @@ class AttributesWidget(QWidget):
     def resetAttr(self, attrWidgetIndex):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        tmp = widgets.TemplateWidgets[attr.template()]()
+        tmp = TemplateWidgets[attr.template()]()
         attr.setConnect("")
         attr.setData(tmp.getDefaultData())
         self.updateWidget(attrWidgetIndex)
@@ -760,7 +757,7 @@ class ModuleItem(QTreeWidgetItem):
             attribute.setData(kwargs['data'])
         elif 'defaultValue' in kwargs:
             # Helper to set default value directly
-            defaultData = widgets.TemplateWidgets[template]().getDefaultData()
+            defaultData = TemplateWidgets[template]().getDefaultData()
             if 'default' in defaultData:
                 defaultData[defaultData['default']] = kwargs['defaultValue']
             attribute.setData(defaultData)
@@ -812,7 +809,7 @@ class ModuleItem(QTreeWidgetItem):
             if not attr.template():
                 self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' has no template")
                 hasErrors = True
-            elif attr.template() not in widgets.TemplateWidgets:
+            elif attr.template() not in TemplateWidgets:
                 self.getLogger().error(f"Module '{module.name()}': Unknown template '{attr.template()}' for attribute '{attr.name()}'")
                 hasErrors = True
             
@@ -1303,10 +1300,10 @@ class TemplateSelectorDialog(QDialog):
 
         filterText = self.filterWidget.text()
 
-        for t in sorted(widgets.TemplateWidgets.keys()):
+        for t in sorted(TemplateWidgets.keys()):
             if not filterText or re.search(filterText, t, re.IGNORECASE):
                 self.gridLayout.addWidget(QLabel(t))
-                w  = widgets.TemplateWidgets[t]()
+                w  = TemplateWidgets[t]()
                 w.setJsonData(w.getDefaultData())
                 self.gridLayout.addWidget(w)
 
@@ -1337,7 +1334,7 @@ class EditTemplateWidget(QWidget):
         self.nameWidget.contextMenuEvent = self.nameContextMenuEvent
         self.nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
 
-        self.templateWidget = widgets.TemplateWidgets[template]()
+        self.templateWidget = TemplateWidgets[template]()
 
         buttonsLayout = QHBoxLayout()
         buttonsLayout.setContentsMargins(0,0,0,0)
@@ -1474,7 +1471,7 @@ class EditAttributesWidget(QWidget):
         selector.exec()
 
     def insertCustomWidget(self, template, row=None):
-        if not widgets.TemplateWidgets.get(template):
+        if not TemplateWidgets.get(template):
             return
 
         row = self.attributesLayout.count() if row is None else row
@@ -1668,7 +1665,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         if not self.moduleItem:
             return
 
-        words = set(self.mainWindow.envUI().keys()) | set(self.moduleItem.module.env().keys())
+        words = set(self.moduleItem.module.context().keys())
 
         for a in self.moduleItem.module.attributes():
             words.add("@" + a.name())
@@ -1847,7 +1844,6 @@ class RigBuilderWindow(QFrame):
         self.infoWidget.recentModules = []
         self.updateInfo()
 
-
         attrsToolsWidget = QWidget()
         attrsToolsWidget.setLayout(QVBoxLayout())
         attrsToolsWidget.layout().addWidget(self.infoWidget)
@@ -1971,8 +1967,8 @@ class RigBuilderWindow(QFrame):
 
         # expose API
         env = {}
-        env.update(module.env())
-        env.update(self.envUI()) # ui functions
+        env.update(API)
+        env.update(module.context())
 
         for k, v in env.items():
             if callable(v):
@@ -2152,12 +2148,6 @@ class RigBuilderWindow(QFrame):
             self.vsplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
-    def envUI(self):
-        return {"beginProgress": self.progressBarWidget.beginProgress,
-                "stepProgress": self.progressBarWidget.stepProgress,
-                "endProgress": self.progressBarWidget.endProgress,
-                "currentTabIndex": self.attributesTabWidget.currentIndex()}    
-
     def runModule(self, moduleItem=None):
         """Run module with full UI support (progress, undo, logging)."""
         # Determine which module to run
@@ -2201,14 +2191,18 @@ class RigBuilderWindow(QFrame):
             muted = currentItem.module.muted()
             currentItem.module.unmute()
 
-            Module.globalEnv = self.envUI() # for runtime module
+            API.update({
+                "beginProgress": self.progressBarWidget.beginProgress,
+                "stepProgress": self.progressBarWidget.stepProgress,
+                "endProgress": self.progressBarWidget.endProgress,
+                "currentTabIndex": self.attributesTabWidget.currentIndex()})
 
             # Run with Maya undo support if available
             try:
                 if DCC == "maya":
                     cmds.undoInfo(ock=True) # open undo chunk
                     
-                currentItem.module.run(uiCallback=uiCallback)
+                currentItem.module.run(callback=uiCallback)
                 
             except ModuleRuntimeError as e:
                 self.logger.error(str(e))
@@ -2309,7 +2303,6 @@ class RigBuilderWindow(QFrame):
         return self.addModule(filePath)
 
     def closeEvent(self, event):
-        
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
             if thread.isRunning():
@@ -2391,7 +2384,6 @@ def cleanupVscode():
         if f.endswith(".py"): # remove python files
             os.remove(os.path.join(vscodeFolder, f))
 
-ModulesAPI.update(widgets.WidgetsAPI) # Update API
 cleanupVscode()
 
 mainWindow = RigBuilderWindow() # Initialize main window

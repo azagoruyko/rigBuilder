@@ -5,12 +5,13 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson
+from .utils import copyJson, clamp, smartConversion, fromSmartConversion
+from .widgets import core as widgets_core
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
-ModulesAPI = {} # updated at the end
+API = {} # modules' runtime API
 
 RigBuilderPath = os.path.dirname(__file__)
 RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder")
@@ -200,15 +201,15 @@ class Attribute(object):
         if not self._expression:
             return
         
-        localEnv = dict(self._module.env())
-        localEnv.update({"data": self._data, "value": self._defaultValue()})
+        context = dict(self._module.context())
+        context.update({"data": self._data, "value": self._defaultValue()})
 
         try:
-            exec(self._expression, localEnv)
+            exec(self._expression, context)
         except Exception as e:
             raise AttributeExpressionError("Invalid expression: {}".format(str(e)))
         else:
-            self._setDefaultValue(localEnv["value"])
+            self._setDefaultValue(context["value"])
 
     def findConnectionSource(self) -> Optional['Attribute']:
         """Find source attribute for connection."""
@@ -315,7 +316,6 @@ class Module(object):
     ServerUids = {}
 
     glob = Dict() # global memory
-    globalEnv = {}
 
     def __init__(self):
         self._uid = "" # unique ids are assigned while saving
@@ -754,35 +754,37 @@ class Module(object):
         
         return attr
 
-    def env(self) -> Dict[str, Any]:        
+    def context(self) -> Dict[str, Any]:        
         """Get execution environment for module."""
-        env = dict(ModulesAPI)
-        env.update({"module": self, 
-                    "ch": self.ch, 
-                    "chdata": self.chdata, 
-                    "chset": self.chset})
-        return env
+        context = {}
+        context.update(API)
+        context.update({
+            "module": self, 
+            "ch": self.ch, 
+            "chdata": self.chdata, 
+            "chset": self.chset})
 
-    def run(self, *, uiCallback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
-        """Execute module code and run child modules."""
-        localEnv = dict(Module.globalEnv or {})
-        localEnv.update(self.env())
+        return context
+
+    def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
+        """Execute module code and child modules."""
+        ctx = self.context()
 
         attrPrefix = "attr_"
         for attr in self._attributes:
-            localEnv[attrPrefix+attr._name] = attr.get()
-            localEnv[attrPrefix+"set_"+attr._name] = attr.set
-            localEnv[attrPrefix+attr._name+"_data"] = DataAccessor(attr)
+            ctx[attrPrefix+attr._name] = attr.get()
+            ctx[attrPrefix+"set_"+attr._name] = attr.set
+            ctx[attrPrefix+attr._name+"_data"] = DataAccessor(attr)        
 
-
-        if callable(uiCallback):
-            uiCallback(self)
+        if callable(callback):
+            callback(self)
 
         # replace @abc with prefix_abc
+        attrPrefix = "attr_"
         runCode = re.sub(r'@(\w+)', attrPrefix+r'\1', self._runCode)
         
         try:
-            exec(runCode, localEnv)
+            exec(runCode, ctx)
         except ExitModuleException:
             pass
         except Exception as e:
@@ -790,9 +792,9 @@ class Module(object):
 
         for ch in self._children:
             if not ch.muted():
-                ch.run(uiCallback=uiCallback)
+                ch.run(callback=callback)
 
-        return localEnv
+        return ctx
 
     @staticmethod
     def updateUidsCache():
@@ -817,6 +819,10 @@ class Module(object):
 
         return uids
 
+Module.updateUidsCache()
+
+# API
+
 def printError(msg: str):
     """Print error message and raise RuntimeError."""
     raise RuntimeError(msg)
@@ -831,25 +837,33 @@ def exitModule():
 
 functionPlaceholder = lambda *args, **kwargs: None
 
-ModulesAPI.update({
-    "module":None, # updated at runtime
+API.update({
     "Module": Module,
-    "ch": None, # updated at runtime
-    "chdata": None, # updated at runtime
-    "chset": None, # updated at runtime
     "copyJson": copyJson,
     "exit": exitModule,
     "error": printError,
     "warning": printWarning,
+    "listLerp": widgets_core.listLerp,
+    "clamp": clamp,
+    "smartConversion": smartConversion,
+    "fromSmartConversion": fromSmartConversion,
+
+    # data based
+    "curve_evaluate": widgets_core.curve_evaluate,
+    "curve_evaluateFromX": widgets_core.curve_evaluateFromX,
+    "listBox_selected": widgets_core.listBox_selected,
+    "listBox_setSelected": widgets_core.listBox_setSelected,
+    "comboBox_items": widgets_core.comboBox_items,
+    "comboBox_setItems": widgets_core.comboBox_setItems,
+    
+    # button commands
+    "runButtonCommand": widgets_core.runButtonCommand,
 
     # ui functions
     "beginProgress": functionPlaceholder,
     "stepProgress": functionPlaceholder,
-    "endProgress": functionPlaceholder,
-    "currentTabIndex": 0
-    })
-
-Module.updateUidsCache()
+    "endrogress": functionPlaceholder,
+})
 
 # Initialize directories and settings
 
