@@ -1810,7 +1810,7 @@ class RigBuilderWindow(QFrame):
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         
         # Create isolated logger for this window
-        self.logger = logging.getLogger(f'rigbuilder.window_{id(self)}')
+        self.logger = logging.getLogger(f'rigBuilder_{id(self):0x}')
         self.logger.setLevel(logging.DEBUG)
         
         # Create isolated log handler for this window
@@ -1831,10 +1831,10 @@ class RigBuilderWindow(QFrame):
 
         vscodeBtn = QPushButton("Edit in VSCode")
         vscodeBtn.clicked.connect(self.editInVSCode)
-        codeWidget = QWidget()
-        codeWidget.setLayout(QVBoxLayout())
-        codeWidget.layout().addWidget(vscodeBtn)
-        codeWidget.layout().addWidget(self.codeEditorWidget)
+        self.codeWidget = QWidget()
+        self.codeWidget.setLayout(QVBoxLayout())
+        self.codeWidget.layout().addWidget(vscodeBtn)
+        self.codeWidget.layout().addWidget(self.codeEditorWidget)
 
         self.runBtn = QPushButton("Run!")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
@@ -1861,12 +1861,12 @@ class RigBuilderWindow(QFrame):
 
         self.vsplitter = WideSplitter(Qt.Vertical)
         self.vsplitter.addWidget(hsplitter)
-        self.vsplitter.addWidget(codeWidget)
+        self.vsplitter.addWidget(self.codeWidget)
         self.vsplitter.addWidget(self.logWidget)
         self.vsplitter.setSizes([400, 0, 0])
 
         self.vsplitter.splitterMoved.connect(self.codeSplitterMoved)
-        self.codeEditorWidget.setEnabled(False)
+        self.codeWidget.setEnabled(False)
 
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()
@@ -2065,7 +2065,7 @@ class RigBuilderWindow(QFrame):
         self.attributesTabWidget.setVisible(en)
         self.runBtn.setVisible(en)
         self.infoWidget.setVisible(not en)
-        self.codeEditorWidget.setEnabled(en and not self.isCodeEditorHidden())
+        self.codeWidget.setEnabled(en and not self.isCodeEditorHidden())
 
         if selectedItems:
             item = selectedItems[0]
@@ -2073,7 +2073,7 @@ class RigBuilderWindow(QFrame):
             self.attributesTabWidget.moduleItem = item
             self.attributesTabWidget.updateTabs()
 
-            if self.codeEditorWidget.isEnabled():
+            if self.codeWidget.isEnabled():
                 self.codeEditorWidget.moduleItem = item
                 self.codeEditorWidget.updateState()
             
@@ -2138,12 +2138,12 @@ class RigBuilderWindow(QFrame):
         selectedItems = self.treeWidget.selectedItems()
 
         if self.isCodeEditorHidden():
-            self.codeEditorWidget.setEnabled(False)
+            self.codeWidget.setEnabled(False)
 
-        elif not self.codeEditorWidget.isEnabled() and selectedItems:
+        elif not self.codeWidget.isEnabled() and selectedItems:
             self.codeEditorWidget.moduleItem = selectedItems[0]
             self.codeEditorWidget.updateState()
-            self.codeEditorWidget.setEnabled(True)
+            self.codeWidget.setEnabled(True)
 
     def showLog(self):
         sizes = self.vsplitter.sizes()
@@ -2309,9 +2309,6 @@ class RigBuilderWindow(QFrame):
         return self.addModule(filePath)
 
     def closeEvent(self, event):
-        # Stop MCP server if running
-        #if self.mcpServer:
-        #    self.mcpServer.stopServer()
         
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
@@ -2345,7 +2342,7 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
     w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
     w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
 
-    w.codeEditorWidget.hide()
+    w.codeWidget.hide()
     w.treeWidget.hide()
 
     centerWindow(w)
