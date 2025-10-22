@@ -201,15 +201,15 @@ class Attribute(object):
         if not self._expression:
             return
         
-        context = dict(self._module.context())
-        context.update({"data": self._data, "value": self._defaultValue()})
+        ctx = self._module.context()
+        ctx.update({"data": self._data, "value": self._defaultValue()})
 
         try:
-            exec(self._expression, context)
+            exec(self._expression, ctx)
         except Exception as e:
             raise AttributeExpressionError("Invalid expression: {}".format(str(e)))
         else:
-            self._setDefaultValue(context["value"])
+            self._setDefaultValue(ctx["value"])
 
     def findConnectionSource(self) -> Optional['Attribute']:
         """Find source attribute for connection."""
@@ -756,15 +756,15 @@ class Module(object):
 
     def context(self) -> Dict[str, Any]:        
         """Get execution environment for module."""
-        context = {}
-        context.update(API)
-        context.update({
+        ctx = {}
+        ctx.update(API)
+        ctx.update({
             "module": self, 
             "ch": self.ch, 
             "chdata": self.chdata, 
             "chset": self.chset})
 
-        return context
+        return ctx
 
     def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
         """Execute module code and child modules."""
