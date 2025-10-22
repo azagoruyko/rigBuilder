@@ -53,6 +53,23 @@ python run.py
 
 Modules are saved as XML files containing Python code and widget configurations. You can organize them in hierarchies, connect outputs to inputs, and share them between projects.
 
+## Testing
+
+The project includes comprehensive test coverage for the core module system.
+
+### Running tests
+
+```bash
+# Run all tests
+pytest test_core.py -v
+
+# Run with coverage report
+pytest test_core.py --cov=rigBuilder.core --cov-report=term-missing
+python -m pytest test_core.py --cov=rigBuilder --cov-report=html
+```
+
+**Test Coverage:** 86% of core.py
+
 ## Contributing
 
 Found a bug or have an idea? Open an [issue](../../issues) or submit a pull request.
