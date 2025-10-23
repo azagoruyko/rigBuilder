@@ -122,18 +122,16 @@ class Attribute(object):
     
     def _defaultValue(self) -> Any:
         """Get default value from attribute data."""
-        if "default" not in self._data:
-            return
-        return copyJson(self._data[self._data["default"]])
+        if "default" in self._data:
+            return copyJson(self._data[self._data["default"]])
     
     def _setDefaultValue(self, value: Any):
         """Set default value in attribute data."""
-        if "default" not in self._data:
-            return
-        newValue = copyJson(value)
-        if newValue != self._defaultValue():
-            self._data[self._data["default"]] = newValue
-            self._modified = True
+        if "default" in self._data:
+            newValue = copyJson(value)
+            if newValue != self._defaultValue():
+                self._data[self._data["default"]] = newValue
+                self._modified = True
     
     def data(self) -> Dict[str, Any]: # return actual read-only copy of all data
         """Get read-only copy of all attribute data."""
