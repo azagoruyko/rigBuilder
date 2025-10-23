@@ -167,6 +167,29 @@ class TestAttribute:
         with pytest.raises(CopyJsonError):
             simpleAttribute.set(lambda x: x)
 
+    def testAttributeWithoutDefaultKey(self):
+        """Test attribute operations when data has no 'default' key."""
+        attr = Attribute()
+        attr.setName("noDefault")
+        attr.setCategory("input")
+        attr.setTemplate("float")
+        # Don't set localData, so no 'default' key exists
+
+        # _defaultValue should return None
+        assert attr._defaultValue() is None
+
+        # _setDefaultValue should do nothing
+        attr._setDefaultValue(42)
+        assert attr._defaultValue() is None
+
+    def testAttributeSetNone(self):
+        """Test setting None value to attribute."""
+        attr = createAttribute("test", "input", "float", 10.0)
+
+        # Setting None should work (it's JSON-serializable)
+        attr.set(None)
+        assert attr.get() is None
+
 
 class TestAttributeConnections:
     """Tests for attribute connections."""
@@ -203,6 +226,44 @@ class TestAttributeConnections:
         connections = rootAttr.listConnections()
         assert len(connections) == 1
         assert connections[0] is childAttr
+
+    def testCircularConnections(self):
+        """Test circular connection causes infinite recursion."""
+        # Create hierarchy: root -> child1, child2
+        root = createModule("root")
+
+        child1 = createModule("child1")
+        attrA = createAttribute("attrA", "input", "float", 10.0)
+        child1.addAttribute(attrA)
+        root.addChild(child1)
+
+        child2 = createModule("child2")
+        attrB = createAttribute("attrB", "input", "float", 20.0)
+        child2.addAttribute(attrB)
+        root.addChild(child2)
+
+        # Create circular connection: child1/attrA -> child2/attrB -> child1/attrA
+        attrA.setConnect("/child2/attrB")
+        attrB.setConnect("/child1/attrA")
+
+        # This will cause infinite recursion
+        with pytest.raises(RecursionError):
+            attrA.pull()
+
+    def testConnectionToNonexistentPath(self):
+        """Test connection to attribute that doesn't exist."""
+        root = createModule("root")
+        child = createModule("child")
+        root.addChild(child)
+
+        attr = createAttribute("input", "input", "float", 10.0)
+        child.addAttribute(attr)
+
+        attr.setConnect("/nonexistent/attr")
+
+        # findConnectionSource should raise AttributeResolverError
+        with pytest.raises(AttributeResolverError):
+            attr.findConnectionSource()
 
 
 class TestAttributeExpressions:
@@ -349,6 +410,46 @@ class TestModuleChildren:
         simpleModule.removeChildren()
         assert len(simpleModule.children()) == 0
 
+    def testChildWithInvalidType(self):
+        """Test child() method with invalid parameter type."""
+        module = createModule("test")
+        child1 = createModule("child1")
+        module.addChild(child1)
+
+        # Valid cases
+        assert module.child(0) is child1
+        assert module.child("child1") is child1
+
+        # Invalid type should return None
+        result = module.child(3.14)  # float instead of int/str
+        assert result is None
+
+    def testModuleChildIndexOutOfBounds(self):
+        """Test accessing child by index out of bounds."""
+        module = createModule("test")
+        child = createModule("child")
+        module.addChild(child)
+
+        # Valid index
+        assert module.child(0) is child
+
+        # Out of bounds should raise IndexError
+        with pytest.raises(IndexError):
+            module.child(10)
+
+    def testRemoveNonexistentChild(self):
+        """Test removing child that is not in children list."""
+        parent = createModule("parent")
+        child1 = createModule("child1")
+        child2 = createModule("child2")
+
+        parent.addChild(child1)
+        # child2 was never added
+
+        # Removing non-existent child should raise ValueError
+        with pytest.raises(ValueError):
+            parent.removeChild(child2)
+
 
 class TestModuleAttributes:
     """Tests for module attributes management."""
@@ -382,6 +483,31 @@ class TestModuleAttributes:
         # Remove all
         module.removeAttributes()
         assert len(module.attributes()) == 0
+
+    def testEmptyAttributeName(self):
+        """Test finding attributes with empty names."""
+        module = createModule("test")
+        attr1 = createAttribute("", "input", "float", 10.0)
+        attr2 = createAttribute("normal", "input", "float", 20.0)
+        module.addAttribute(attr1)
+        module.addAttribute(attr2)
+
+        # Empty name should be found
+        found = module.findAttribute("")
+        assert found is attr1  # First match with empty name
+
+    def testRemoveNonexistentAttribute(self):
+        """Test removing attribute that is not in attributes list."""
+        module = createModule("test")
+        attr1 = createAttribute("attr1")
+        attr2 = createAttribute("attr2")
+
+        module.addAttribute(attr1)
+        # attr2 was never added
+
+        # Removing non-existent attribute should raise ValueError
+        with pytest.raises(ValueError):
+            module.removeAttribute(attr2)
 
 
 class TestModulePaths:
@@ -444,6 +570,54 @@ class TestModulePaths:
         # chset - set value
         moduleHierarchy.chset("rootAttr", 200.0)
         assert moduleHierarchy.ch("rootAttr") == 200.0
+
+    def testPathNavigationBeyondRoot(self):
+        """Test path navigation with .. beyond root module."""
+        root = createModule("root")
+        rootAttr = createAttribute("rootAttr", "input", "float", 10.0)
+        root.addAttribute(rootAttr)
+
+        # Try to navigate beyond root (causes AttributeError because parent is None)
+        with pytest.raises(AttributeError):
+            root.findAttributeByPath("../someAttr")
+
+    def testMultipleParentNavigationInPath(self):
+        """Test path with multiple .. navigations."""
+        root = createModule("root")
+        child1 = createModule("child1")
+        child2 = createModule("child2")
+        grandchild = createModule("grandchild")
+
+        root.addChild(child1)
+        root.addChild(child2)
+        child1.addChild(grandchild)
+
+        rootAttr = createAttribute("rootAttr", "input", "float", 100.0)
+        root.addAttribute(rootAttr)
+
+        # From grandchild, navigate up twice to root
+        attr = grandchild.findAttributeByPath("../../rootAttr")
+        assert attr is rootAttr
+
+    def testEmptyPath(self):
+        """Test findAttributeByPath with empty string."""
+        module = createModule("test")
+        attr = createAttribute("", "input", "float", 10.0)
+        module.addAttribute(attr)
+
+        # Empty path should find empty-named attribute
+        found = module.findAttributeByPath("")
+        assert found is attr
+
+    def testDotPathNavigation(self):
+        """Test path navigation with multiple dots (current dir)."""
+        module = createModule("test")
+        attr = createAttribute("testAttr", "input", "float", 10.0)
+        module.addAttribute(attr)
+
+        # Multiple dots should still work
+        found = module.findAttributeByPath("././testAttr")
+        assert found is attr
 
 
 class TestModuleXML:
@@ -724,6 +898,36 @@ class TestModuleFileOperations:
         updatedAttr = loaded.findAttribute("input")
         assert updatedAttr.template() == "int"
         assert updatedAttr.get() == 5  # Value from reference, not preserved
+
+    def testGetUidFromFileWithoutUid(self, tempDir):
+        """Test getUidFromFile with XML file without UID."""
+        filePath = os.path.join(tempDir, "no_uid.xml")
+        with open(filePath, "w") as f:
+            f.write("<module name=\"test\"><run></run><attributes></attributes><children></children></module>")
+
+        uid = getUidFromFile(filePath)
+        assert uid is None
+
+    def testGetUidFromNonXmlFile(self, tempDir):
+        """Test getUidFromFile with non-XML file."""
+        filePath = os.path.join(tempDir, "not_xml.txt")
+        with open(filePath, "w") as f:
+            f.write("This is not an XML file")
+
+        uid = getUidFromFile(filePath)
+        assert uid is None
+
+    def testModuleUpdateWithNoChildren(self):
+        """Test update on module without children."""
+        module = createModule("test")
+        attr = createAttribute("input", "input", "float", 10.0)
+        module.addAttribute(attr)
+
+        # Update without reference file should not crash
+        module.update()
+
+        # Module should remain unchanged
+        assert len(module.attributes()) == 1
 
 
 class TestModuleExecution:
@@ -1065,3 +1269,22 @@ class TestIntegration:
         sourceAttr.set(5.0)
         connectedAttr.pull()
         assert connectedAttr.get() == 15.0  # 5 * 3
+
+    def testDeepHierarchyRecursion(self):
+        """Test very deep module hierarchy."""
+        root = createModule("root")
+        current = root
+
+        # Create deep hierarchy (100 levels)
+        depth = 100
+        for i in range(depth):
+            child = createModule(f"child{i}")
+            current.addChild(child)
+            current = child
+
+        # Should be able to get root from deepest child
+        assert current.root() is root
+
+        # Path should work
+        path = current.path()
+        assert path.count("/") == depth
