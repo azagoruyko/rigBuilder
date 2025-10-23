@@ -68,8 +68,6 @@ pytest test_core.py --cov=rigBuilder.core --cov-report=term-missing
 python -m pytest test_core.py --cov=rigBuilder --cov-report=html
 ```
 
-**Test Coverage:** 86% of core.py
-
 ## Contributing
 
 Found a bug or have an idea? Open an [issue](../../issues) or submit a pull request.
