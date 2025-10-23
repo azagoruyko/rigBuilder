@@ -47,9 +47,6 @@ def tempDir():
     # Create temp dir in local modules folder
     tmpdir = tempfile.mkdtemp(prefix="test_", dir=RigBuilderLocalPath + "/modules")
 
-    # Update cache to include new directory
-    Module.updateUidsCache()
-
     yield tmpdir
 
     # Cleanup
