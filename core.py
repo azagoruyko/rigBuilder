@@ -11,8 +11,6 @@ from .widgets import core as widgets_core
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
-API = {} # modules' runtime API
-
 RigBuilderPath = os.path.dirname(__file__)
 RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder")
 
@@ -37,6 +35,51 @@ class AttributeExpressionError(Exception):pass
 class ModuleNotFoundError(Exception):pass
 class CopyJsonError(Exception):pass
 class ModuleRuntimeError(Exception):pass
+class APIError(Exception):pass
+
+class APIRegistry:
+    """Registry for functions and objects available to modules at runtime."""
+
+    _objects: Dict[str, Any] = {}
+
+    @staticmethod
+    def clear():
+        """Clear all objects from registry"""
+        APIRegistry._objects.clear()
+
+    @staticmethod
+    def register(name: str, func: Any):
+        """Register object in API."""
+        if name in APIRegistry._objects:
+            raise APIError(f"Object '{name}' already registered")
+        APIRegistry._objects[name] = func
+
+    @staticmethod
+    def unregister(name: str):
+        """"Unregister object from API"""
+        if name not in APIRegistry._objects:
+            raise APIError(f"Object '{name}' is not registered")
+        del APIRegistry._objects[name]
+
+    @staticmethod
+    def registerStub(name: str):
+        """Register stub for optional objects. Stub will be used until real function is registered."""
+        if name in APIRegistry._objects:
+            raise APIError(f"Cannot register stub: '{name}' already exists")
+        APIRegistry._objects[name] = lambda *args, **kwargs: None
+
+    @staticmethod
+    def override(name: str, func: Any):
+        """Override existing object (e.g. replace stub with real implementation)."""
+        if name in APIRegistry._objects:
+            APIRegistry._objects[name] = func
+        else:
+            raise APIError(f"Cannot find {name} in API registry")
+
+    @staticmethod
+    def api() -> Dict[str, Any]:
+        """Get all registered objects as dictionary for exec()."""
+        return dict(APIRegistry._objects)   
 
 class Attribute(object):
     def __init__(self):
@@ -754,8 +797,7 @@ class Module(object):
 
     def context(self) -> Dict[str, Any]:        
         """Get execution environment for module."""
-        ctx = {}
-        ctx.update(API)
+        ctx = APIRegistry.api()
         ctx.update({
             "module": self, 
             "ch": self.ch, 
@@ -833,35 +875,33 @@ def exitModule():
     """Exit current module execution."""
     raise ExitModuleException()
 
-functionPlaceholder = lambda *args, **kwargs: None
+APIRegistry.registerStub("module") # overridden in module.run
+APIRegistry.registerStub("ch")
+APIRegistry.registerStub("chdata")
+APIRegistry.registerStub("chset")
 
-API.update({
-    "Module": Module,
-    "copyJson": copyJson,
-    "exit": exitModule,
-    "error": printError,
-    "warning": printWarning,
-    "listLerp": widgets_core.listLerp,
-    "clamp": clamp,
-    "smartConversion": smartConversion,
-    "fromSmartConversion": fromSmartConversion,
+APIRegistry.register("Module", Module)
+APIRegistry.register("copyJson", copyJson)
+APIRegistry.register("exit", exitModule)
+APIRegistry.register("error", printError)
+APIRegistry.register("warning", printWarning)
+APIRegistry.register("listLerp", widgets_core.listLerp)
+APIRegistry.register("clamp", clamp)
+APIRegistry.register("smartConversion", smartConversion)
+APIRegistry.register("fromSmartConversion", fromSmartConversion)
 
-    # data based
-    "curve_evaluate": widgets_core.curve_evaluate,
-    "curve_evaluateFromX": widgets_core.curve_evaluateFromX,
-    "listBox_selected": widgets_core.listBox_selected,
-    "listBox_setSelected": widgets_core.listBox_setSelected,
-    "comboBox_items": widgets_core.comboBox_items,
-    "comboBox_setItems": widgets_core.comboBox_setItems,
-    
-    # button commands
-    "runButtonCommand": widgets_core.runButtonCommand,
+APIRegistry.register("curve_evaluate", widgets_core.curve_evaluate) # data based
+APIRegistry.register("curve_evaluateFromX", widgets_core.curve_evaluateFromX)
+APIRegistry.register("listBox_selected", widgets_core.listBox_selected)
+APIRegistry.register("listBox_setSelected", widgets_core.listBox_setSelected)
+APIRegistry.register("comboBox_items", widgets_core.comboBox_items)
+APIRegistry.register("comboBox_setItems", widgets_core.comboBox_setItems)
 
-    # ui functions
-    "beginProgress": functionPlaceholder,
-    "stepProgress": functionPlaceholder,
-    "endrogress": functionPlaceholder,
-})
+APIRegistry.register("runButtonCommand", widgets_core.runButtonCommand)
+
+APIRegistry.registerStub("beginProgress") # UI functions placeholders
+APIRegistry.registerStub("stepProgress")
+APIRegistry.registerStub("endProgress")
 
 # Initialize directories and settings
 

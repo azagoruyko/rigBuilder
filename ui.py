@@ -1966,9 +1966,7 @@ class RigBuilderWindow(QFrame):
             predefinedCode.append("attr_{}_data = {}".format(a.name(), a.data()))
 
         # expose API
-        env = {}
-        env.update(API)
-        env.update(module.context())
+        env = module.context()
 
         for k, v in env.items():
             if callable(v):
@@ -2191,11 +2189,9 @@ class RigBuilderWindow(QFrame):
             muted = currentItem.module.muted()
             currentItem.module.unmute()
 
-            API.update({
-                "beginProgress": self.progressBarWidget.beginProgress,
-                "stepProgress": self.progressBarWidget.stepProgress,
-                "endProgress": self.progressBarWidget.endProgress,
-                "currentTabIndex": self.attributesTabWidget.currentIndex()})
+            APIRegistry.override("beginProgress", self.progressBarWidget.beginProgress) # update UI functions
+            APIRegistry.override("stepProgress", self.progressBarWidget.stepProgress)
+            APIRegistry.override("endProgress", self.progressBarWidget.endProgress)
 
             # Run with Maya undo support if available
             try:

@@ -8,10 +8,10 @@ import xml.etree.ElementTree as ET
 from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, Dict,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
-    ModuleNotFoundError, CopyJsonError, ModuleRuntimeError,
+    ModuleNotFoundError, CopyJsonError, ModuleRuntimeError, APIError,
     getUidFromFile, calculateRelativePath,
     printError, printWarning, exitModule,
-    API, RigBuilderPath, RigBuilderLocalPath
+    APIRegistry, RigBuilderPath, RigBuilderLocalPath
 )
 from rigBuilder.utils import copyJson
 
@@ -40,6 +40,23 @@ def createModule(name="testModule"):
 # ============================================================================
 # FIXTURES
 # ============================================================================
+
+@pytest.fixture
+def cleanAPIRegistry():
+    """Clear APIRegistry before each test to ensure isolation."""
+    # Store original state using public API
+    original = APIRegistry.api()
+
+    # Clear for test
+    APIRegistry.clear()
+
+    yield
+
+    # Restore original state after test
+    APIRegistry.clear()
+    for key, value in original.items():
+        APIRegistry.register(key, value)
+
 
 @pytest.fixture
 def tempDir():
@@ -1060,6 +1077,117 @@ class TestHelperClasses:
         strRepr = str(accessor)
         assert isinstance(strRepr, str)
         assert "value" in strRepr
+
+
+# ============================================================================
+# API REGISTRY TESTS
+# ============================================================================
+
+class TestAPIRegistry:
+    """Tests for APIRegistry class."""
+
+    def testRegistryCreation(self, cleanAPIRegistry):
+        """Test basic registry creation."""
+        assert APIRegistry.api() == {}
+
+    def testRegisterFunction(self, cleanAPIRegistry):
+        """Test registering functions."""
+        testFunc = lambda x: x * 2
+
+        APIRegistry.register("testFunc", testFunc)
+        api = APIRegistry.api()
+
+        assert "testFunc" in api
+        assert api["testFunc"](5) == 10
+
+    def testRegisterMultipleFunctions(self, cleanAPIRegistry):
+        """Test registering multiple functions."""
+        APIRegistry.register("add", lambda a, b: a + b)
+        APIRegistry.register("multiply", lambda a, b: a * b)
+        APIRegistry.register("Module", Module)
+
+        api = APIRegistry.api()
+        assert len(api) == 3
+        assert api["add"](2, 3) == 5
+        assert api["multiply"](2, 3) == 6
+        assert api["Module"] is Module
+
+    def testRegisterStub(self, cleanAPIRegistry):
+        """Test registering stub functions."""
+        APIRegistry.registerStub("placeholder")
+
+        api = APIRegistry.api()
+        assert "placeholder" in api
+        # Stub should be callable and return None
+        assert api["placeholder"]() is None
+        assert api["placeholder"](1, 2, 3) is None
+        assert api["placeholder"](a=1, b=2) is None
+
+    def testOverride(self, cleanAPIRegistry):
+        """Test overriding existing functions."""
+        # Register stub
+        APIRegistry.registerStub("func")
+        api = APIRegistry.api()
+        assert api["func"]() is None
+
+        # Override with real implementation
+        APIRegistry.override("func", lambda: 42)
+        api = APIRegistry.api()
+        assert api["func"]() == 42
+
+    def testOverrideNonexistent(self, cleanAPIRegistry):
+        """Test overriding nonexistent function raises error."""
+        with pytest.raises(APIError, match="Cannot find nonexistent in API registry"):
+            APIRegistry.override("nonexistent", lambda: 42)
+
+    def testApiReturnsCopy(self, cleanAPIRegistry):
+        """Test that api() returns copy, not reference."""
+        APIRegistry.register("test", lambda: 1)
+
+        api1 = APIRegistry.api()
+        api2 = APIRegistry.api()
+
+        # Should be different dict instances
+        assert api1 is not api2
+        # But contain same functions
+        assert api1["test"] is api2["test"]
+
+        # Modifying returned dict shouldn't affect registry
+        api1["newFunc"] = lambda: 2
+        api3 = APIRegistry.api()
+        assert "newFunc" not in api3
+
+    def testGlobalApiRegistry(self):
+        """Test that global APIRegistry is properly initialized."""
+        api = APIRegistry.api()
+
+        # Check essential functions are registered
+        assert "Module" in api
+        assert "copyJson" in api
+        assert "exit" in api
+        assert "error" in api
+        assert "warning" in api
+        assert "clamp" in api
+
+        # Check stubs are registered
+        assert "module" in api
+        assert "ch" in api
+        assert "chdata" in api
+        assert "chset" in api
+
+    def testModuleContextUsesApiRegistry(self):
+        """Test that module context uses apiRegistry."""
+        module = createModule("test")
+        ctx = module.context()
+
+        # Context should contain functions from apiRegistry
+        assert "Module" in ctx
+        assert "copyJson" in ctx
+        assert "exit" in ctx
+        assert "clamp" in ctx
+
+        # Module-specific overrides
+        assert ctx["module"] is module
 
 
 # ============================================================================

@@ -4,7 +4,7 @@ from PySide6.QtWidgets import *
 
 import os
 from .core import *
-from ..core import API
+from ..core import APIRegistry
 from ..utils import *
 from ..ui_utils import *
 from ..editor import *
@@ -25,8 +25,7 @@ class TemplateWidget(QFrame):
         self.executor = executor or self._defaultExecutor # used to execute commands
 
     def _defaultExecutor(self, cmd, context=None):
-        ctx = {}
-        ctx.update(API)
+        ctx = APIRegistry.api()
         ctx.update(context or {})
         exec(cmd, ctx)
         return ctx
@@ -177,7 +176,7 @@ class ButtonTemplateWidget(TemplateWidget):
             self.buttonCommand = text
             self.somethingChanged.emit()
 
-        words = list(API.keys())
+        words = list(APIRegistry.api().keys())
     
         editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder='chset("/someAttr", 1)', words=words, python=True)
         editText.saved.connect(save)
@@ -531,7 +530,7 @@ value = path or value'''}
             self.buttonCommand = text
             self.somethingChanged.emit()
         
-        words = list(API.keys())
+        words = list(APIRegistry.api().keys())
         
         editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", words=words, python=True)
         editText.saved.connect(save)
