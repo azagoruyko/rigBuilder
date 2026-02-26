@@ -460,23 +460,20 @@ class AttributesTabWidget(QTabWidget):
         if self._attributesWidget:
             self._attributesWidget.updateWidgetStyles()
 
-class ModuleListDialog(QDialog):
-    moduleSelected = Signal(str) # file path
+class ModuleSelectorWidget(QWidget):
+    """Embeddable module selector with filter, source options, and module tree."""
+    moduleSelected = Signal(str)  # file path
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.setWindowTitle("Module Selector")
-
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
-
-        gridLayout = QGridLayout()
-        gridLayout.setDefaultPositioning(2, Qt.Horizontal)
 
         self.updateSourceWidget = QComboBox()
         self.updateSourceWidget.addItems(["All", "Server", "Local", "None"])
-        self.updateSourceWidget.setCurrentIndex({"all":0, "server": 1, "local": 2, "": 3}[Module.UpdateSource])
+        self.updateSourceWidget.setCurrentIndex({"all": 0, "server": 1, "local": 2, "": 3}[Module.UpdateSource])
         self.updateSourceWidget.currentIndexChanged.connect(lambda _=None: self.updateSource())
 
         self.modulesFromWidget = QComboBox()
@@ -484,64 +481,70 @@ class ModuleListDialog(QDialog):
         self.modulesFromWidget.currentIndexChanged.connect(lambda _=None: self.maskChanged())
 
         self.maskWidget = QLineEdit()
+        self.maskWidget.setPlaceholderText("Filter modules...")
         self.maskWidget.textChanged.connect(self.maskChanged)
 
-        gridLayout.addWidget(QLabel("Update source"))
-        gridLayout.addWidget(self.updateSourceWidget)
-
-        gridLayout.addWidget(QLabel("Modules from"))
-        gridLayout.addWidget(self.modulesFromWidget)
-
-        gridLayout.addWidget(QLabel("Filter"))
-        gridLayout.addWidget(self.maskWidget)
+        filterLayout = QHBoxLayout()
+        filterLayout.addWidget(QLabel("Filter"))
+        filterLayout.addWidget(self.maskWidget)
+        layout.addLayout(filterLayout)
 
         self.treeWidget = QTreeWidget()
         self.treeWidget.setHeaderLabels(["Module", "Modification time"])
         self.treeWidget.itemActivated.connect(self.treeItemActivated)
         self.treeWidget.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-
         self.treeWidget.setSortingEnabled(True)
         self.treeWidget.sortItems(1, Qt.AscendingOrder)
         self.treeWidget.contextMenuEvent = self.treeContextMenuEvent
+        self.treeWidget.setMinimumHeight(100)
 
         self.loadingLabel = QLabel("Pulling modules from server...")
         self.loadingLabel.hide()
 
-        layout.addLayout(gridLayout)
+        controlsLayout = QHBoxLayout()
+        controlsLayout.addWidget(QLabel("Modules from"))
+        controlsLayout.addWidget(self.modulesFromWidget)
+        controlsLayout.addWidget(QLabel("Update source"))
+        controlsLayout.addWidget(self.updateSourceWidget)
+        controlsLayout.addStretch()
+
         layout.addWidget(self.treeWidget)
         layout.addWidget(self.loadingLabel)
+        layout.addLayout(controlsLayout)
 
-        self.maskWidget.setFocus()
+        self.refreshModules()
 
-    def showEvent(self, event):
-        pos = self.mapToParent(self.mapFromGlobal(QCursor.pos()))
-        self.setGeometry(pos.x(), pos.y(), 600, 400)
-
-        # update files from server
+    def refreshModules(self):
+        """Update from server and populate the tree."""
         self.loadingLabel.show()
         updateFilesFromServer()
-        def f():
+
+        def onFinished():
             Module.updateUidsCache()
             self.loadingLabel.hide()
             self.maskChanged()
-        updateFilesThread.finished.connect(f)
 
-        self.maskWidget.setFocus()
+        global updateFilesThread
+        if updateFilesThread and updateFilesThread.isRunning():
+            updateFilesThread.finished.connect(onFinished)
+        else:
+            onFinished()
 
     def treeContextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
+        menu.addSeparator()
+        menu.addAction("Reload modules", self.refreshModules)
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
         for item in self.treeWidget.selectedItems():
-            if item.childCount() == 0: # files only
+            if item.childCount() == 0:
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
     def treeItemActivated(self, item, _):
         if item.childCount() == 0:
             self.moduleSelected.emit(item.filePath)
-            self.done(0)
 
     def updateSource(self):
         updateSource = self.updateSourceWidget.currentIndex()
@@ -602,6 +605,41 @@ class ModuleListDialog(QDialog):
             item.filePath = f
             dirItem.addChild(item)
             dirItem.setExpanded(True if mask else False)
+
+
+class ModuleListDialog(QDialog):
+    """Modal dialog wrapper for module selection (e.g. Tab key)."""
+    moduleSelected = Signal(str)  # file path
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.setWindowTitle("Module Selector")
+
+        self.selectorWidget = ModuleSelectorWidget()
+        self.selectorWidget.moduleSelected.connect(self._onModuleSelected)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.selectorWidget)
+        self.setLayout(layout)
+
+        # Expose for browseModuleSelector compatibility
+        self.updateSourceWidget = self.selectorWidget.updateSourceWidget
+        self.modulesFromWidget = self.selectorWidget.modulesFromWidget
+        self.maskWidget = self.selectorWidget.maskWidget
+        self.treeWidget = self.selectorWidget.treeWidget
+        self.loadingLabel = self.selectorWidget.loadingLabel
+
+    def _onModuleSelected(self, filePath):
+        self.moduleSelected.emit(filePath)
+        self.done(0)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        pos = self.mapToParent(self.mapFromGlobal(QCursor.pos()))
+        self.setGeometry(pos.x(), pos.y(), 600, 400)
+        self.selectorWidget.refreshModules()
+        self.maskWidget.setFocus()
+
 
 class ModuleItem(QTreeWidgetItem):
     def __init__(self, module, **kwargs):
@@ -884,21 +922,6 @@ class TreeWidget(QTreeWidget):
         self.setAcceptDrops(True)
 
         self.setIndentation(30)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        label = "Press TAB to load modules"
-
-        fontMetrics = QFontMetrics(self.font())
-        viewport = self.viewport()
-
-        painter = QPainter()
-        if painter.begin(viewport):
-            try:
-                painter.setPen(QColor(90, 90, 90))
-                painter.drawText(viewport.width() - getFontWidth(fontMetrics, label) - 10, viewport.height() - 10, label)
-            finally:
-                painter.end()
 
     def dragEnterEvent(self, event):
         super().dragEnterEvent(event)
@@ -1248,16 +1271,6 @@ class TreeWidget(QTreeWidget):
             self.moduleListDialog.modulesFromWidget.setCurrentIndex({"server": 0, "local": 1}[modulesFrom])
 
         self.moduleListDialog.exec()
-
-    def event(self, event):
-        if event.type() == QEvent.KeyPress:
-            if event.key() == Qt.Key_Tab:
-                self.browseModuleSelector()
-                self.mainWindow.updateInfo()
-                event.accept()
-                return True
-
-        return QTreeWidget.event(self, event)
 
 class TemplateSelectorDialog(QDialog):
     selectedTemplate = Signal(str)
@@ -1855,8 +1868,16 @@ class RigBuilderWindow(QFrame):
         attrsToolsWidget.layout().addWidget(self.attributesTabWidget)
         attrsToolsWidget.layout().addWidget(self.runBtn)
 
+        self.moduleSelectorWidget = ModuleSelectorWidget()
+        self.moduleSelectorWidget.moduleSelected.connect(self.treeWidget.addModuleFromBrowser)
+
+        leftSplitter = WideSplitter(Qt.Vertical)
+        leftSplitter.addWidget(self.treeWidget)
+        leftSplitter.addWidget(self.moduleSelectorWidget)
+        leftSplitter.setSizes([300, 200])
+
         hsplitter = WideSplitter(Qt.Horizontal)
-        hsplitter.addWidget(self.treeWidget)
+        hsplitter.addWidget(leftSplitter)
         hsplitter.addWidget(attrsToolsWidget)
         hsplitter.setSizes([400, 600])
 
