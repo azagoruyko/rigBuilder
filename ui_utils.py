@@ -2,9 +2,7 @@ import sys
 import re
 from contextlib import contextmanager
 
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from .qt import *
 
 def getFontWidth(fontMetrics, text: str) -> int:
     """Get text width using appropriate method for Qt version."""

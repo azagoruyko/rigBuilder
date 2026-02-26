@@ -1,10 +1,10 @@
 # Rig Builder Dependencies
 
-# Core UI Framework
+# Core UI Framework (standalone)
 PySide6>=6.0.0
 
 # Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
 
-# Note: Maya users don't need PySide6 as it's included with Maya
+# Note: Maya users typically rely on bundled PySide2

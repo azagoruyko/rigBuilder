@@ -1,6 +1,4 @@
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from .qt import *
 
 
 import re
@@ -550,6 +548,7 @@ class TextBlockData(QTextBlockUserData):
         self.hasBookmark = False
 
 class CodeEditorWidget(QTextEdit):
+    numberBarUpdateRequested = Signal()
     editorState = {}
     TabSpaces = 4
 
@@ -635,8 +634,7 @@ class CodeEditorWidget(QTextEdit):
         else:
             blockData.hasBookmark = not blockData.hasBookmark
 
-        if isinstance(self.parent(), CodeEditorWithNumbersWidget):
-            self.parent().numberBarWidget.updateState()
+        self.numberBarUpdateRequested.emit()
 
         block.setUserData(blockData)
         self.saveState(cursor=False, scroll=False, bookmarks=True)
@@ -748,7 +746,7 @@ class CodeEditorWidget(QTextEdit):
             sz = clamp(fontSize(font) + d, 8, 40)
             setFontSize(font, sz)
             self.setFont(font)
-            self.parent().numberBarWidget.updateState()
+            self.numberBarUpdateRequested.emit()
 
         else:
             super().wheelEvent(event)
@@ -1149,6 +1147,7 @@ class CodeEditorWithNumbersWidget(QWidget):
         self.editorWidget = CodeEditorWidget()
 
         self.numberBarWidget = NumberBarWidget(self.editorWidget)
+        self.editorWidget.numberBarUpdateRequested.connect(self.numberBarWidget.updateState)
         self.editorWidget.document().blockCountChanged.connect(lambda _: self.numberBarWidget.updateState())
         self.editorWidget.document().documentLayoutChanged.connect(self.numberBarWidget.updateState)
         self.editorWidget.verticalScrollBar().valueChanged.connect(lambda _: self.numberBarWidget.updateState())

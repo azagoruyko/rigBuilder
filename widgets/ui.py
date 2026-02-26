@@ -1,6 +1,4 @@
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from ..qt import *
 
 import os
 from .core import *
@@ -50,6 +48,7 @@ class EditTextDialog(QDialog):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
+        editorContainerWidget = None
 
         if not python:
             self.textWidget = QTextEdit()            
@@ -57,7 +56,8 @@ class EditTextDialog(QDialog):
             self.textWidget.setAcceptRichText(False)
             self.textWidget.setWordWrapMode(QTextOption.NoWrap)            
         else:
-            self.textWidget = CodeEditorWidget()
+            editorContainerWidget = CodeEditorWithNumbersWidget()
+            self.textWidget = editorContainerWidget.editorWidget
             self.textWidget.words = words or []
         
         self.textWidget.setPlaceholderText(placeholder)
@@ -66,7 +66,7 @@ class EditTextDialog(QDialog):
         okBtn = QPushButton("OK")
         okBtn.clicked.connect(self.saveAndClose)
 
-        layout.addWidget(self.textWidget)
+        layout.addWidget(editorContainerWidget or self.textWidget)
         layout.addWidget(okBtn)
 
         centerWindow(self)
@@ -462,15 +462,18 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
             self.templates["Get selected"] = {"label": "<", "command":"import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"}
             defaultCmd = self.templates["Get selected"]
 
-        self.templates["Get open file"] = {"label": "...", "command":'''from PySide6.QtWidgets import QFileDialog;import os
+        self.templates["Get open file"] = {"label": "...", "command":'''import os
+from rigBuilder.qt import QFileDialog
 path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
 value = path or value'''}
 
-        self.templates["Get save file"] = {"label": "...", "command":'''from PySide6.QtWidgets import QFileDialog;import os
+        self.templates["Get save file"] = {"label": "...", "command":'''import os
+from rigBuilder.qt import QFileDialog
 path,_ = QFileDialog.getSaveFileName(None, "Save file", os.path.expandvars(value))
 value = path or value'''}
 
-        self.templates["Get existing directory"] = {"label": "...", "command":'''from PySide6.QtWidgets import QFileDialog;import os
+        self.templates["Get existing directory"] = {"label": "...", "command":'''import os
+from rigBuilder.qt import QFileDialog
 path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
 value = path or value'''}
 

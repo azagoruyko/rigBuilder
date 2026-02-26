@@ -11,7 +11,7 @@
 
 Create custom interfaces for your Python scripts using drag-and-drop modules. Works standalone or inside any application that supports PySide/Qt.
 
-**PySide2 is not supported since v5.0.0 tag.**
+**Qt bindings:** supports both `PySide2` and `PySide6`.
 
 <a href="https://github.com/azagoruyko/rigBuilder/wiki/Documentation">Full documentation</a>
 
@@ -45,7 +45,7 @@ pip install -r requirements.txt
 python run.py
 ```
 
-**Requirements:** Python 3.7+, PySide6
+**Requirements:** Python 3.7+, PySide2 or PySide6
 
 **DCC Integration:** Import `rigBuilder.ui` module and call `rigBuilder.ui.mainWindow.show()`
 

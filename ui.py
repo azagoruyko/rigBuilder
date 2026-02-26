@@ -9,9 +9,7 @@ import shutil
 import logging
 from xml.sax.saxutils import escape
 
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from .qt import *
 
 from .core import *
 from .editor import *
@@ -28,11 +26,10 @@ if DCC == "maya":
     import maya.OpenMaya as om
 
     def getMayaMainWindow():
-        """Get Maya main window for PySide6"""
+        """Get Maya main window for available PySide binding."""
         try:
-            from shiboken6 import wrapInstance
             return wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
-        except ImportError:
+        except Exception:
             return
     
     ParentWindow = getMayaMainWindow()
@@ -895,9 +892,13 @@ class TreeWidget(QTreeWidget):
         fontMetrics = QFontMetrics(self.font())
         viewport = self.viewport()
 
-        with QPainter(viewport) as painter:
-            painter.setPen(QColor(90,90,90))
-            painter.drawText(viewport.width() - getFontWidth(fontMetrics, label)-10, viewport.height()-10, label)
+        painter = QPainter()
+        if painter.begin(viewport):
+            try:
+                painter.setPen(QColor(90, 90, 90))
+                painter.drawText(viewport.width() - getFontWidth(fontMetrics, label) - 10, viewport.height() - 10, label)
+            finally:
+                painter.end()
 
     def dragEnterEvent(self, event):
         super().dragEnterEvent(event)
@@ -1718,11 +1719,15 @@ class WideSplitterHandle(QSplitterHandle):
         super().__init__(orientation, parent, **kwargs)
 
     def paintEvent(self, event):
-        with QPainter(self) as painter:
-            brush = QBrush()
-            brush.setStyle(Qt.Dense6Pattern)
-            brush.setColor(QColor(150, 150, 150))
-            painter.fillRect(event.rect(), QBrush(brush))
+        painter = QPainter()
+        if painter.begin(self):
+            try:
+                brush = QBrush()
+                brush.setStyle(Qt.Dense6Pattern)
+                brush.setColor(QColor(150, 150, 150))
+                painter.fillRect(event.rect(), QBrush(brush))
+            finally:
+                painter.end()
 
 class WideSplitter(QSplitter):
     def __init__(self, orientation, **kwargs):
