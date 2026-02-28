@@ -7,7 +7,7 @@ def getJointsSkinClusters(joint):
     skins = [obj for obj in pm.PyNode(joint).worldMatrix.listConnections() if pm.objectType(obj)=="skinCluster"]
     return set(skins)
 
-if not @mode: # make rebind
+if @mode == 0: # bind
     for j in joints:
         for skin in getJointsSkinClusters(j):
             idx = skin.indexForInfluenceObject(j)
@@ -15,9 +15,9 @@ if not @mode: # make rebind
             if not pm.isConnected(j.worldInverseMatrix, skin.bindPreMatrix[idx]):
                 j.worldInverseMatrix >> skin.bindPreMatrix[idx]
     
-    print("Go to Bind mode")
-    @set_mode("Bind")
-else:
+    print("Binded")
+    
+elif @mode == 1: # unbind
     for j in joints:
         for skin in getJointsSkinClusters(j):
             idx = skin.indexForInfluenceObject(j)
@@ -29,13 +29,12 @@ else:
                 
             skin.bindPreMatrix[idx].set(matrix)
     
-    print("Exit Bind mode")
-    @set_mode("")
+    print("Unbinded")
         ]]></run>
 <attributes>
-<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> to enter Bind mode.<br>\n2. Change joints position.<br>\n3. Press <b>Run</b> to exit Bind mode.<br>\n</html>"}]]></attr>
-<attr name="mode" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": ""}]]></attr>
-<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"default": "items", "items": ["Head_M", "Eye_R", "EyeEnd_R", "Eye_L", "EyeEnd_L", "R_brow_2_joint", "L_brow_2_joint", "R_brow_1_joint", "L_brow_1_joint", "L_lids_up_joint", "L_lids_low_joint", "R_lids_up_joint", "R_lids_low_joint", "M_head_up_custom_joint", "M_head_low_custom_joint"]}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> to enter Bind mode.<br>\n2. Change joints position.<br>\n3. Press <b>Run</b> to exit Bind mode.<br>\n</html>", "default": "text"}]]></attr>
+<attr name="mode" template="radioButton" category="General" connect=""><![CDATA[{"items": ["Bind", "Unbind"], "current": 0, "columns": 3, "default": "current"}]]></attr>
+<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"items": ["pelvis"], "selected": [], "default": "items"}]]></attr>
 </attributes>
 <children>
 </children>
