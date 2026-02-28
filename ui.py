@@ -1810,8 +1810,9 @@ class RigBuilderWindow(QFrame):
     moduleChanged = Signal(object)   # ModuleItem
     attributeChanged = Signal(object, object)  # ModuleItem, Attribute
     
-    def __init__(self):
+    def __init__(self, startupModules="startupModules.xml"):
         super().__init__(parent=ParentWindow)
+        self.startupModules = startupModules
 
         self.setWindowTitle("Rig Builder")
         self.setGeometry(0, 0, 1300, 700)
@@ -1873,29 +1874,29 @@ class RigBuilderWindow(QFrame):
         self.openFunctionBrowserButton = QPushButton("Function Browser")
         self.openFunctionBrowserButton.clicked.connect(self.openFunctionBrowser)
 
-        moduleToolsWidget = QWidget()
-        moduleToolsWidget.setLayout(QVBoxLayout())
-        moduleToolsWidget.layout().setContentsMargins(0, 0, 0, 0)
-        moduleToolsWidget.layout().addWidget(self.moduleSelectorWidget)
-        moduleToolsWidget.layout().addWidget(self.openFunctionBrowserButton)
+        self.moduleToolsWidget = QWidget()
+        self.moduleToolsWidget.setLayout(QVBoxLayout())
+        self.moduleToolsWidget.layout().setContentsMargins(0, 0, 0, 0)
+        self.moduleToolsWidget.layout().addWidget(self.moduleSelectorWidget)
+        self.moduleToolsWidget.layout().addWidget(self.openFunctionBrowserButton)
 
-        leftSplitter = WideSplitter(Qt.Vertical)
-        leftSplitter.addWidget(self.treeWidget)
-        leftSplitter.addWidget(moduleToolsWidget)
-        leftSplitter.setSizes([300, 200])
+        self.leftSplitter = WideSplitter(Qt.Vertical)
+        self.leftSplitter.addWidget(self.treeWidget)
+        self.leftSplitter.addWidget(self.moduleToolsWidget)
+        self.leftSplitter.setSizes([300, 200])
 
-        hsplitter = WideSplitter(Qt.Horizontal)
-        hsplitter.addWidget(leftSplitter)
-        hsplitter.addWidget(attrsToolsWidget)
-        hsplitter.setSizes([400, 600])
+        self.mainContentSplitter = WideSplitter(Qt.Horizontal)
+        self.mainContentSplitter.addWidget(self.leftSplitter)
+        self.mainContentSplitter.addWidget(attrsToolsWidget)
+        self.mainContentSplitter.setSizes([400, 600])
 
-        self.vsplitter = WideSplitter(Qt.Vertical)
-        self.vsplitter.addWidget(hsplitter)
-        self.vsplitter.addWidget(self.codeWidget)
-        self.vsplitter.addWidget(self.logWidget)
-        self.vsplitter.setSizes([400, 0, 0])
+        self.workspaceSplitter = WideSplitter(Qt.Vertical)
+        self.workspaceSplitter.addWidget(self.mainContentSplitter)
+        self.workspaceSplitter.addWidget(self.codeWidget)
+        self.workspaceSplitter.addWidget(self.logWidget)
+        self.workspaceSplitter.setSizes([400, 0, 0])
 
-        self.vsplitter.splitterMoved.connect(self.codeSplitterMoved)
+        self.workspaceSplitter.splitterMoved.connect(self.codeSplitterMoved)
         self.codeWidget.setEnabled(False)
 
         self.progressBarWidget = MyProgressBar()
@@ -1904,7 +1905,7 @@ class RigBuilderWindow(QFrame):
         self.treeWidget.addActions(getActions(self.menu()))
         setActionsLocalShortcut(self.treeWidget)
 
-        layout.addWidget(self.vsplitter)
+        layout.addWidget(self.workspaceSplitter)
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
@@ -2072,7 +2073,7 @@ class RigBuilderWindow(QFrame):
         if selectedItems:
             item = selectedItems[0]
             if item.module.loadedFromLocal() or item.module.loadedFromServer():
-                code = '''import rigBuilder;rigBuilder.RigBuilderTool(r"{}").show()'''.format(item.module.relativePath())
+                code = '''import rigBuilder.ui;rigBuilder.ui.RigBuilderTool(r"{}").show()'''.format(item.module.relativePath())
                 QApplication.clipboard().setText(code)
             else:
                 QMessageBox.critical(self, "Rig Builder", "Module must be loaded from local or server!")
@@ -2166,7 +2167,7 @@ class RigBuilderWindow(QFrame):
         self.infoWidget.moveCursor(QTextCursor.Start)
 
     def isCodeEditorHidden(self):
-        return self.vsplitter.sizes()[1] == 0 # code section size
+        return self.workspaceSplitter.sizes()[1] == 0 # code section size
 
     def codeSplitterMoved(self, sz, n):
         selectedItems = self.treeWidget.selectedItems()
@@ -2180,10 +2181,10 @@ class RigBuilderWindow(QFrame):
             self.codeWidget.setEnabled(True)
 
     def showLog(self):
-        sizes = self.vsplitter.sizes()
+        sizes = self.workspaceSplitter.sizes()
         if sizes[-1] < 10:
             sizes[-1] = 200
-            self.vsplitter.setSizes(sizes)
+            self.workspaceSplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
     def runModule(self, moduleItem=None):
@@ -2339,9 +2340,17 @@ class RigBuilderWindow(QFrame):
         return self.addModule(filePath)
 
     def startupWorkspacePath(self):
-        return os.path.join(RigBuilderLocalPath, "startupModules.xml")
+        if not self.startupModules:
+            return None
+        if os.path.isabs(self.startupModules):
+            return self.startupModules
+        return os.path.join(RigBuilderLocalPath, self.startupModules)
 
     def saveStartupWorkspace(self):
+        startupPath = self.startupWorkspacePath()
+        if not startupPath:
+            return
+
         startupModule = Module()
         startupModule.setName("startupModules")
 
@@ -2349,11 +2358,14 @@ class RigBuilderWindow(QFrame):
             item = self.treeWidget.topLevelItem(i)
             startupModule.addChild(item.module.copy())
 
-        os.makedirs(RigBuilderLocalPath, exist_ok=True)
-        startupModule.saveToFile(self.startupWorkspacePath())
+        os.makedirs(os.path.dirname(startupPath), exist_ok=True)
+        startupModule.saveToFile(startupPath)
 
     def restoreStartupWorkspace(self):
         startupPath = self.startupWorkspacePath()
+        if not startupPath:
+            return
+
         if not os.path.exists(startupPath):
             return
 
@@ -2406,13 +2418,13 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
             print(f"Cannot find '{child}' child")
             return
 
-    w = RigBuilderWindow()
+    w = RigBuilderWindow(startupModules=None)
     w.setWindowTitle("Rig Builder Tool - {}".format(module.relativePath()))
     w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
     w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
 
     w.codeWidget.hide()
-    w.treeWidget.hide()
+    w.leftSplitter.hide()
 
     centerWindow(w)
 
