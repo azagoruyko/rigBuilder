@@ -13,6 +13,7 @@ from .qt import *
 
 from .core import *
 from .editor import *
+from .functionBrowser import showFunctionBrowser
 from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
 from .ui_utils import *
@@ -1870,10 +1871,18 @@ class RigBuilderWindow(QFrame):
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
         self.moduleSelectorWidget.moduleSelected.connect(self.treeWidget.addModuleFromBrowser)
+        self.openFunctionBrowserButton = QPushButton("Function Browser")
+        self.openFunctionBrowserButton.clicked.connect(self.openFunctionBrowser)
+
+        moduleToolsWidget = QWidget()
+        moduleToolsWidget.setLayout(QVBoxLayout())
+        moduleToolsWidget.layout().setContentsMargins(0, 0, 0, 0)
+        moduleToolsWidget.layout().addWidget(self.moduleSelectorWidget)
+        moduleToolsWidget.layout().addWidget(self.openFunctionBrowserButton)
 
         leftSplitter = WideSplitter(Qt.Vertical)
         leftSplitter.addWidget(self.treeWidget)
-        leftSplitter.addWidget(self.moduleSelectorWidget)
+        leftSplitter.addWidget(moduleToolsWidget)
         leftSplitter.setSizes([300, 200])
 
         hsplitter = WideSplitter(Qt.Horizontal)
@@ -2073,6 +2082,9 @@ class RigBuilderWindow(QFrame):
 
     def showDocumenation(self):
         subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])
+
+    def openFunctionBrowser(self):
+        showFunctionBrowser()
 
     def locateModuleFile(self):
         for item in self.treeWidget.selectedItems():
