@@ -460,6 +460,92 @@ class AttributesTabWidget(QTabWidget):
         if self._attributesWidget:
             self._attributesWidget.updateWidgetStyles()
 
+class ModuleBrowserTreeWidget(QTreeWidget):
+    moduleActivated = Signal(str)  # file path
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.middlePressPos = QPoint()
+
+        self.setHeaderLabels(["Module", "Modification time"])
+        self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.setSortingEnabled(True)
+        self.sortItems(1, Qt.AscendingOrder)
+        self.itemActivated.connect(self._onItemActivated)
+        self.setExpandsOnDoubleClick(False)
+
+        self.setDragEnabled(True)
+        self.setAcceptDrops(False)
+        self.setDropIndicatorShown(False)
+        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setDefaultDropAction(Qt.CopyAction)
+        self.setMinimumHeight(100)
+
+    def _collectDraggedModulePaths(self):
+        modulePaths = []
+        for item in self.selectedItems():
+            filePath = getattr(item, "filePath", "")
+            if filePath:
+                modulePaths.append(filePath)
+        return modulePaths
+
+    def _startModuleDrag(self):
+        modulePaths = self._collectDraggedModulePaths()
+        if not modulePaths:
+            return
+
+        mimeData = QMimeData()
+        mimeData.setUrls([QUrl.fromLocalFile(path) for path in modulePaths])
+
+        drag = QDrag(self)
+        drag.setMimeData(mimeData)
+        execFunc(drag, Qt.CopyAction)
+
+    def startDrag(self, supportedActions):
+        del supportedActions
+        self._startModuleDrag()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            self.middlePressPos = event.pos()
+            item = self.itemAt(event.pos())
+            if item:
+                if not (event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)):
+                    self.clearSelection()
+                item.setSelected(True)
+                self.setCurrentItem(item)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MiddleButton:
+            if (event.pos() - self.middlePressPos).manhattanLength() >= QApplication.startDragDistance():
+                self._startModuleDrag()
+                self.middlePressPos = QPoint()
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        event.accept()
+
+    def _onItemActivated(self, item, _):
+        if item.childCount() == 0:
+            self.moduleActivated.emit(item.filePath)
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        menu.addAction("Locate", self.browseModuleDirectory)
+        menu.addSeparator()
+        menu.addAction("Reload modules", self.parentWidget().refreshModules)
+        menu.popup(event.globalPos())
+
+    def browseModuleDirectory(self):
+        for item in self.selectedItems():
+            if item.childCount() == 0:
+                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
+
 class ModuleSelectorWidget(QWidget):
     """Embeddable module selector with filter, source options, and module tree."""
     moduleSelected = Signal(str)  # file path
@@ -489,14 +575,8 @@ class ModuleSelectorWidget(QWidget):
         filterLayout.addWidget(self.maskWidget)
         layout.addLayout(filterLayout)
 
-        self.treeWidget = QTreeWidget()
-        self.treeWidget.setHeaderLabels(["Module", "Modification time"])
-        self.treeWidget.itemActivated.connect(self.treeItemActivated)
-        self.treeWidget.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.treeWidget.setSortingEnabled(True)
-        self.treeWidget.sortItems(1, Qt.AscendingOrder)
-        self.treeWidget.contextMenuEvent = self.treeContextMenuEvent
-        self.treeWidget.setMinimumHeight(100)
+        self.treeWidget = ModuleBrowserTreeWidget()
+        self.treeWidget.moduleActivated.connect(self.moduleSelected.emit)
 
         self.loadingLabel = QLabel("Pulling modules from server...")
         self.loadingLabel.hide()
@@ -529,22 +609,6 @@ class ModuleSelectorWidget(QWidget):
             updateFilesThread.finished.connect(onFinished)
         else:
             onFinished()
-
-    def treeContextMenuEvent(self, event):
-        menu = QMenu(self)
-        menu.addAction("Locate", self.browseModuleDirectory)
-        menu.addSeparator()
-        menu.addAction("Reload modules", self.refreshModules)
-        menu.popup(event.globalPos())
-
-    def browseModuleDirectory(self):
-        for item in self.treeWidget.selectedItems():
-            if item.childCount() == 0:
-                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
-
-    def treeItemActivated(self, item, _):
-        if item.childCount() == 0:
-            self.moduleSelected.emit(item.filePath)
 
     def updateSource(self):
         updateSource = self.updateSourceWidget.currentIndex()
@@ -591,6 +655,7 @@ class ModuleSelectorWidget(QWidget):
                         dirItem = ch
                     else:
                         ch = QTreeWidgetItem([p, ""])
+                        ch.setFlags((ch.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable) & ~Qt.ItemIsDragEnabled)
                         font = ch.font(0)
                         font.setBold(True)
                         ch.setForeground(0, QColor(130, 130, 230))
@@ -602,6 +667,7 @@ class ModuleSelectorWidget(QWidget):
 
             modtime = time.strftime("%Y/%m/%d %H:%M", time.localtime(os.path.getmtime(f)))
             item = QTreeWidgetItem([name, modtime])
+            item.setFlags(item.flags() | Qt.ItemIsDragEnabled)
             item.filePath = f
             dirItem.addChild(item)
             dirItem.setExpanded(True if mask else False)
