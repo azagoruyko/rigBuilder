@@ -7,8 +7,6 @@ edit arguments before execution.
 
 from __future__ import annotations
 
-import ast
-import enum
 import html
 import importlib
 import inspect
@@ -18,8 +16,8 @@ import sys
 import typing
 
 from .qt import *
-from .core import Attribute
-from .core import Module
+from .inference import buildModuleFromFunction
+from .inference import parseFunctionsFromFile
 from .ui import AttributesWidget
 from . import ui as rigBuilderUi
 
@@ -288,71 +286,8 @@ class FunctionBrowserWindow(QWidget):
         displayName = relativePath[:-3].replace("/", ".")
         return displayName, displayName
 
-    def _signatureTextFromNode(self, functionNode):
-        try:
-            argsText = ast.unparse(functionNode.args)
-        except Exception:
-            argsText = "..."
-        return "({})".format(argsText)
-
-    def _parametersFromFunctionNode(self, functionNode):
-        argsObj = functionNode.args
-        parameters = []
-
-        for i, argNode in enumerate(argsObj.posonlyargs):
-            parameters.append({
-                "name": argNode.arg,
-                "kind": inspect.Parameter.POSITIONAL_ONLY,
-                "annotationText": ast.unparse(argNode.annotation) if argNode.annotation else "",
-            })
-
-        for argNode in argsObj.args:
-            parameters.append({
-                "name": argNode.arg,
-                "kind": inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                "annotationText": ast.unparse(argNode.annotation) if argNode.annotation else "",
-            })
-
-        if argsObj.vararg:
-            parameters.append({
-                "name": argsObj.vararg.arg,
-                "kind": inspect.Parameter.VAR_POSITIONAL,
-                "annotationText": ast.unparse(argsObj.vararg.annotation) if argsObj.vararg.annotation else "",
-            })
-
-        for kwArgNode in argsObj.kwonlyargs:
-            parameters.append({
-                "name": kwArgNode.arg,
-                "kind": inspect.Parameter.KEYWORD_ONLY,
-                "annotationText": ast.unparse(kwArgNode.annotation) if kwArgNode.annotation else "",
-            })
-
-        if argsObj.kwarg:
-            parameters.append({
-                "name": argsObj.kwarg.arg,
-                "kind": inspect.Parameter.VAR_KEYWORD,
-                "annotationText": ast.unparse(argsObj.kwarg.annotation) if argsObj.kwarg.annotation else "",
-            })
-
-        return parameters
-
     def _iterAstFunctions(self, filePath):
-        with open(filePath, "r", encoding="utf-8") as fileObj:
-            sourceCode = fileObj.read()
-        moduleNode = ast.parse(sourceCode, filename=filePath)
-
-        for node in moduleNode.body:
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if node.name.startswith("_"):
-                continue
-
-            yield {
-                "functionName": node.name,
-                "signatureText": self._signatureTextFromNode(node),
-                "parameters": self._parametersFromFunctionNode(node),
-                "docString": ast.get_docstring(node) or "",
-            }
+        return parseFunctionsFromFile(filePath, includePrivate=False)
 
     def _iterModuleFunctions(self):
         rootPath = self._normalizedRootPath()
@@ -553,97 +488,7 @@ class FunctionBrowserWindow(QWidget):
         self.attrsScrollArea.setWidget(attrsWidget)
 
     def _buildModuleFromFunction(self, functionObj, functionSpec):
-        moduleObj = Module()
-        functionName = getattr(functionObj, "__name__", "callable")
-        moduleObj.setName(functionName)
-
-        signature = inspect.signature(functionObj)
-        astParametersByName = {p["name"]: p for p in functionSpec.get("parameters", [])}
-        for parameter in signature.parameters.values():
-            attr = self._attributeFromParameter(parameter)
-            astParam = astParametersByName.get(parameter.name)
-            if astParam:
-                annotationText = astParam.get("annotationText", "")
-                if annotationText and parameter.annotation is inspect._empty:
-                    data = attr.localData()
-                    data["annotation"] = annotationText
-                    attr.setLocalData(data)
-            moduleObj.addAttribute(attr)
-        return moduleObj
-
-    def _attributeFromParameter(self, parameter):
-        templateName, data = self._templateDataFromParameter(parameter)
-
-        attr = Attribute()
-        attr.setName(parameter.name)
-        attr.setTemplate(templateName)
-        attr.setCategory("General")
-        attr.setData(data)
-        return attr
-
-    def _templateDataFromParameter(self, parameter):
-        def genericLineEditAndButtonData(value):
-            return {
-                "value": value,
-                "buttonCommand": "value = value",
-                "buttonLabel": "(empty)",
-                "default": "value",
-            }
-
-        annotation = parameter.annotation
-        scalarAnnotations = {"bool": bool, "int": int, "float": float, "str": str}
-        if annotation not in scalarAnnotations.values():
-            annotationName = getattr(annotation, "__name__", "")
-            annotation = scalarAnnotations.get(annotationName, annotation)
-
-        defaultValue = None if parameter.default is inspect._empty else parameter.default
-        hasDefault = parameter.default is not inspect._empty
-
-        if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
-            return "json", {"data": [] if not hasDefault else list(defaultValue), "height": 140, "readonly": False, "default": "data"}
-        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
-            return "json", {"data": {} if not hasDefault else dict(defaultValue), "height": 140, "readonly": False, "default": "data"}
-
-        origin = typing.get_origin(annotation)
-        args = typing.get_args(annotation)
-
-        if inspect.isclass(annotation) and issubclass(annotation, enum.Enum):
-            enumItems = [member.name for member in annotation]
-            currentValue = defaultValue.name if isinstance(defaultValue, enum.Enum) else enumItems[0]
-            return "comboBox", {"items": enumItems, "current": currentValue, "default": "current"}
-
-        if origin is typing.Literal and args:
-            items = list(args)
-            currentValue = defaultValue if hasDefault else items[0]
-            return "comboBox", {"items": items, "current": currentValue, "default": "current"}
-
-        if annotation is bool:
-            currentValue = bool(defaultValue) if hasDefault else False
-            return "checkBox", {"checked": currentValue, "default": "checked"}
-
-        if annotation in (list, dict):
-            currentValue = defaultValue if hasDefault else ([] if annotation is list else {})
-            return "json", {"data": currentValue, "height": 160, "readonly": False, "default": "data"}
-
-        if annotation in (tuple, set):
-            currentValue = list(defaultValue) if hasDefault else []
-            return "json", {"data": currentValue, "height": 160, "readonly": False, "default": "data"}
-
-        if annotation in (int, float):
-            currentValue = defaultValue if hasDefault else 0
-            return "lineEditAndButton", genericLineEditAndButtonData(currentValue)
-
-        if annotation is str:
-            currentValue = defaultValue if hasDefault else ""
-            return "lineEditAndButton", genericLineEditAndButtonData(currentValue)
-
-        if annotation is inspect._empty and hasDefault and isinstance(defaultValue, bool):
-            return "checkBox", {"checked": defaultValue, "default": "checked"}
-        if annotation is inspect._empty and hasDefault and isinstance(defaultValue, (dict, list)):
-            return "json", {"data": defaultValue, "height": 160, "readonly": False, "default": "data"}
-
-        currentValue = defaultValue if hasDefault else ""
-        return "lineEditAndButton", genericLineEditAndButtonData(currentValue)
+        return buildModuleFromFunction(functionObj, functionSpec=functionSpec, category="General")
 
     def _coerceValue(self, value, parameter):
         annotation = parameter.annotation
