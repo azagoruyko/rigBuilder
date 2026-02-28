@@ -81,6 +81,21 @@ class APIRegistry:
         """Get all registered objects as dictionary for exec()."""
         return dict(APIRegistry._objects)   
 
+
+def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit        
+    if attr._template == "lineEdit":
+        attr._template = "lineEditAndButton"
+        attr._data["buttonEnabled"] = False
+
+    if attr._template == "compound":
+        templates = attr._data["templates"]
+        widgets = attr._data["widgets"]
+        for i, _ in enumerate(templates):
+            if templates[i] == "lineEdit":
+                templates[i] = "lineEditAndButton"
+                widgets[i]["buttonEnabled"] = False
+
+
 class Attribute(object):
     def __init__(self):
         self._name = ""
@@ -302,6 +317,9 @@ class Attribute(object):
 
         # additional data
         attr._expression = attr._data.pop("_expression", "")
+
+        legacy_convertLineEditTemplate(attr)
+
         return attr
     
 class Dict(dict):

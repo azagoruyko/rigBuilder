@@ -26,6 +26,12 @@ It combines:
 - Launch a Function Browser to discover and run Python functions from a folder.
 - Run in Maya or standalone with either `PySide2` or `PySide6` (based on what is available).
 
+## Widget template notes
+
+- The legacy `lineEdit` template has been removed.
+- Use `lineEditAndButton` instead (you can keep the button disabled when needed).
+- Older module data that still contains `lineEdit` is auto-converted to `lineEditAndButton` at load time for backward compatibility.
+
 ## Runtime modes
 
 ### Maya mode (default)

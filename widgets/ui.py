@@ -334,124 +334,14 @@ class LineEditOptionsDialog(QDialog):
         layout.addWidget(okBtn)
 
     def validatorIndexChanged(self, idx):
-        self.minWidget.setEnabled(idx!=0)
-        self.maxWidget.setEnabled(idx!=0)
+        self.minWidget.setEnabled(idx != 0)
+        self.maxWidget.setEnabled(idx != 0)
 
-class LineEditTemplateWidget(TemplateWidget):
+
+class LineEditAndButtonTemplateWidget(TemplateWidget):
     defaultMin = 0
     defaultMax = 100
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.optionsDialog = LineEditOptionsDialog(parent=self)
-        self.minValue = 0
-        self.maxValue = 100
-        self.validator = 0
-        self.value = ""
-
-        layout = QHBoxLayout()
-        self.setLayout(layout)
-        layout.setContentsMargins(QMargins())
-
-        self.textWidget = QLineEdit()
-        self.textWidget.editingFinished.connect(self.textChanged)
-        self.textWidget.contextMenuEvent = self.textContextMenuEvent
-
-        self.sliderWidget = QSlider(Qt.Horizontal)
-        self.sliderWidget.setTracking(True)
-        self.sliderWidget.valueChanged.connect(self.sliderValueChanged)
-        self.sliderWidget.hide()
-
-        layout.addWidget(self.textWidget)
-        layout.addWidget(self.sliderWidget)
-
-    def colorizeValue(self):
-        color = jsonColor(self.value)
-        self.textWidget.setStyleSheet("QLineEdit {{ color: {} }}".format(color.name()))
-
-    def textChanged(self):
-        text = self.textWidget.text().strip()
-        if self.validator:
-            self.sliderWidget.setValue(float(text)*100)
-
-        self.value = smartConversion(text)
-        self.colorizeValue()
-        self.somethingChanged.emit()
-
-    def sliderValueChanged(self, v):
-        v /= 100.0
-        if self.validator == 1: # int
-            v = round(v)        
-        self.value = v
-        self.textWidget.setText(str(v))
-        self.somethingChanged.emit()
-
-    def textContextMenuEvent(self, event):
-        menu = self.textWidget.createStandardContextMenu()
-        menu.addSeparator()
-        menu.addAction("Options...", self.optionsClicked)
-        menu.popup(event.globalPos())
-
-    def optionsClicked(self):
-        self.optionsDialog.minWidget.setText(str(self.minValue))
-        self.optionsDialog.maxWidget.setText(str(self.maxValue))
-        self.optionsDialog.validatorWidget.setCurrentIndex(self.validator)
-        self.optionsDialog.exec_()
-        self.minValue = int(self.optionsDialog.minWidget.text() or LineEditTemplateWidget.defaultMin)
-        self.maxValue = int(self.optionsDialog.maxWidget.text() or LineEditTemplateWidget.defaultMax)
-        self.validator = self.optionsDialog.validatorWidget.currentIndex()
-        self.setupSlider()
-        self.somethingChanged.emit()
-
-    def getJsonData(self):
-        return {"value": self.value,
-                "default": "value",
-                "min": self.minValue,
-                "max": self.maxValue,
-                "validator": self.validator}
-    
-    def setupSlider(self):
-        if self.validator:
-            self.sliderWidget.show()
-            with blockedWidgetContext(self.sliderWidget) as slider:
-                if self.minValue:
-                    slider.setMinimum(self.minValue*100) # slider values are int, so mult by 100
-                if self.maxValue:
-                    slider.setMaximum(self.maxValue*100)
-                
-                if self.value:                
-                    slider.setValue(float(self.value)*100)
-        else:
-            self.sliderWidget.hide()
-
-    def setJsonData(self, data):
-        self.validator = data.get("validator", 0)
-        self.minValue = int(data.get("min") or LineEditTemplateWidget.defaultMin)
-        self.maxValue = int(data.get("max") or LineEditTemplateWidget.defaultMax)
-        self.value = data.get("value", "")
-
-        if self.validator == 1: # int
-            validator = QIntValidator()
-            validator.setRange(self.minValue, self.maxValue)
-            self.textWidget.setValidator(validator)
-
-        elif self.validator == 2: # double
-            validator = QDoubleValidator()
-            validator.setRange(self.minValue, self.maxValue)
-            validator.setDecimals(2)
-            self.textWidget.setValidator(validator)
-
-        else:
-            self.textWidget.setValidator(None)
-
-        with blockedWidgetContext(self.textWidget) as w:
-            w.setText(fromSmartConversion(self.value))
-
-        self.setupSlider()
-        self.colorizeValue()
-
-class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -478,7 +368,12 @@ path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expand
 value = path or value'''}
 
         self.buttonCommand = defaultCmd["command"]
+        self.buttonEnabled = True
         self.value = ""
+        self.minValue = 0
+        self.maxValue = 100
+        self.validator = 0
+        self.optionsDialog = LineEditOptionsDialog(parent=self)
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -486,12 +381,19 @@ value = path or value'''}
 
         self.textWidget = QLineEdit()
         self.textWidget.editingFinished.connect(self.textChanged)
+        self.textWidget.contextMenuEvent = self.textContextMenuEvent
+
+        self.sliderWidget = QSlider(Qt.Horizontal)
+        self.sliderWidget.setTracking(True)
+        self.sliderWidget.valueChanged.connect(self.sliderValueChanged)
+        self.sliderWidget.hide()
 
         self.buttonWidget = QPushButton(defaultCmd["label"])
         self.buttonWidget.clicked.connect(self.buttonClicked)
         self.buttonWidget.contextMenuEvent = self.buttonContextMenuEvent
 
         layout.addWidget(self.textWidget)
+        layout.addWidget(self.sliderWidget)
         layout.addWidget(self.buttonWidget)
 
     def colorizeValue(self):
@@ -499,15 +401,69 @@ value = path or value'''}
         self.textWidget.setStyleSheet("QLineEdit {{ color: {} }}".format(color.name()))
 
     def textChanged(self):
-        self.value = smartConversion(self.textWidget.text().strip())
+        text = self.textWidget.text().strip()
+        if self.validator:
+            try:
+                self.sliderWidget.setValue(float(text) * 100)
+            except ValueError:
+                pass
+
+        self.value = smartConversion(text)
         self.colorizeValue()
         self.somethingChanged.emit()
+
+    def sliderValueChanged(self, value):
+        value /= 100.0
+        if self.validator == 1: # int
+            value = round(value)
+        self.value = value
+        self.textWidget.setText(str(value))
+        self.colorizeValue()
+        self.somethingChanged.emit()
+
+    def textContextMenuEvent(self, event):
+        menu = self.textWidget.createStandardContextMenu()
+        menu.addSeparator()
+        enableButtonAction = menu.addAction("Button")
+        enableButtonAction.setCheckable(True)
+        enableButtonAction.setChecked(self.buttonEnabled)
+        enableButtonAction.triggered.connect(lambda checked: self.setButtonEnabled(checked))
+        menu.addAction("Options...", self.optionsClicked)
+        menu.popup(event.globalPos())
+
+    def optionsClicked(self):
+        self.optionsDialog.minWidget.setText(str(self.minValue))
+        self.optionsDialog.maxWidget.setText(str(self.maxValue))
+        self.optionsDialog.validatorWidget.setCurrentIndex(self.validator)
+        self.optionsDialog.exec_()
+        self.minValue = int(self.optionsDialog.minWidget.text() or self.defaultMin)
+        self.maxValue = int(self.optionsDialog.maxWidget.text() or self.defaultMax)
+        self.validator = self.optionsDialog.validatorWidget.currentIndex()
+        self.setupSlider()
+        self.somethingChanged.emit()
+
+    def setupSlider(self):
+        if self.validator:
+            self.sliderWidget.show()
+            with blockedWidgetContext(self.sliderWidget) as slider:
+                if self.minValue:
+                    slider.setMinimum(self.minValue * 100) # slider values are int, so mult by 100
+                if self.maxValue:
+                    slider.setMaximum(self.maxValue * 100)
+
+                if type(self.value) in [int, float]:
+                    slider.setValue(float(self.value) * 100)
+        else:
+            self.sliderWidget.hide()
 
     def buttonContextMenuEvent(self, event):
         menu = QMenu(self)
 
         menu.addAction("Edit label", self.editLabel)
         menu.addAction("Edit command", self.editCommand)
+        if self.buttonEnabled:
+            menu.addSeparator()
+            menu.addAction("Disable button", lambda: self.setButtonEnabled(False))
 
         if self.templates:
             def setCommand(cmd):
@@ -540,26 +496,56 @@ value = path or value'''}
         editText.show()
 
     def buttonClicked(self):
-        if self.buttonCommand:
+        if self.buttonEnabled and self.buttonCommand:
             ctx = {"value": smartConversion(self.textWidget.text().strip())}
             outCtx = self.executor(self.buttonCommand, ctx)
             self.value = outCtx["value"]
             self.textWidget.setText(fromSmartConversion(self.value))
             self.somethingChanged.emit()
 
+    def setButtonEnabled(self, enabled):
+        self.buttonEnabled = bool(enabled)
+        self.buttonWidget.setVisible(self.buttonEnabled)
+        self.somethingChanged.emit()
+
     def getJsonData(self):
         return {"value": self.value,
                 "buttonCommand": self.buttonCommand,
                 "buttonLabel": self.buttonWidget.text(),
+                "buttonEnabled": self.buttonEnabled,
+                "min": self.minValue,
+                "max": self.maxValue,
+                "validator": self.validator,
                 "default": "value"}
 
     def setJsonData(self, data):
-        self.value = data["value"]
+        self.validator = data.get("validator", 0)
+        self.minValue = int(data.get("min") or self.defaultMin)
+        self.maxValue = int(data.get("max") or self.defaultMax)
+        self.value = data.get("value", "")
+
+        if self.validator == 1: # int
+            validator = QIntValidator()
+            validator.setRange(self.minValue, self.maxValue)
+            self.textWidget.setValidator(validator)
+
+        elif self.validator == 2: # double
+            validator = QDoubleValidator()
+            validator.setRange(self.minValue, self.maxValue)
+            validator.setDecimals(4)
+            self.textWidget.setValidator(validator)
+
+        else:
+            self.textWidget.setValidator(None)
+
         with blockedWidgetContext(self.textWidget) as w:
             w.setText(fromSmartConversion(self.value))
 
-        self.buttonCommand = data["buttonCommand"]
-        self.buttonWidget.setText(data["buttonLabel"])
+        self.buttonCommand = data.get("buttonCommand", self.buttonCommand)
+        self.buttonWidget.setText(data.get("buttonLabel", self.buttonWidget.text()))
+        self.buttonEnabled = bool(data.get("buttonEnabled", True))
+        self.buttonWidget.setVisible(self.buttonEnabled)
+        self.setupSlider()
         self.colorizeValue()
 
 class ListBoxItem(QListWidgetItem):
@@ -1621,8 +1607,9 @@ class CompoundTemplateWidget(TemplateWidget):
 
         clearLayout(layout)
         for i in range(len(widgets)):
-            w = TemplateWidgets[templates[i]](executor=self.executor)
-            w.template = templates[i]
+            template = templates[i]
+            w = TemplateWidgets[template](executor=self.executor)
+            w.template = template
 
             d = dict(widgets[i])
             d[d["default"]] = values[i]
@@ -1643,7 +1630,6 @@ TemplateWidgets = {
     "compound": CompoundTemplateWidget,
     "json": JsonTemplateWidget,
     "label": LabelTemplateWidget,
-    "lineEdit": LineEditTemplateWidget,
     "lineEditAndButton": LineEditAndButtonTemplateWidget,
     "listBox": ListBoxTemplateWidget,
     "radioButton": RadioButtonTemplateWidget,
