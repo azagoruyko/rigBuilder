@@ -579,7 +579,9 @@ class ModuleBrowserTreeWidget(QTreeWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
-        menu.addAction("Open Folder", self.openModuleFolder)
+        menu.addAction("Open folder", self.openModuleFolder)
+        menu.addSeparator()
+        menu.addAction("Reload modules", self.parent().refreshModules)
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
@@ -1321,17 +1323,6 @@ class TreeWidget(QTreeWidget):
     def addModule(self, module):
         self.addTopLevelItem(self.makeItemFromModule(module))
 
-        # add to recent modules
-        recentModules = self.mainWindow.infoWidget.recentModules
-        for rm in list(recentModules):
-            if rm.uid() == module.uid(): # remove the previous one
-                recentModules.remove(rm)
-                break
-
-        recentModules.insert(0, module)
-        if len(recentModules) > 10:
-            recentModules.pop()
-
         # Keep the right-side info panel in sync with recent selections.
         self.mainWindow.updateInfo()
 
@@ -1926,7 +1917,6 @@ class RigBuilderWindow(QFrame):
         self.infoWidget = QTextBrowser()
         self.infoWidget.anchorClicked.connect(self.infoLinkClicked)
         self.infoWidget.setOpenLinks(False)
-        self.infoWidget.recentModules = []
         self.updateInfo()
 
         attrsToolsWidget = QWidget()
@@ -1994,12 +1984,6 @@ class RigBuilderWindow(QFrame):
 
     def reloadModulesAndUpdateInfo(self):
         Module.updateUidsCache()
-        
-        # Prune stale recent entries after cache refresh.
-        self.infoWidget.recentModules[:] = [
-            m for m in self.infoWidget.recentModules
-            if not m.filePath() or os.path.exists(m.filePath())
-        ]
         self.moduleSelectorWidget.maskChanged()
         self.updateInfo()
 
@@ -2223,16 +2207,8 @@ class RigBuilderWindow(QFrame):
         self.infoWidget.clear()
         template = []
 
-        # recent modules
-        template.append("<center><h2 style='background-color: #666666'>Recent modules</h2></center>")
-
-        for m in self.infoWidget.recentModules:
-            prefix = "local" if m.loadedFromLocal() else "server"
-            relPath = m.relativePath().replace(".xml","").replace("\\", "/")
-            template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a> {0}</p>".format(prefix, relPath))
-
         # recent updates
-        template.append("<center><h2 style='background-color: #666666'>Recent updates</h2></center>")
+        template.append("<center><h2 style='background-color: #666666'>Recent Changes</h2></center>")
 
         # local modules
         def displayFiles(files, *, local):
