@@ -13,7 +13,6 @@ from .qt import *
 
 from .core import *
 from .editor import *
-from .functionBrowser import showFunctionBrowser
 from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
 from .ui_utils import *
@@ -2084,6 +2083,7 @@ class RigBuilderWindow(QFrame):
         subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])
 
     def openFunctionBrowser(self):
+        from .functionBrowser import showFunctionBrowser
         showFunctionBrowser()
 
     def locateModuleFile(self):
