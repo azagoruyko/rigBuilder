@@ -537,6 +537,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
+        menu.addAction("Open Folder", self.openModuleFolder)
         menu.addSeparator()
         menu.addAction("Reload modules", self.parentWidget().refreshModules)
         menu.popup(event.globalPos())
@@ -545,6 +546,10 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         for item in self.selectedItems():
             if item.childCount() == 0:
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
+
+    def openModuleFolder(self):
+        folderPath = self.parentWidget().getModulesRootDirectory()
+        subprocess.call("explorer \"{}\"".format(os.path.normpath(folderPath)))
 
 class ModuleSelectorWidget(QWidget):
     """Embeddable module selector with filter, source options, and module tree."""
@@ -615,6 +620,10 @@ class ModuleSelectorWidget(QWidget):
         UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
         Module.UpdateSource = UpdateSourceFromInt[updateSource]
 
+    def getModulesRootDirectory(self):
+        modulesFrom = self.modulesFromWidget.currentIndex()
+        return RigBuilderPath+"\\modules" if modulesFrom == 0 else RigBuilderLocalPath+"\\modules"
+
     def maskChanged(self):
         def findChildByText(text, parent, column=0):
             for i in range(parent.childCount()):
@@ -623,7 +632,7 @@ class ModuleSelectorWidget(QWidget):
                     return ch
 
         modulesFrom = self.modulesFromWidget.currentIndex()
-        modulesDirectory = RigBuilderPath+"\\modules" if modulesFrom == 0 else RigBuilderLocalPath+"\\modules"
+        modulesDirectory = self.getModulesRootDirectory()
         modules = list(Module.ServerUids.values()) if modulesFrom == 0 else list(Module.LocalUids.values())
         modules = sorted(modules)
 
