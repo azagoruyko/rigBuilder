@@ -7,71 +7,81 @@
 </a>
 </div>
 
-**Visual tool builder for Python scripts**
+RigBuilder is a Qt-based visual builder for Python tooling, with a strong focus on DCC workflows (Maya by default).
 
-Create custom interfaces for your Python scripts using drag-and-drop modules. Works standalone or inside any application that supports PySide/Qt.
+It combines:
 
-**Qt bindings:** supports both `PySide2` and `PySide6`.
+- a tree-based module system (`core.py`) with XML serialization,
+- a full editor/runtime UI (`ui.py`),
+- and a live Python function browser (`functionBrowser.py`) that auto-builds argument widgets from function signatures.
 
-<a href="https://github.com/azagoruyko/rigBuilder/wiki/Documentation">Full documentation</a>
+<img width="1294" height="916" alt="image" src="https://github.com/user-attachments/assets/f47a27a8-57c5-4f32-b118-9ef77d513796" />
 
+## Current capabilities
 
-![rb_example](https://github.com/user-attachments/assets/51961be9-ae99-4fae-aa70-1080305c286d)
+- Build hierarchical tools from modules and run them with progress + logging.
+- Store module definitions as XML files and reload/update them by UID.
+- Connect attributes between modules (`/path/to/attr` style references).
+- Execute per-attribute expressions and module-level Python code.
+- Launch a Function Browser to discover and run Python functions from a folder.
+- Run in Maya or standalone with either `PySide2` or `PySide6` (based on what is available).
 
-## What it does
+## Runtime modes
 
-- **Visual interface builder** - Create GUIs for Python scripts without traditional programming
-- **Module system** - Organize code into reusable blocks with inputs/outputs  
-- **Multiple widget types** - Sliders, file pickers, tables, lists, curves, and more
-- **Live code editing** - Write Python directly in modules with syntax highlighting
-- **Connections** - Link modules together, values update automatically
-- **Runs anywhere** - Standalone app or embedded in Maya, Blender, etc.
+### Maya mode (default)
 
-## Use cases
+If `RIG_BUILDER_DCC` is not set, the UI assumes Maya mode and imports `maya.cmds` APIs.
 
-- **File processing** - Batch convert, rename, or analyze files
-- **Data tools** - CSV processing, chart generation, data analysis  
-- **3D workflows** - Custom tools for Maya, Blender, etc.
-- **Prototyping** - Quick GUI mockups for Python scripts
-- **Automation** - Turn command-line scripts into user-friendly tools
+Typical launch inside Maya:
 
+```python
+import rigBuilder.ui
+rigBuilder.ui.mainWindow.show()
+```
 
-## Installation
+### Standalone mode
+
+Use `run.py`, which sets `RIG_BUILDER_DCC=standalone` before loading the UI:
 
 ```bash
-git clone https://github.com/azagoruyko/rigBuilder.git
-cd rigBuilder
-pip install -r requirements.txt
 python run.py
 ```
 
-**Requirements:** Python 3.7+, PySide2 or PySide6
+## Dependencies
 
-**DCC Integration:** Import `rigBuilder.ui` module and call `rigBuilder.ui.mainWindow.show()`
+From `requirements.txt`:
 
-## How it works
+- `PySide6>=6.0.0` (default standalone dependency in this repo)
+- `pytest>=7.0.0`
+- `pytest-cov>=4.0.0`
 
-Modules are saved as XML files containing Python code and widget configurations. You can organize them in hierarchies, connect outputs to inputs, and share them between projects.
+Notes:
+
+- In Maya, `PySide2` is usually provided by the host application.
+- Standalone can use either `PySide2` or `PySide6`; `qt.py` tries `PySide2` first, then falls back to `PySide6`.
+- `requirements.txt` pins `PySide6` for convenience, but standalone is not limited to it.
+
+## Module locations
+
+- Built-in modules: `modules/`
+- Local user modules: `%USERPROFILE%\rigBuilder\modules`
+
+RigBuilder creates the local directory and settings file automatically on first import.
 
 ## Testing
 
-The project includes comprehensive test coverage for the core module system.
-
-### Running tests
+Run core tests from this directory:
 
 ```bash
-# Run all tests
 pytest test_core.py -v
-
-# Run with coverage report
-pytest test_core.py --cov=rigBuilder.core --cov-report=term-missing
-python -m pytest test_core.py --cov=rigBuilder --cov-report=html
+pytest test_core.py --cov=core --cov-report=term-missing
 ```
 
-## Contributing
+## Repository layout
 
-Found a bug or have an idea? Open an [issue](../../issues) or submit a pull request.
-
-## License
-
-MIT License - use freely in personal and commercial projects.
+- `core.py` - module/attribute model, XML IO, runtime API registry.
+- `ui.py` - main RigBuilder window and authoring workflow.
+- `functionBrowser.py` - inspect Python files and execute functions via generated controls.
+- `editor.py` - embedded code editor, highlighting, search helpers.
+- `widgets/` - widget templates and UI helpers for attribute editing.
+- `run.py` - standalone launcher.
