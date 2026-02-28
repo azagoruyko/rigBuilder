@@ -1987,6 +1987,8 @@ class RigBuilderWindow(QFrame):
 
         self.restoreStartupWorkspace()
 
+        QApplication.instance().aboutToQuit.connect(self.saveStartupWorkspace)
+
     def menu(self):
         menu = QMenu(self)
 
@@ -2461,11 +2463,6 @@ class RigBuilderWindow(QFrame):
             self.treeWidget.setCurrentItem(self.treeWidget.topLevelItem(0))
 
     def closeEvent(self, event):
-        try:
-            self.saveStartupWorkspace()
-        except Exception as e:
-            self.logger.warning(f"Cannot save startup workspace: {str(e)}")
-
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
             if thread.isRunning():
