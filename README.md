@@ -87,6 +87,7 @@ pytest test_core.py --cov=core --cov-report=term-missing
 
 - `core.py` - module/attribute model, XML IO, runtime API registry.
 - `ui.py` - main RigBuilder window and authoring workflow.
+- `inference.py` - shared function-signature parsing and attribute inference utilities.
 - `functionBrowser.py` - inspect Python files and execute functions via generated controls.
 - `editor.py` - embedded code editor, highlighting, search helpers.
 - `widgets/` - widget templates and UI helpers for attribute editing.
