@@ -7,6 +7,7 @@ import inspect
 import sys
 import shutil
 import logging
+import fnmatch
 from xml.sax.saxutils import escape
 
 from .qt import *
@@ -75,6 +76,58 @@ class TrackFileChangesThread(QThread):
                 self.somethingChanged.emit()
                 lastModified = currentModified
             time.sleep(1)
+
+class DirectoryWatcher(QObject):
+    """Watch directories recursively and emit debounced change events."""
+    somethingChanged = Signal()
+
+    def __init__(self, roots, *, debounceMs=700, filePatterns=None, recursive=True, parent=None):
+        super().__init__(parent=parent)
+        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
+        self.debounceMs = debounceMs
+        self.filePatterns = [p.lower() for p in (filePatterns or [])]
+        self.recursive = recursive
+        self.watcher = QFileSystemWatcher(self)
+        self.debounceTimer = QTimer(self)
+        self.debounceTimer.setSingleShot(True)
+
+        self.watcher.directoryChanged.connect(self.onFilesystemChanged)
+        self.watcher.fileChanged.connect(self.onFilesystemChanged)
+        self.debounceTimer.timeout.connect(self.emitChange)
+
+        self.refreshWatchedPaths()
+
+    def refreshWatchedPaths(self):
+        paths = set()
+        for root in self.roots:
+            walkIterator = os.walk(root)
+            for dirPath, _, fileNames in walkIterator:
+                paths.add(os.path.normpath(dirPath))
+                for fileName in fileNames:
+                    fileNameLower = fileName.lower()
+                    if not self.filePatterns or any(fnmatch.fnmatch(fileNameLower, p) for p in self.filePatterns):
+                        paths.add(os.path.normpath(os.path.join(dirPath, fileName)))
+                if not self.recursive:
+                    break
+
+        if not paths:
+            return
+
+        oldPaths = set(self.watcher.files() + self.watcher.directories())
+        toRemove = list(oldPaths - paths)
+        toAdd = list(paths - oldPaths)
+        if toRemove:
+            self.watcher.removePaths(toRemove)
+        if toAdd:
+            self.watcher.addPaths(toAdd)
+
+    def onFilesystemChanged(self, _path):
+        self.debounceTimer.start(self.debounceMs)
+
+    def emitChange(self):
+        # File watchers can drop updated paths on some platforms, so refresh first.
+        self.refreshWatchedPaths()
+        self.somethingChanged.emit()
 
 def updateFilesFromServer():
     def update():
@@ -461,8 +514,6 @@ class AttributesTabWidget(QTabWidget):
             self._attributesWidget.updateWidgetStyles()
 
 class ModuleBrowserTreeWidget(QTreeWidget):
-    moduleActivated = Signal(str)  # file path
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.middlePressPos = QPoint()
@@ -471,8 +522,6 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.setSortingEnabled(True)
         self.sortItems(1, Qt.AscendingOrder)
-        self.itemActivated.connect(self._onItemActivated)
-        self.setExpandsOnDoubleClick(False)
 
         self.setDragEnabled(True)
         self.setAcceptDrops(False)
@@ -527,19 +576,10 @@ class ModuleBrowserTreeWidget(QTreeWidget):
                 return
         super().mouseMoveEvent(event)
 
-    def mouseDoubleClickEvent(self, event):
-        event.accept()
-
-    def _onItemActivated(self, item, _):
-        if item.childCount() == 0:
-            self.moduleActivated.emit(item.filePath)
-
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
         menu.addAction("Open Folder", self.openModuleFolder)
-        menu.addSeparator()
-        menu.addAction("Reload modules", self.parentWidget().refreshModules)
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
@@ -553,7 +593,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
 
 class ModuleSelectorWidget(QWidget):
     """Embeddable module selector with filter, source options, and module tree."""
-    moduleSelected = Signal(str)  # file path
+    modulesReloaded = Signal()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -581,7 +621,6 @@ class ModuleSelectorWidget(QWidget):
         layout.addLayout(filterLayout)
 
         self.treeWidget = ModuleBrowserTreeWidget()
-        self.treeWidget.moduleActivated.connect(self.moduleSelected.emit)
 
         self.loadingLabel = QLabel("Pulling modules from server...")
         self.loadingLabel.hide()
@@ -600,7 +639,7 @@ class ModuleSelectorWidget(QWidget):
         self.refreshModules()
 
     def refreshModules(self):
-        """Update from server and populate the tree."""
+        """Internal refresh used by startup and auto-reload flows."""
         self.loadingLabel.show()
         updateFilesFromServer()
 
@@ -608,6 +647,7 @@ class ModuleSelectorWidget(QWidget):
             Module.updateUidsCache()
             self.loadingLabel.hide()
             self.maskChanged()
+            self.modulesReloaded.emit()
 
         global updateFilesThread
         if updateFilesThread and updateFilesThread.isRunning():
@@ -680,40 +720,6 @@ class ModuleSelectorWidget(QWidget):
             item.filePath = f
             dirItem.addChild(item)
             dirItem.setExpanded(True if mask else False)
-
-
-class ModuleListDialog(QDialog):
-    """Modal dialog wrapper for module selection (e.g. Tab key)."""
-    moduleSelected = Signal(str)  # file path
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.setWindowTitle("Module Selector")
-
-        self.selectorWidget = ModuleSelectorWidget()
-        self.selectorWidget.moduleSelected.connect(self._onModuleSelected)
-
-        layout = QVBoxLayout()
-        layout.addWidget(self.selectorWidget)
-        self.setLayout(layout)
-
-        # Expose for browseModuleSelector compatibility
-        self.updateSourceWidget = self.selectorWidget.updateSourceWidget
-        self.modulesFromWidget = self.selectorWidget.modulesFromWidget
-        self.maskWidget = self.selectorWidget.maskWidget
-        self.treeWidget = self.selectorWidget.treeWidget
-        self.loadingLabel = self.selectorWidget.loadingLabel
-
-    def _onModuleSelected(self, filePath):
-        self.moduleSelected.emit(filePath)
-        self.done(0)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        pos = self.mapToParent(self.mapFromGlobal(QCursor.pos()))
-        self.setGeometry(pos.x(), pos.y(), 600, 400)
-        self.selectorWidget.refreshModules()
-        self.maskWidget.setFocus()
 
 
 class ModuleItem(QTreeWidgetItem):
@@ -983,9 +989,6 @@ class TreeWidget(QTreeWidget):
         self.dragItems = [] # using in drag & drop
         self.clipboard = []  # Module clipboard for copy/paste
 
-        self.moduleListDialog = ModuleListDialog()
-        self.moduleListDialog.moduleSelected.connect(self.addModuleFromBrowser)
-
         self.setHeaderLabels(["Name", "Path", "Source", "UID"])
         self.setSelectionMode(QAbstractItemView.ExtendedSelection) # ExtendedSelection
 
@@ -1024,8 +1027,7 @@ class TreeWidget(QTreeWidget):
 
                 with captureOutput(self.mainWindow.logWidget):
                     try:
-                        m = Module.loadFromFile(path)
-                        m.update()
+                        m = Module.loadModule(path)
                         self.addTopLevelItem(self.makeItemFromModule(m))
 
                     except ET.ParseError as e:
@@ -1103,8 +1105,7 @@ class TreeWidget(QTreeWidget):
         Module.updateUidsCache()
 
         try:
-            m = Module.loadFromFile(filePath)
-            m.update()
+            m = Module.loadModule(filePath)
             self.addTopLevelItem(self.makeItemFromModule(m))
 
         except ET.ParseError:
@@ -1317,35 +1318,24 @@ class TreeWidget(QTreeWidget):
             else:
                 self.invisibleRootItem().removeChild(item)
 
-    def addModuleFromBrowser(self, modulePath):
-        m = Module.loadFromFile(modulePath)
-        m.update()
-        self.addTopLevelItem(self.makeItemFromModule(m))
+    def addModule(self, module):
+        self.addTopLevelItem(self.makeItemFromModule(module))
 
         # add to recent modules
         recentModules = self.mainWindow.infoWidget.recentModules
         for rm in list(recentModules):
-            if rm.uid() == m.uid(): # remove the previous one
+            if rm.uid() == module.uid(): # remove the previous one
                 recentModules.remove(rm)
                 break
 
-        recentModules.insert(0, m)
+        recentModules.insert(0, module)
         if len(recentModules) > 10:
             recentModules.pop()
 
-        return m
+        # Keep the right-side info panel in sync with recent selections.
+        self.mainWindow.updateInfo()
 
-    def browseModuleSelector(self, *, mask=None, updateSource=None, modulesFrom=None):
-        if mask:
-            self.moduleListDialog.maskWidget.setText(mask)
-
-        if updateSource:
-            self.moduleListDialog.updateSourceWidget.setCurrentIndex({"all":0, "server": 1, "local": 2, "": 3}[updateSource])
-
-        if modulesFrom:
-            self.moduleListDialog.modulesFromWidget.setCurrentIndex({"server": 0, "local": 1}[modulesFrom])
-
-        self.moduleListDialog.exec()
+        return module
 
 class TemplateSelectorDialog(QDialog):
     selectedTemplate = Signal(str)
@@ -1888,6 +1878,7 @@ class RigBuilderWindow(QFrame):
     def __init__(self, startupModules="startupModules.xml"):
         super().__init__(parent=ParentWindow)
         self.startupModules = startupModules
+        self.modulesAutoReloadWatcher = None
 
         self.setWindowTitle("Rig Builder")
         self.setGeometry(0, 0, 1300, 700)
@@ -1945,7 +1936,8 @@ class RigBuilderWindow(QFrame):
         attrsToolsWidget.layout().addWidget(self.runBtn)
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
-        self.moduleSelectorWidget.moduleSelected.connect(self.treeWidget.addModuleFromBrowser)
+        self.moduleSelectorWidget.modulesReloaded.connect(self.updateInfo)
+        self.setupModulesAutoReloadWatcher()
         self.openFunctionBrowserButton = QPushButton("Function Browser")
         self.openFunctionBrowserButton.clicked.connect(self.openFunctionBrowser)
 
@@ -1988,6 +1980,23 @@ class RigBuilderWindow(QFrame):
         self.restoreStartupWorkspace()
 
         QApplication.instance().aboutToQuit.connect(self.saveStartupWorkspace)
+
+    def setupModulesAutoReloadWatcher(self):
+        watchRoots = [RigBuilderPath + "/modules", RigBuilderLocalPath + "/modules"]
+        self.modulesAutoReloadWatcher = DirectoryWatcher(
+            watchRoots,
+            filePatterns=["*.xml"],
+            debounceMs=700,
+            recursive=True,
+            parent=self
+        )
+        self.modulesAutoReloadWatcher.somethingChanged.connect(self.reloadModulesAndUpdateInfo)
+
+    def reloadModulesAndUpdateInfo(self):
+        Module.updateUidsCache()
+        self.moduleSelectorWidget.maskChanged()
+        self.updateInfo()
+        self.logger.info("Detected module file changes. Module cache and info panel updated.")
 
     def menu(self):
         menu = QMenu(self)
@@ -2200,9 +2209,10 @@ class RigBuilderWindow(QFrame):
     def infoLinkClicked(self, url):
         scheme = url.scheme()
         path = url.path()
-
-        self.treeWidget.browseModuleSelector(mask=path+".", modulesFrom="server" if scheme == "server" else "local")
-        self.updateInfo()
+        modulesRoot = RigBuilderPath if scheme == "server" else RigBuilderLocalPath
+        modulePath = os.path.normpath(os.path.join(modulesRoot+"/modules", path.lstrip("/") + ".xml"))
+        module = Module.loadModule(modulePath)
+        self.treeWidget.addModule(module)
 
     def updateInfo(self):
         self.infoWidget.clear()
@@ -2343,8 +2353,7 @@ class RigBuilderWindow(QFrame):
         try:
             if isinstance(moduleOrPath, str):
                 # Load from file path
-                module = Module.loadFromFile(moduleOrPath)
-                module.update()
+                module = Module.loadModule(moduleOrPath)
             else:
                 # Assume it's already a Module instance
                 module = moduleOrPath
@@ -2450,7 +2459,7 @@ class RigBuilderWindow(QFrame):
             return
 
         try:
-            startupModule = Module.loadFromFile(startupPath)
+            startupModule = Module.loadModule(startupPath)
         except Exception as e:
             self.logger.warning(f"Cannot restore startup workspace: {str(e)}")
             return
