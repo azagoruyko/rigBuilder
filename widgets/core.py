@@ -102,23 +102,34 @@ def runButtonCommand(module, buttonLabel):
     Returns:
         dict: Environment dictionary after execution
     """
+    lineEditAndButtonTemplate = "lineEditAndButton"
+    supportedTemplates = {"button", lineEditAndButtonTemplate}
+
     for attr in module.attributes():
-        if attr.template() in ["button", "lineEditAndButton"]:
-            data = attr.localData()
-            if data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel:
-                command = data.get("buttonCommand") or data.get("command", "")
-                if command:
-                    ctx = module.context()
-                    if attr.template() == "lineEditAndButton":
-                        ctx["value"] = smartConversion(data.get("value", ""))
-                    
-                    exec(command, ctx)
-                    
-                    # Update value for lineEditAndButton
-                    if attr.template() == "lineEditAndButton":
-                        data["value"] = ctx.get("value", data.get("value", ""))
-                        attr.setData(data)
-                    
-                    return ctx
+        template = attr.template()
+        if template not in supportedTemplates:
+            continue
+
+        data = attr.localData()
+        matchesLabel = data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel
+        if not matchesLabel:
+            continue
+
+        command = data.get("buttonCommand") or data.get("command", "")
+        if not command:
+            continue
+
+        ctx = module.context()
+        isLineEditAndButton = template == lineEditAndButtonTemplate
+        if isLineEditAndButton:
+            ctx["value"] = smartConversion(data.get("value", ""))
+
+        exec(command, ctx)
+
+        if isLineEditAndButton:
+            data["value"] = ctx.get("value", data.get("value", ""))
+            attr.setData(data)
+
+        return ctx
     
     raise ValueError(f"Button with label '{buttonLabel}' not found in module '{module.name()}'")    
