@@ -1994,6 +1994,7 @@ class RigBuilderWindow(QFrame):
 
     def reloadModulesAndUpdateInfo(self):
         Module.updateUidsCache()
+        
         # Prune stale recent entries after cache refresh.
         self.infoWidget.recentModules[:] = [
             m for m in self.infoWidget.recentModules
@@ -2001,7 +2002,6 @@ class RigBuilderWindow(QFrame):
         ]
         self.moduleSelectorWidget.maskChanged()
         self.updateInfo()
-        self.logger.info("Detected module file changes. Module cache and info panel updated.")
 
     def menu(self):
         menu = QMenu(self)
