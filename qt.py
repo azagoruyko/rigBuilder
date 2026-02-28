@@ -34,9 +34,9 @@ def wrapInstance(ptr, baseType):
     return _qtWrapInstance(int(ptr), baseType)
 
 
-def execFunc(obj):
+def execFunc(obj, *args, **kwargs):
     """Execute object using exec/exec_ compatibility fallback."""
     execFn = getattr(obj, "exec", None) or getattr(obj, "exec_", None)
     if execFn is None:
         raise AttributeError("Object has no exec/exec_ method.")
-    return execFn()
+    return execFn(*args, **kwargs)
