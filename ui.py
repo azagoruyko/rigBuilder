@@ -1909,6 +1909,8 @@ class RigBuilderWindow(QFrame):
 
         centerWindow(self)
 
+        self.restoreStartupWorkspace()
+
     def menu(self):
         menu = QMenu(self)
 
@@ -2336,7 +2338,47 @@ class RigBuilderWindow(QFrame):
         """Load module from XML file and add to tree."""
         return self.addModule(filePath)
 
+    def startupWorkspacePath(self):
+        return os.path.join(RigBuilderLocalPath, "startupModules.xml")
+
+    def saveStartupWorkspace(self):
+        startupModule = Module()
+        startupModule.setName("startupModules")
+
+        for i in range(self.treeWidget.topLevelItemCount()):
+            item = self.treeWidget.topLevelItem(i)
+            startupModule.addChild(item.module.copy())
+
+        os.makedirs(RigBuilderLocalPath, exist_ok=True)
+        startupModule.saveToFile(self.startupWorkspacePath())
+
+    def restoreStartupWorkspace(self):
+        startupPath = self.startupWorkspacePath()
+        if not os.path.exists(startupPath):
+            return
+
+        if self.treeWidget.topLevelItemCount() > 0:
+            return
+
+        try:
+            startupModule = Module.loadFromFile(startupPath)
+        except Exception as e:
+            self.logger.warning(f"Cannot restore startup workspace: {str(e)}")
+            return
+
+        for child in startupModule.children():
+            startupModule.removeChild(child)  # Make child modules top-level again.
+            self.treeWidget.addTopLevelItem(self.treeWidget.makeItemFromModule(child))
+
+        if self.treeWidget.topLevelItemCount() > 0:
+            self.treeWidget.setCurrentItem(self.treeWidget.topLevelItem(0))
+
     def closeEvent(self, event):
+        try:
+            self.saveStartupWorkspace()
+        except Exception as e:
+            self.logger.warning(f"Cannot save startup workspace: {str(e)}")
+
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
             if thread.isRunning():
