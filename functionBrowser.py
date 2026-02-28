@@ -137,6 +137,7 @@ class FunctionBrowserWindow(QWidget):
         self.treeWidget.setAlternatingRowColors(True)
         self.treeWidget.setUniformRowHeights(True)
         self.treeWidget.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.treeWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         leftLayout.addWidget(self.treeWidget, 1)
         leftLayout.addWidget(self.refreshButton)
         splitWidget.addWidget(leftPane)
@@ -185,6 +186,7 @@ class FunctionBrowserWindow(QWidget):
         self.refreshButton.clicked.connect(self.refreshTree)
         self.filterEdit.textChanged.connect(self.refreshTree)
         self.treeWidget.itemSelectionChanged.connect(self._onTreeSelectionChanged)
+        self.treeWidget.customContextMenuRequested.connect(self._showTreeContextMenu)
         self.runButton.clicked.connect(self.runSelectedFunction)
 
     def _browseFolder(self):
@@ -417,6 +419,76 @@ class FunctionBrowserWindow(QWidget):
 
     def _functionKey(self, filePath, functionName):
         return "{}::{}".format(os.path.normpath(filePath), functionName)
+
+    def _showTreeContextMenu(self, pos):
+        item = self.treeWidget.itemAt(pos)
+        if not item:
+            return
+
+        functionKey = item.data(0, Qt.UserRole)
+        if not functionKey:
+            return
+
+        menu = QMenu(self.treeWidget)
+        menu.addAction("Add function module to Rig Builder", lambda key=functionKey: self._addFunctionModuleToRigBuilder(key))
+        menu.exec_(self.treeWidget.viewport().mapToGlobal(pos))
+
+    def _buildRunCodeForFunction(self, functionObj, signature, functionSpec):
+        moduleImportName = functionSpec.get("moduleImportName")
+        if not moduleImportName:
+            raise ValueError("Cannot generate run code for package root '__init__.py' functions")
+
+        functionName = getattr(functionObj, "__name__", functionSpec.get("functionName", "function"))
+        lines = [
+            "import {}".format(moduleImportName),
+        ]
+
+        callParts = []
+        for parameter in signature.parameters.values():
+            attrName = parameter.name
+            if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                callParts.append("*@{}".format(attrName))
+            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                callParts.append("**@{}".format(attrName))
+            elif parameter.kind == inspect.Parameter.KEYWORD_ONLY:
+                callParts.append("{}=@{}".format(attrName, attrName))
+            else:
+                callParts.append("@{}".format(attrName))
+
+        lines.append("result = {}.{}({})".format(moduleImportName, functionName, ", ".join(callParts)))
+        lines.append("print('Result:', result)")
+        return "\n".join(lines)
+
+    def _addFunctionModuleToRigBuilder(self, functionKey):
+        functionSpec = self.functionSpecsByKey.get(functionKey)
+        
+        if not functionSpec:
+            self._writeLog("Cannot add function module: function data is unavailable.\n")
+            return
+
+        try:
+            functionObj = self._getOrLoadRuntimeFunction(functionSpec)
+            signature = inspect.signature(functionObj)
+            moduleObj = self.modulesByFunctionKey.get(functionKey)
+
+            if not moduleObj:
+                moduleObj = self._buildModuleFromFunction(functionObj, functionSpec)
+                self.modulesByFunctionKey[functionKey] = moduleObj
+
+            newModule = moduleObj.copy()
+            newModule.setRunCode(self._buildRunCodeForFunction(functionObj, signature, functionSpec))
+            rigModuleItem = rigBuilderUi.mainWindow.addModule(newModule)
+
+            rigBuilderUi.mainWindow.show()
+            rigBuilderUi.mainWindow.raise_()
+            rigBuilderUi.mainWindow.activateWindow()
+
+            if rigModuleItem:
+                rigBuilderUi.mainWindow.selectModule(rigModuleItem)
+            self._writeLog("Added '{}' to Rig Builder.\n".format(newModule.name()))
+
+        except Exception as exc:
+            self._writeLog("Failed to add function module: {}\n".format(str(exc)))
 
     def _loadRuntimeFunction(self, functionSpec):
         moduleImportName = functionSpec["moduleImportName"]
