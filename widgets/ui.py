@@ -404,18 +404,24 @@ value = path or value'''}
         text = self.textWidget.text().strip()
         if self.validator:
             try:
-                self.sliderWidget.setValue(float(text) * 100)
+                with blockedWidgetContext(self.sliderWidget) as slider:
+                    slider.setValue(float(text) * 100)
             except ValueError:
                 pass
 
-        self.value = smartConversion(text)
+        newValue = smartConversion(text)
+        valueChanged = newValue != self.value
+        self.value = newValue
         self.colorizeValue()
-        self.somethingChanged.emit()
+        if valueChanged:
+            self.somethingChanged.emit()
 
     def sliderValueChanged(self, value):
         value /= 100.0
         if self.validator == 1: # int
             value = round(value)
+        if value == self.value:
+            return
         self.value = value
         self.textWidget.setText(str(value))
         self.colorizeValue()
@@ -432,15 +438,18 @@ value = path or value'''}
         menu.popup(event.globalPos())
 
     def optionsClicked(self):
+        oldState = (self.minValue, self.maxValue, self.validator)
         self.optionsDialog.minWidget.setText(str(self.minValue))
         self.optionsDialog.maxWidget.setText(str(self.maxValue))
         self.optionsDialog.validatorWidget.setCurrentIndex(self.validator)
-        self.optionsDialog.exec_()
+        if self.optionsDialog.exec_() != QDialog.Accepted:
+            return
         self.minValue = int(self.optionsDialog.minWidget.text() or self.defaultMin)
         self.maxValue = int(self.optionsDialog.maxWidget.text() or self.defaultMax)
         self.validator = self.optionsDialog.validatorWidget.currentIndex()
         self.setupSlider()
-        self.somethingChanged.emit()
+        if oldState != (self.minValue, self.maxValue, self.validator):
+            self.somethingChanged.emit()
 
     def setupSlider(self):
         if self.validator:
@@ -467,6 +476,8 @@ value = path or value'''}
 
         if self.templates:
             def setCommand(cmd):
+                if self.buttonWidget.text() == cmd["label"] and self.buttonCommand == cmd["command"]:
+                    return
                 self.buttonWidget.setText(cmd["label"])
                 self.buttonCommand = cmd["command"]
                 self.somethingChanged.emit()
@@ -480,12 +491,14 @@ value = path or value'''}
 
     def editLabel(self):
         newName, ok = QInputDialog.getText(self, "Rename", "New label", QLineEdit.Normal, self.buttonWidget.text())
-        if ok:
+        if ok and newName != self.buttonWidget.text():
             self.buttonWidget.setText(newName)
             self.somethingChanged.emit()
 
     def editCommand(self):
         def save(text):
+            if text == self.buttonCommand:
+                return
             self.buttonCommand = text
             self.somethingChanged.emit()
         
@@ -504,7 +517,10 @@ value = path or value'''}
             self.somethingChanged.emit()
 
     def setButtonEnabled(self, enabled):
-        self.buttonEnabled = bool(enabled)
+        newState = bool(enabled)
+        if self.buttonEnabled == newState:
+            return
+        self.buttonEnabled = newState
         self.buttonWidget.setVisible(self.buttonEnabled)
         self.somethingChanged.emit()
 
