@@ -1943,7 +1943,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
-        menu.addAction("Clear all", self.clearAllModules)
+        menu.addAction("Remove all", self.removeAllModules)
 
         menu.addAction("Documentation", self.showDocumenation)
 
@@ -2077,7 +2077,7 @@ class RigBuilderWindow(QFrame):
             else:
                 QMessageBox.critical(self, "Rig Builder", "Module must be loaded from local or server!")
 
-    def clearAllModules(self):
+    def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.treeWidget.clear()
 
