@@ -581,7 +581,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         menu.addAction("Locate", self.browseModuleDirectory)
         menu.addAction("Open folder", self.openModuleFolder)
         menu.addSeparator()
-        menu.addAction("Reload modules", self.parent().refreshModules)
+        menu.addAction("Refresh", self.parent().refreshModules)
         menu.popup(event.globalPos())
 
     def browseModuleDirectory(self):
@@ -1866,9 +1866,8 @@ class RigBuilderWindow(QFrame):
     moduleChanged = Signal(object)   # ModuleItem
     attributeChanged = Signal(object, object)  # ModuleItem, Attribute
     
-    def __init__(self, startupModules="startupModules.xml"):
+    def __init__(self):
         super().__init__(parent=ParentWindow)
-        self.startupModules = startupModules
         self.modulesAutoReloadWatcher = None
 
         self.setWindowTitle("Rig Builder")
@@ -1927,7 +1926,6 @@ class RigBuilderWindow(QFrame):
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
         self.moduleSelectorWidget.modulesReloaded.connect(self.updateInfo)
-        self.setupModulesAutoReloadWatcher()
         self.openFunctionBrowserButton = QPushButton("Function Browser")
         self.openFunctionBrowserButton.clicked.connect(self.openFunctionBrowser)
 
@@ -1966,10 +1964,6 @@ class RigBuilderWindow(QFrame):
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
-
-        self.restoreStartupWorkspace()
-
-        QApplication.instance().aboutToQuit.connect(self.saveStartupWorkspace)
 
     def setupModulesAutoReloadWatcher(self):
         watchRoots = [RigBuilderPath + "/modules", RigBuilderLocalPath + "/modules"]
@@ -2406,52 +2400,6 @@ class RigBuilderWindow(QFrame):
         """Load module from XML file and add to tree."""
         return self.addModule(filePath)
 
-    def startupWorkspacePath(self):
-        if not self.startupModules:
-            return None
-        if os.path.isabs(self.startupModules):
-            return self.startupModules
-        return os.path.join(RigBuilderLocalPath, self.startupModules)
-
-    def saveStartupWorkspace(self):
-        startupPath = self.startupWorkspacePath()
-        if not startupPath:
-            return
-
-        startupModule = Module()
-        startupModule.setName("startupModules")
-
-        for i in range(self.treeWidget.topLevelItemCount()):
-            item = self.treeWidget.topLevelItem(i)
-            startupModule.addChild(item.module.copy())
-
-        os.makedirs(os.path.dirname(startupPath), exist_ok=True)
-        startupModule.saveToFile(startupPath)
-
-    def restoreStartupWorkspace(self):
-        startupPath = self.startupWorkspacePath()
-        if not startupPath:
-            return
-
-        if not os.path.exists(startupPath):
-            return
-
-        if self.treeWidget.topLevelItemCount() > 0:
-            return
-
-        try:
-            startupModule = Module.loadModule(startupPath)
-        except Exception as e:
-            self.logger.warning(f"Cannot restore startup workspace: {str(e)}")
-            return
-
-        for child in startupModule.children():
-            startupModule.removeChild(child)  # Make child modules top-level again.
-            self.treeWidget.addTopLevelItem(self.treeWidget.makeItemFromModule(child))
-
-        if self.treeWidget.topLevelItemCount() > 0:
-            self.treeWidget.setCurrentItem(self.treeWidget.topLevelItem(0))
-
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
@@ -2462,6 +2410,41 @@ class RigBuilderWindow(QFrame):
         
         # Call parent close event
         super().closeEvent(event)
+
+def saveStartupWorkspace(mainWindow):
+    startupPath = os.path.join(RigBuilderLocalPath, "startupModules.xml")
+
+    startupModule = Module()
+    startupModule.setName("startupModules")
+
+    for i in range(mainWindow.treeWidget.topLevelItemCount()):
+        item = mainWindow.treeWidget.topLevelItem(i)
+        startupModule.addChild(item.module.copy())
+
+    os.makedirs(os.path.dirname(startupPath), exist_ok=True)
+    startupModule.saveToFile(startupPath)
+
+def restoreStartupWorkspace(mainWindow):
+    startupPath = os.path.join(RigBuilderLocalPath, "startupModules.xml")
+
+    if not os.path.exists(startupPath):
+        return
+
+    if mainWindow.treeWidget.topLevelItemCount() > 0:
+        return
+
+    try:
+        startupModule = Module.loadModule(startupPath)
+    except Exception as e:
+        mainWindow.logger.warning(f"Cannot restore startup workspace: {str(e)}")
+        return
+
+    for child in startupModule.children():
+        startupModule.removeChild(child)  # Make child modules top-level again.
+        mainWindow.treeWidget.addTopLevelItem(mainWindow.treeWidget.makeItemFromModule(child))
+
+    if mainWindow.treeWidget.topLevelItemCount() > 0:
+        mainWindow.treeWidget.setCurrentItem(mainWindow.treeWidget.topLevelItem(0))
 
 def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, relative path, uid
     module = Module.loadModule(spec)
@@ -2480,7 +2463,7 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
             print(f"Cannot find '{child}' child")
             return
 
-    w = RigBuilderWindow(startupModules=None)
+    w = RigBuilderWindow()
     w.setWindowTitle("Rig Builder Tool - {}".format(module.relativePath()))
     w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
     w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
@@ -2537,3 +2520,6 @@ def cleanupVscode():
 cleanupVscode()
 
 mainWindow = RigBuilderWindow() # Initialize main window
+restoreStartupWorkspace(mainWindow)
+QApplication.instance().aboutToQuit.connect(lambda: saveStartupWorkspace(mainWindow))
+mainWindow.setupModulesAutoReloadWatcher()
