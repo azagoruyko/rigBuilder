@@ -9,12 +9,6 @@
 
 RigBuilder is a Qt-based visual builder for Python tooling, with a strong focus on DCC workflows (Maya by default).
 
-It combines:
-
-- a tree-based module system (`core.py`) with XML serialization,
-- a full editor/runtime UI (`ui.py`),
-- and a live Python function browser (`functionBrowser.py`) that auto-builds argument widgets from function signatures.
-
 <img width="1294" height="916" alt="image" src="https://github.com/user-attachments/assets/f47a27a8-57c5-4f32-b118-9ef77d513796" />
 
 ## Current capabilities
@@ -87,7 +81,6 @@ pytest test_core.py --cov=core --cov-report=term-missing
 
 - `core.py` - module/attribute model, XML IO, runtime API registry.
 - `ui.py` - main RigBuilder window and authoring workflow.
-- `inference.py` - shared function-signature parsing and attribute inference utilities.
 - `functionBrowser.py` - inspect Python files and execute functions via generated controls.
 - `editor.py` - embedded code editor, highlighting, search helpers.
 - `widgets/` - widget templates and UI helpers for attribute editing.
