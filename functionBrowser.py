@@ -7,6 +7,8 @@ edit arguments before execution.
 
 from __future__ import annotations
 
+import ast
+import enum
 import html
 import importlib
 import inspect
@@ -15,11 +17,104 @@ import os
 import sys
 import typing
 
+from .core import Attribute
+from .core import Module
 from .qt import *
-from .inference import buildModuleFromFunction
-from .inference import parseFunctionsFromFile
 from .ui import AttributesWidget
 from . import ui as rigBuilderUi
+
+
+def parseFunctionsFromFile(filePath, *, includePrivate=False):
+    """Parse top-level function specs from a Python file."""
+    with open(filePath, "r", encoding="utf-8") as fileObj:
+        sourceCode = fileObj.read()
+    moduleNode = ast.parse(sourceCode, filename=filePath)
+    functionSpecs = []
+    for node in moduleNode.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not includePrivate and node.name.startswith("_"):
+            continue
+
+        argsText = "..."
+        try:
+            argsText = ast.unparse(node.args)
+        except Exception:
+            pass
+
+        argsObj = node.args
+        parameters = []
+
+        def parameterSpec(argName, kind, annotationNode=None, defaultNode=None):
+            hasLiteralDefault = False
+            literalDefaultValue = None
+            if defaultNode is not None:
+                try:
+                    literalDefaultValue = ast.literal_eval(defaultNode)
+                    hasLiteralDefault = True
+                except Exception:
+                    pass
+
+            return {
+                "name": argName,
+                "kind": kind,
+                "annotationText": ast.unparse(annotationNode) if annotationNode else "",
+                "hasDefault": defaultNode is not None,
+                "defaultText": ast.unparse(defaultNode) if defaultNode is not None else "",
+                "defaultValue": literalDefaultValue if hasLiteralDefault else None,
+                "hasLiteralDefault": hasLiteralDefault,
+            }
+
+        positionalNodes = list(argsObj.posonlyargs) + list(argsObj.args)
+        defaults = list(argsObj.defaults)
+        firstDefaultIndex = len(positionalNodes) - len(defaults)
+        for index, argNode in enumerate(positionalNodes):
+            defaultNode = None
+            if index >= firstDefaultIndex and defaults:
+                defaultNode = defaults[index - firstDefaultIndex]
+            kind = (
+                inspect.Parameter.POSITIONAL_ONLY
+                if index < len(argsObj.posonlyargs)
+                else inspect.Parameter.POSITIONAL_OR_KEYWORD
+            )
+            parameters.append(parameterSpec(argNode.arg, kind, argNode.annotation, defaultNode))
+
+        if argsObj.vararg:
+            parameters.append(
+                parameterSpec(
+                    argsObj.vararg.arg,
+                    inspect.Parameter.VAR_POSITIONAL,
+                    argsObj.vararg.annotation,
+                )
+            )
+        for kwIndex, kwArgNode in enumerate(argsObj.kwonlyargs):
+            parameters.append(
+                parameterSpec(
+                    kwArgNode.arg,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    kwArgNode.annotation,
+                    argsObj.kw_defaults[kwIndex],
+                )
+            )
+        if argsObj.kwarg:
+            parameters.append(
+                parameterSpec(
+                    argsObj.kwarg.arg,
+                    inspect.Parameter.VAR_KEYWORD,
+                    argsObj.kwarg.annotation,
+                )
+            )
+
+        functionSpecs.append(
+            {
+                "functionName": node.name,
+                "signatureText": "({})".format(argsText),
+                "parameters": parameters,
+                "docString": ast.get_docstring(node) or "",
+                "isAsync": isinstance(node, ast.AsyncFunctionDef),
+            }
+        )
+    return functionSpecs
 
 
 class _LogTextEdit(QTextEdit):
@@ -76,6 +171,17 @@ class FunctionBrowserWindow(QWidget):
     """Browse loaded modules/functions and execute with Rig Builder controls."""
 
     windowInstance = None
+    attrMapping = {
+        bool: "checkBox",
+        int: "lineEditAndButton",
+        float: "lineEditAndButton",
+        str: "lineEditAndButton",
+        list: "listBox",
+        tuple: "listBox",
+        set: "listBox",
+        dict: "json",
+    }
+    defaultAttrTemplate = "lineEditAndButton"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -488,7 +594,154 @@ class FunctionBrowserWindow(QWidget):
         self.attrsScrollArea.setWidget(attrsWidget)
 
     def _buildModuleFromFunction(self, functionObj, functionSpec):
-        return buildModuleFromFunction(functionObj, functionSpec=functionSpec, category="General")
+        moduleObj = Module()
+        moduleObj.setName(getattr(functionObj, "__name__", "callable"))
+
+        astParametersByName = {parameterSpec["name"]: parameterSpec for parameterSpec in functionSpec.get("parameters", [])}
+        signature = inspect.signature(functionObj)
+        for parameter in signature.parameters.values():
+            parameterSpec = astParametersByName.get(parameter.name)
+            templateName, attrData = self._templateAndDataForParameter(parameter, parameterSpec)
+
+            attr = Attribute()
+            attr.setName(parameter.name)
+            attr.setTemplate(templateName)
+            attr.setCategory("General")
+            attr.setData(attrData)
+
+            annotationText = (parameterSpec or {}).get("annotationText", "")
+            if annotationText:
+                localData = attr.localData()
+                localData["annotation"] = annotationText
+                attr.setLocalData(localData)
+
+            moduleObj.addAttribute(attr)
+        return moduleObj
+
+    def _templateAndDataForParameter(self, parameter, parameterSpec=None):
+        defaultValue = None if parameter.default is inspect._empty else parameter.default
+        hasDefault = parameter.default is not inspect._empty
+        annotationText = (parameterSpec or {}).get("annotationText", "")
+
+        if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+            return "listBox", self._attrDataFromTemplate("listBox", defaultValue if hasDefault else [])
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return "json", self._attrDataFromTemplate("json", defaultValue if hasDefault else {})
+
+        annotation = parameter.annotation
+        origin = typing.get_origin(annotation)
+        if origin is typing.Literal:
+            literalItems = list(typing.get_args(annotation))
+            if literalItems:
+                currentValue = defaultValue if hasDefault and defaultValue in literalItems else literalItems[0]
+                return "comboBox", {"items": literalItems, "current": currentValue, "default": "current"}
+        if inspect.isclass(annotation) and issubclass(annotation, enum.Enum):
+            enumItems = [member.name for member in annotation]
+            if enumItems:
+                currentValue = defaultValue.name if isinstance(defaultValue, enum.Enum) else enumItems[0]
+                return "comboBox", {"items": enumItems, "current": currentValue, "default": "current"}
+
+        pythonType = self._pythonTypeFromAnnotation(annotation, annotationText)
+        if pythonType is None and hasDefault:
+            pythonType = self._pythonTypeFromDefaultValue(defaultValue)
+
+        templateName = self.attrMapping.get(pythonType, self.defaultAttrTemplate)
+        currentValue = defaultValue if hasDefault else self._defaultValueForTemplate(templateName)
+        return templateName, self._attrDataFromTemplate(templateName, currentValue)
+
+    def _pythonTypeFromAnnotation(self, annotation, annotationText=""):
+        if isinstance(annotation, str):
+            annotation = self._pythonTypeFromAnnotationText(annotation)
+        if annotation in self.attrMapping:
+            return annotation
+
+        origin = typing.get_origin(annotation)
+        if origin in self.attrMapping:
+            return origin
+
+        if annotation is inspect._empty:
+            return self._pythonTypeFromAnnotationText(annotationText)
+        return None
+
+    def _pythonTypeFromAnnotationText(self, annotationText):
+        if not annotationText:
+            return None
+
+        compact = annotationText.replace(" ", "").lower()
+        textTypeMapping = {
+            "bool": bool,
+            "builtins.bool": bool,
+            "int": int,
+            "builtins.int": int,
+            "float": float,
+            "builtins.float": float,
+            "str": str,
+            "builtins.str": str,
+            "list": list,
+            "typing.list": list,
+            "dict": dict,
+            "typing.dict": dict,
+            "tuple": tuple,
+            "typing.tuple": tuple,
+            "set": set,
+            "typing.set": set,
+        }
+        if compact in textTypeMapping:
+            return textTypeMapping[compact]
+        if compact.startswith(("list[", "typing.list[")):
+            return list
+        if compact.startswith(("dict[", "typing.dict[")):
+            return dict
+        if compact.startswith(("tuple[", "typing.tuple[")):
+            return tuple
+        if compact.startswith(("set[", "typing.set[")):
+            return set
+        return None
+
+    def _pythonTypeFromDefaultValue(self, value):
+        if isinstance(value, bool):
+            return bool
+        if isinstance(value, int):
+            return int
+        if isinstance(value, float):
+            return float
+        if isinstance(value, str):
+            return str
+        if isinstance(value, list):
+            return list
+        if isinstance(value, tuple):
+            return tuple
+        if isinstance(value, set):
+            return set
+        if isinstance(value, dict):
+            return dict
+        return None
+
+    def _defaultValueForTemplate(self, templateName):
+        templateDefaults = {
+            "checkBox": False,
+            "lineEditAndButton": "",
+            "listBox": [],
+            "json": {},
+        }
+        return templateDefaults.get(templateName, "")
+
+    def _attrDataFromTemplate(self, templateName, value):
+        if templateName == "checkBox":
+            return {"checked": bool(value), "default": "checked"}
+        if templateName == "listBox":
+            items = value if isinstance(value, (list, tuple, set)) else []
+            return {"items": list(items), "selected": [], "default": "items"}
+        if templateName == "json":
+            data = value if isinstance(value, dict) else {}
+            return {"data": data, "height": 160, "readonly": False, "default": "data"}
+        return {
+            "value": value,
+            "buttonCommand": "",
+            "buttonLabel": "<",
+            "buttonEnabled": False,
+            "default": "value",
+        }
 
     def _coerceValue(self, value, parameter):
         annotation = parameter.annotation
