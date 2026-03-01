@@ -1783,6 +1783,9 @@ class LogWidget(QTextEdit):
         self.ensureCursorVisible()
         QApplication.processEvents()
 
+    def flush(self):
+        return
+
 class WideSplitterHandle(QSplitterHandle):
     def __init__(self, orientation, parent, **kwargs):
         super().__init__(orientation, parent, **kwargs)
