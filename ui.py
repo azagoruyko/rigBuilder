@@ -322,7 +322,7 @@ class AttributesWidget(QWidget):
             style = "TemplateWidget { border: 4px solid #632094; background-color: #632094 }"
         
         elif attr.expression() and attr.connect(): # both
-            style = "TemplateWidget { border: 4px solid rgb(0,0,0,0); background: QLinearGradient( x1: 0, y1: 0, x2: 1, y2:0, stop: 0 #6e6e39, stop: 1 #632094);}"
+            style = "TemplateWidget { border: 4px solid rgba(0,0,0,0); background: QLinearGradient( x1: 0, y1: 0, x2: 1, y2:0, stop: 0 #6e6e39, stop: 1 #632094);}"
 
         nameWidget.setText(attr.name()+("*" if attr.modified() else ""))
 
