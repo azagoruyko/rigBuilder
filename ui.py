@@ -617,9 +617,15 @@ class ModuleSelectorWidget(QWidget):
         self.maskWidget.setPlaceholderText("Filter modules...")
         self.maskWidget.textChanged.connect(self.maskChanged)
 
+        self.clearFilterButton = QPushButton("Clear")
+        self.clearFilterButton.clicked.connect(lambda: self.maskWidget.clear())
+        self.clearFilterButton.hide()
+        self.maskWidget.textChanged.connect(lambda t: self.clearFilterButton.setVisible(bool(t)))
+
         filterLayout = QHBoxLayout()
         filterLayout.addWidget(QLabel("Filter"))
         filterLayout.addWidget(self.maskWidget)
+        filterLayout.addWidget(self.clearFilterButton)
         layout.addLayout(filterLayout)
 
         self.treeWidget = ModuleBrowserTreeWidget()
