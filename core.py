@@ -612,11 +612,11 @@ class Module(object):
 
     def loadedFromServer(self) -> bool:
         """Check if module was loaded from server."""
-        return self._filePath.startswith(os.path.normpath(RigBuilderPath+"/modules/"))
+        return self._filePath.startswith(getServerModulesPath())
 
     def loadedFromLocal(self) -> bool:
         """Check if module was loaded from local path."""
-        return self._filePath.startswith(os.path.normpath(RigBuilderLocalPath+"/modules/"))
+        return self._filePath.startswith(getLocalModulesPath())
 
     def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
         """Get reference file path based on source preference."""
@@ -628,9 +628,9 @@ class Module(object):
     def relativePath(self) -> str:
         """Get relative path from modules directory."""
         if self.loadedFromServer():
-            return calculateRelativePath(self._filePath, RigBuilderPath+"/modules")
+            return calculateRelativePath(self._filePath, getServerModulesPath())
         elif self.loadedFromLocal():
-            return calculateRelativePath(self._filePath, RigBuilderLocalPath+"/modules")
+            return calculateRelativePath(self._filePath, getLocalModulesPath())
         else:
             return self._filePath
 
@@ -656,8 +656,8 @@ class Module(object):
     def getSavePath(self) -> str:
         """Get path for saving module."""
         if self.loadedFromServer():
-            relativePath = os.path.relpath(self._filePath, RigBuilderPath+"/modules")
-            return os.path.normpath(RigBuilderLocalPath+"/modules/"+relativePath)
+            relativePath = os.path.relpath(self._filePath, getServerModulesPath())
+            return os.path.join(getLocalModulesPath(), relativePath)
 
         else: # local or somewhere else
             return self._filePath
@@ -704,7 +704,7 @@ class Module(object):
     def sendToServer(self) -> Optional[str]: # save the module on server, remove locally
         """Save module to server and remove local copy."""
         if self.loadedFromLocal():
-            savePath = os.path.normpath(RigBuilderPath+"/modules/"+self.relativePath())
+            savePath = os.path.join(getServerModulesPath(), self.relativePath())
             if not os.path.exists(os.path.dirname(savePath)):
                 os.makedirs(os.path.dirname(savePath))
 
@@ -748,10 +748,10 @@ class Module(object):
 
             for path in [specPath, # absolute path
                          specPath+".xml",
-                         RigBuilderLocalPath+"/modules/"+spec, # local path
-                         RigBuilderLocalPath+"/modules/"+spec+".xml",
-                         RigBuilderPath+"/modules/"+spec, # server path
-                         RigBuilderPath+"/modules/"+spec+".xml"]:
+                         os.path.join(getLocalModulesPath(), spec), # local path
+                         os.path.join(getLocalModulesPath(), spec+".xml"),
+                         os.path.join(getServerModulesPath(), spec), # server path
+                         os.path.join(getServerModulesPath(), spec+".xml")]:
 
                 if os.path.exists(path):
                     modulePath = path
@@ -857,8 +857,8 @@ class Module(object):
     @staticmethod
     def updateUidsCache():
         """Update cached UIDs from local and server directories."""
-        Module.ServerUids = Module.findUids(RigBuilderPath + "/modules")
-        Module.LocalUids = Module.findUids(RigBuilderLocalPath + "/modules")
+        Module.ServerUids = Module.findUids(getServerModulesPath())
+        Module.LocalUids = Module.findUids(getLocalModulesPath())
 
     @staticmethod
     def findUids(path: str) -> Dict[str, str]:
@@ -876,6 +876,40 @@ class Module(object):
                     uids[uid] = fpath
 
         return uids
+
+def getLocalModulesPath() -> str:
+    """Return the local modules root directory, normalized with trailing separator (no user override)."""
+    return os.path.normpath(RigBuilderLocalPath + "/modules") + os.sep
+
+def getServerModulesPath() -> str:
+    """Return the server modules root directory, normalized with trailing separator (from settings or default)."""
+    path = Settings.get("serverModulesPath") or ""
+    if path:
+        return os.path.normpath(path) + os.sep
+    return os.path.normpath(RigBuilderPath + "/modules") + os.sep
+
+
+# Initialize directories and settings
+settingsFile = RigBuilderLocalPath+"/settings.json"
+
+Settings = {
+    "vscode": "code",
+    "serverModulesPath": ""
+}
+
+if os.path.exists(settingsFile):
+    with open(settingsFile, "r") as f:
+        Settings.update(json.load(f))
+else:
+    with open(settingsFile, "w") as f:
+        json.dump(Settings, f, indent=4)
+
+def saveSettings():
+    """Persist Settings to settings.json."""
+    with open(settingsFile, "w") as f:
+        json.dump(Settings, f, indent=4)
+        
+os.makedirs(getLocalModulesPath(), exist_ok=True)
 
 Module.updateUidsCache()
 
@@ -920,21 +954,3 @@ APIRegistry.register("runButtonCommand", widgets_core.runButtonCommand)
 APIRegistry.registerStub("beginProgress") # UI functions placeholders
 APIRegistry.registerStub("stepProgress")
 APIRegistry.registerStub("endProgress")
-
-# Initialize directories and settings
-
-# Create local directory structure
-os.makedirs(RigBuilderLocalPath+"/modules", exist_ok=True)
-
-settingsFile = RigBuilderLocalPath+"/settings.json"
-
-Settings = {
-    "vscode": "code"
-}
-
-if os.path.exists(settingsFile):
-    with open(settingsFile, "r") as f:
-        Settings.update(json.load(f))
-else:
-    with open(settingsFile, "w") as f:
-        json.dump(Settings, f, indent=4)

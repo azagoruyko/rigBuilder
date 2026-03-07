@@ -3,6 +3,7 @@ import json
 import re
 import os
 import subprocess
+from pathlib import Path, PurePosixPath
 import inspect
 import sys
 import shutil
@@ -581,6 +582,9 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         menu.addAction("Locate", self.browseModuleDirectory)
         menu.addAction("Open folder", self.openModuleFolder)
         menu.addSeparator()
+        menu.addAction("Set server modules folder...", self.parent().browseServerModulesPath)
+        menu.addAction("Clear server modules folder", self.parent().clearServerModulesPath)
+        menu.addSeparator()
         menu.addAction("Refresh", self.parent().refreshModules)
         menu.popup(event.globalPos())
 
@@ -668,9 +672,24 @@ class ModuleSelectorWidget(QWidget):
         UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
         Module.UpdateSource = UpdateSourceFromInt[updateSource]
 
+    def browseServerModulesPath(self):
+        current = getServerModulesPath()
+        folder = QFileDialog.getExistingDirectory(self, "Server modules folder", current)
+        if folder:
+            Settings["serverModulesPath"] = folder
+            saveSettings()
+            Module.updateUidsCache()
+            self.maskChanged()
+
+    def clearServerModulesPath(self):
+        Settings["serverModulesPath"] = ""
+        saveSettings()
+        Module.updateUidsCache()
+        self.maskChanged()
+
     def getModulesRootDirectory(self):
         modulesFrom = self.modulesFromWidget.currentIndex()
-        return RigBuilderPath+"\\modules" if modulesFrom == 0 else RigBuilderLocalPath+"\\modules"
+        return getServerModulesPath() if modulesFrom == 0 else getLocalModulesPath()
 
     def maskChanged(self):
         def findChildByText(text, parent, column=0):
@@ -1100,7 +1119,7 @@ class TreeWidget(QTreeWidget):
             self.addTopLevelItem(item)
 
     def importModule(self):
-        sceneDir = RigBuilderLocalPath + "/modules"
+        sceneDir = getLocalModulesPath()
 
         if DCC == "maya":
             sceneDir = os.path.dirname(om.MFileIO.currentFile())
@@ -1134,7 +1153,7 @@ class TreeWidget(QTreeWidget):
             outputPath = item.module.getSavePath()
 
             if not outputPath:
-                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+item.module.name(), RigBuilderLocalPath+"/modules/"+item.module.name(), "*.xml")
+                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+item.module.name(), os.path.join(getLocalModulesPath(), item.module.name()), "*.xml")
 
             if outputPath:
                 dirname = os.path.dirname(outputPath)
@@ -1151,7 +1170,7 @@ class TreeWidget(QTreeWidget):
 
     def saveAsModule(self):
         for item in self.selectedItems():
-            outputDir = os.path.dirname(item.module.filePath()) or RigBuilderLocalPath+"/modules"
+            outputDir = os.path.dirname(item.module.filePath()) or getLocalModulesPath()
             outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name(), outputDir + "/" +item.module.name(), "*.xml")
 
             if outputPath:
@@ -1976,7 +1995,7 @@ class RigBuilderWindow(QFrame):
         centerWindow(self)
 
     def setupModulesAutoReloadWatcher(self):
-        watchRoots = [RigBuilderPath + "/modules", RigBuilderLocalPath + "/modules"]
+        watchRoots = [getServerModulesPath(), getLocalModulesPath()]
         self.modulesAutoReloadWatcher = DirectoryWatcher(
             watchRoots,
             filePatterns=["*.xml"],
@@ -2202,9 +2221,12 @@ class RigBuilderWindow(QFrame):
     def infoLinkClicked(self, url):
         scheme = url.scheme()
         path = url.path()
-        modulesRoot = RigBuilderPath if scheme == "server" else RigBuilderLocalPath
-        modulePath = os.path.normpath(os.path.join(modulesRoot+"/modules", path.lstrip("/") + ".xml"))
-        module = Module.loadModule(modulePath)
+        modulesRoot = getServerModulesPath() if scheme == "server" else getLocalModulesPath()
+        urlPath = PurePosixPath(path)
+        if urlPath.is_absolute():
+            urlPath = urlPath.relative_to("/")
+        modulePath = (Path(modulesRoot) / urlPath).with_suffix(".xml")
+        module = Module.loadModule(str(modulePath))
         self.treeWidget.addModule(module)
 
     def updateInfo(self):
@@ -2220,7 +2242,7 @@ class RigBuilderWindow(QFrame):
             for k, v in files.items():
                 if v:
                     template.append("<h3 style='background-color: #393939'>{}</h3>".format(escape(k)))
-                    root = RigBuilderLocalPath+"/modules" if local else RigBuilderPath+"/modules"
+                    root = getLocalModulesPath() if local else getServerModulesPath()
                     for file in v:
                         relPath = calculateRelativePath(file, root).replace(".xml", "").replace("\\", "/")
                         template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
