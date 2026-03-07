@@ -1870,11 +1870,12 @@ class MyProgressBar(QWidget):
 class RigBuilderWindow(QFrame):
     # === API SIGNALS ===
     moduleSelected = Signal(object)  # ModuleItem
-    moduleAdded = Signal(object)     # ModuleItem  
+    moduleAdded = Signal(object)     # ModuleItem
     moduleRemoved = Signal(object)   # ModuleItem
     moduleChanged = Signal(object)   # ModuleItem
     attributeChanged = Signal(object, object)  # ModuleItem, Attribute
-    
+    aboutToRunModule = Signal()
+
     def __init__(self):
         super().__init__(parent=ParentWindow)
         self.modulesAutoReloadWatcher = None
@@ -2260,6 +2261,8 @@ class RigBuilderWindow(QFrame):
 
     def runModule(self, moduleItem=None):
         """Run module with full UI support (progress, undo, logging)."""
+        self.aboutToRunModule.emit()
+
         # Determine which module to run
         if moduleItem:
             currentItem = moduleItem
@@ -2530,5 +2533,6 @@ cleanupVscode()
 
 mainWindow = RigBuilderWindow() # Initialize main window
 restoreStartupWorkspace(mainWindow)
+mainWindow.aboutToRunModule.connect(lambda: saveStartupWorkspace(mainWindow))
 QApplication.instance().aboutToQuit.connect(lambda: saveStartupWorkspace(mainWindow))
 mainWindow.setupModulesAutoReloadWatcher()
