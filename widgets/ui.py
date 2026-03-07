@@ -811,7 +811,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
         gridLayout = self.layout()
         self.clearButtons()
 
-        self.numColumns = value["columns"]
+        self.numColumns = value.get("columns", 2)
         gridLayout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
 
         for i, item in enumerate(value["items"]):
