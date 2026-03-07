@@ -1026,7 +1026,7 @@ class TreeWidget(QTreeWidget):
         self.setDropIndicatorShown(True)
         self.setAcceptDrops(True)
 
-        self.setIndentation(30)
+        self.setIndentation(16)
 
     def dragEnterEvent(self, event):
         super().dragEnterEvent(event)

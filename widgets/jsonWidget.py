@@ -214,7 +214,7 @@ class JsonWidget(QTreeWidget):
         self.setDragEnabled(True)
         self.setDropIndicatorShown(True)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.setIndentation(32)
+        self.setIndentation(16)
 
         self.itemDelegate().setItemEditorFactory(JsonItemFactor())
 
