@@ -739,10 +739,10 @@ class Module(object):
         return m
 
     @staticmethod
-    def loadModule(spec: str) -> 'Module': # spec can be full path, relative path or uid
+    def loadModule(spec: str, *, update: bool = True) -> 'Module': # spec can be full path, relative path or uid
         """Load module by spec (path, relative path, or UID)."""
         modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec) # check local, then server uids
-        
+
         if not modulePath: # otherwise, find by path
             specPath = os.path.expandvars(spec)
 
@@ -761,7 +761,8 @@ class Module(object):
                 raise ModuleNotFoundError("Module '{}' not found".format(spec))
 
         module = Module.loadFromFile(modulePath)
-        module.update()
+        if update:
+            module.update()
         return module
 
     @staticmethod

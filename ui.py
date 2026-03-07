@@ -2468,7 +2468,7 @@ def restoreStartupWorkspace(mainWindow):
         return
 
     try:
-        startupModule = Module.loadModule(startupPath)
+        startupModule = Module.loadModule(startupPath, update=False)
     except Exception as e:
         mainWindow.logger.warning(f"Cannot restore startup workspace: {str(e)}")
         return

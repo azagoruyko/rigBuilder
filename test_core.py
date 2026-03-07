@@ -698,6 +698,46 @@ class TestModuleFileOperations:
         uid = getUidFromFile(filePath)
         assert uid == simpleModule.uid()
 
+    def testLoadModuleWithUpdateTrue(self, tempDir):
+        """Test loadModule(update=True) applies update() so children are refreshed from their files."""
+        parent = createModule("parent")
+        child = createModule("child")
+        child.setRunCode("original_run")
+        parent.addChild(child)
+
+        parentPath = os.path.join(tempDir, "parent.xml")
+        childPath = os.path.join(tempDir, "child.xml")
+        child.saveToFile(childPath)
+        parent.saveToFile(parentPath)
+        Module.updateUidsCache()
+
+        child.setRunCode("modified_run")
+        child.saveToFile(childPath)
+        Module.updateUidsCache()
+
+        loaded = Module.loadModule(parentPath, update=True)
+        assert loaded.findChild("child").runCode() == "modified_run"
+
+    def testLoadModuleWithUpdateFalse(self, tempDir):
+        """Test loadModule(update=False) skips update() so children stay as in parent XML."""
+        parent = createModule("parent")
+        child = createModule("child")
+        child.setRunCode("original_run")
+        parent.addChild(child)
+
+        parentPath = os.path.join(tempDir, "parent.xml")
+        childPath = os.path.join(tempDir, "child.xml")
+        child.saveToFile(childPath)
+        parent.saveToFile(parentPath)
+        Module.updateUidsCache()
+
+        child.setRunCode("modified_run")
+        child.saveToFile(childPath)
+        Module.updateUidsCache()
+
+        loaded = Module.loadModule(parentPath, update=False)
+        assert loaded.findChild("child").runCode() == "original_run"
+
     def testUpdatePreservesAttributeValues(self, tempDir):
         """Test that update() preserves attribute values while updating structure."""
         # Create original module
