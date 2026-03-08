@@ -15,6 +15,7 @@ from .qt import *
 
 from .core import *
 from .editor import *
+from .workspace import saveWorkspace, loadWorkspace
 from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
 from .ui_utils import *
@@ -2445,41 +2446,6 @@ class RigBuilderWindow(QFrame):
         # Call parent close event
         super().closeEvent(event)
 
-def saveStartupWorkspace(mainWindow):
-    startupPath = os.path.join(RigBuilderLocalPath, "startupModules.xml")
-
-    startupModule = Module()
-    startupModule.setName("startupModules")
-
-    for i in range(mainWindow.treeWidget.topLevelItemCount()):
-        item = mainWindow.treeWidget.topLevelItem(i)
-        startupModule.addChild(item.module.copy())
-
-    os.makedirs(os.path.dirname(startupPath), exist_ok=True)
-    startupModule.saveToFile(startupPath)
-
-def restoreStartupWorkspace(mainWindow):
-    startupPath = os.path.join(RigBuilderLocalPath, "startupModules.xml")
-
-    if not os.path.exists(startupPath):
-        return
-
-    if mainWindow.treeWidget.topLevelItemCount() > 0:
-        return
-
-    try:
-        startupModule = Module.loadModule(startupPath, update=False)
-    except Exception as e:
-        mainWindow.logger.warning(f"Cannot restore startup workspace: {str(e)}")
-        return
-
-    for child in startupModule.children():
-        startupModule.removeChild(child)  # Make child modules top-level again.
-        mainWindow.treeWidget.addTopLevelItem(mainWindow.treeWidget.makeItemFromModule(child))
-
-    if mainWindow.treeWidget.topLevelItemCount() > 0:
-        mainWindow.treeWidget.setCurrentItem(mainWindow.treeWidget.topLevelItem(0))
-
 def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, relative path, uid
     module = Module.loadModule(spec)
     if not module:
@@ -2554,7 +2520,7 @@ def cleanupVscode():
 cleanupVscode()
 
 mainWindow = RigBuilderWindow() # Initialize main window
-restoreStartupWorkspace(mainWindow)
-mainWindow.aboutToRunModule.connect(lambda: saveStartupWorkspace(mainWindow))
-QApplication.instance().aboutToQuit.connect(lambda: saveStartupWorkspace(mainWindow))
+loadWorkspace(mainWindow)
+mainWindow.aboutToRunModule.connect(lambda: saveWorkspace(mainWindow))
+QApplication.instance().aboutToQuit.connect(lambda: saveWorkspace(mainWindow))
 mainWindow.setupModulesAutoReloadWatcher()
