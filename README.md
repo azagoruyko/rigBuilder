@@ -22,7 +22,7 @@ RigBuilder is a Qt-based visual builder for Python tooling, with a strong focus 
 
 ## Widget template notes
 
-- The legacy `lineEdit` template has been removed.
+- The legacy `lineEdit` template has been deprecated and removed (since v5.4.0).
 - Use `lineEditAndButton` instead (you can keep the button disabled when needed).
 - Older module data that still contains `lineEdit` is auto-converted to `lineEditAndButton` at load time for backward compatibility.
 
@@ -76,12 +76,3 @@ Run core tests from this directory:
 pytest test_core.py -v
 pytest test_core.py --cov=core --cov-report=term-missing
 ```
-
-## Repository layout
-
-- `core.py` - module/attribute model, XML IO, runtime API registry.
-- `ui.py` - main RigBuilder window and authoring workflow.
-- `functionBrowser.py` - inspect Python files and execute functions via generated controls.
-- `editor.py` - embedded code editor, highlighting, search helpers.
-- `widgets/` - widget templates and UI helpers for attribute editing.
-- `run.py` - standalone launcher.
