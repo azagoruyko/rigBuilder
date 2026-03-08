@@ -131,7 +131,7 @@ class Attribute(object):
         """Set attribute name and mark as modified."""
         if name != self._name:
             self._name = name
-            self._modified = True
+            self._markModified()
     
     def category(self) -> str:
         """Get attribute category."""
@@ -141,7 +141,7 @@ class Attribute(object):
         """Set attribute category and mark as modified."""
         if category != self._category:
             self._category = category
-            self._modified = True
+            self._markModified()
     
     def template(self) -> str:
         """Get attribute widget template type."""
@@ -151,7 +151,7 @@ class Attribute(object):
         """Set attribute widget template type and mark as modified."""
         if template != self._template:
             self._template = template
-            self._modified = True
+            self._markModified()
     
     def connect(self) -> str:
         """Get attribute connection path."""
@@ -161,7 +161,7 @@ class Attribute(object):
         """Set attribute connection path and mark as modified."""
         if connect != self._connect:
             self._connect = connect
-            self._modified = True
+            self._markModified()
     
     def expression(self) -> str:
         """Get attribute Python expression."""
@@ -171,12 +171,18 @@ class Attribute(object):
         """Set attribute Python expression and mark as modified."""
         if expression != self._expression:
             self._expression = expression
-            self._modified = True
+            self._markModified()
     
     def modified(self) -> bool:
         """Check if attribute has been modified."""
         return self._modified
-    
+
+    def _markModified(self):
+        """Mark attribute and parent module as modified."""
+        self._modified = True
+        if self._module:
+            self._module._modified = True
+
     def module(self) -> Optional['Module']:
         """Get parent module that owns this attribute."""
         return self._module
@@ -192,7 +198,7 @@ class Attribute(object):
             newValue = copyJson(value)
             if newValue != self._defaultValue():
                 self._data[self._data["default"]] = newValue
-                self._modified = True
+                self._markModified()
     
     def data(self) -> Dict[str, Any]: # return actual read-only copy of all data
         """Get read-only copy of all attribute data."""
@@ -208,7 +214,7 @@ class Attribute(object):
         newData = copyJson(data)
         if newData != self._data:
             self._data = newData
-            self._modified = True
+            self._markModified()
     
     def setData(self, data: Dict[str, Any]):
         """Set data and push to connections."""
@@ -252,7 +258,7 @@ class Attribute(object):
         else:
             if self._data.get(key) != valueCopy:
                 self._data[key] = valueCopy
-                self._modified = True
+                self._markModified()
                 self.push()
 
     def executeExpression(self):

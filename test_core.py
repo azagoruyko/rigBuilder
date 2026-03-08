@@ -501,6 +501,20 @@ class TestModuleAttributes:
         module.removeAttributes()
         assert len(module.attributes()) == 0
 
+    def testAttributeModificationMarksModule(self):
+        """Modifying an attribute marks the owning module as modified."""
+        module = createModule("test")
+        attr = createAttribute("input", "input", "float", 5.0)
+        module.addAttribute(attr)
+        module._clearModificationFlag()
+
+        assert module.modified() is False
+        assert attr.modified() is False
+
+        attr.set(10.0)
+        assert attr.modified() is True
+        assert module.modified() is True
+
     def testEmptyAttributeName(self):
         """Test finding attributes with empty names."""
         module = createModule("test")
