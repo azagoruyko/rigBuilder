@@ -13,10 +13,11 @@ if TYPE_CHECKING:
 
 RigBuilderPath = os.path.dirname(__file__)
 RigBuilderLocalPath = os.path.join(os.path.expanduser("~"), "rigBuilder")
+MODULE_EXT = ".xml"
 
 def getUidFromFile(path: str) -> Optional[str]:
     """Extract UID from XML file."""
-    if path.endswith(".xml"):
+    if path.endswith(MODULE_EXT):
         with open(path, "r") as f:
             l = f.readline() # read first line
         r = re.search("uid=\"(\\w*)\"", l)
@@ -26,7 +27,9 @@ def getUidFromFile(path: str) -> Optional[str]:
 def calculateRelativePath(path: str, root: str) -> str:
     """Calculate relative path from root directory."""
     path = os.path.normpath(path)
-    path = path.replace(os.path.normpath(root)+"\\", "")
+    root_norm = os.path.normpath(root) + os.sep
+    if path.startswith(root_norm):
+        return path[len(root_norm):]
     return path
 
 class ExitModuleException(Exception):pass
@@ -309,17 +312,14 @@ class Attribute(object):
     def fromXml(root: 'Element') -> 'Attribute':
         """Create attribute from XML element."""
         attr = Attribute()
-        attr._name = root.attrib["name"]
-        attr._template = root.attrib["template"]
-        attr._category = root.attrib["category"]
-        attr._connect = root.attrib["connect"]
-        attr._data = json.loads(root.text)
-
-        # additional data
+        attr._name = root.attrib.get("name", "")
+        attr._template = root.attrib.get("template", "")
+        attr._category = root.attrib.get("category", "")
+        attr._connect = root.attrib.get("connect", "")
+        raw = root.text or "{}"
+        attr._data = json.loads(raw) if raw.strip() else {}
         attr._expression = attr._data.pop("_expression", "")
-
         legacy_convertLineEditTemplate(attr)
-
         return attr
     
 class Dict(dict):
@@ -593,19 +593,22 @@ class Module(object):
 
     @staticmethod
     def fromXml(root: 'Element') -> 'Module':
-        """Create module from XML element."""
+        """Create module from XML element. Tolerates missing optional elements."""
         module = Module()
-        module._name = root.attrib["name"]
+        module._name = root.attrib.get("name", "")
         module._uid = root.attrib.get("uid", "")
-        module._muted = int(root.attrib["muted"])
+        module._muted = int(root.attrib.get("muted", 0))
+        module._runCode = root.findtext("run") or ""
 
-        module._runCode = root.findtext("run")
+        attrs_el = root.find("attributes")
+        if attrs_el is not None:
+            for ch in attrs_el.findall("attr"):
+                module.addAttribute(Attribute.fromXml(ch))
 
-        for ch in root.find("attributes").findall("attr"):
-            module.addAttribute(Attribute.fromXml(ch))
-
-        for ch in root.find("children").findall("module"):
-            module.addChild(Module.fromXml(ch))
+        children_el = root.find("children")
+        if children_el is not None:
+            for ch in children_el.findall("module"):
+                module.addChild(Module.fromXml(ch))
 
         module._modified = False
         return module
@@ -651,7 +654,7 @@ class Module(object):
             else:
                 path = normLoadedPath
 
-        return path.replace(".xml", "")
+        return path.replace(MODULE_EXT, "")
 
     def getSavePath(self) -> str:
         """Get path for saving module."""
@@ -758,7 +761,7 @@ class Module(object):
             if os.path.isdir(f):
                 files += Module.listModules(f)
             else:
-                if f.endswith(".xml"):
+                if f.endswith(MODULE_EXT):
                     files.append(f)
 
         return files
@@ -813,19 +816,16 @@ class Module(object):
     def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
         """Execute module code and child modules."""
         ctx = self.context()
-
         attrPrefix = "attr_"
         for attr in self._attributes:
-            ctx[attrPrefix+attr._name] = attr.get()
-            ctx[attrPrefix+"set_"+attr._name] = attr.set
-            ctx[attrPrefix+attr._name+"_data"] = DataAccessor(attr)        
+            ctx[attrPrefix + attr._name] = attr.get()
+            ctx[attrPrefix + "set_" + attr._name] = attr.set
+            ctx[attrPrefix + attr._name + "_data"] = DataAccessor(attr)
 
         if callable(callback):
             callback(self)
 
-        # replace @abc with prefix_abc
-        attrPrefix = "attr_"
-        runCode = re.sub(r'@(\w+)', attrPrefix+r'\1', self._runCode)
+        runCode = re.sub(r'@(\w+)', attrPrefix + r'\1', self._runCode)
         
         try:
             exec(runCode, ctx)
@@ -856,7 +856,7 @@ class Module(object):
                 dirUids = Module.findUids(fpath)
                 uids.update(dirUids)
 
-            elif fpath.endswith(".xml"):
+            elif fpath.endswith(MODULE_EXT):
                 uid = getUidFromFile(fpath)
                 if uid:
                     uids[uid] = fpath
@@ -879,23 +879,20 @@ def resolveModuleSpec(spec: str) -> str:
     """Resolve spec (path or uid) to module file path, or empty string if not found."""
     if not spec:
         return ""
-
     modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec)
-
     if not modulePath:
         specPath = os.path.expandvars(spec)
         for path in [
             specPath,
-            specPath + ".xml",
+            specPath + MODULE_EXT,
             os.path.join(getLocalModulesPath(), spec),
-            os.path.join(getLocalModulesPath(), spec + ".xml"),
+            os.path.join(getLocalModulesPath(), spec + MODULE_EXT),
             os.path.join(getServerModulesPath(), spec),
-            os.path.join(getServerModulesPath(), spec + ".xml"),
+            os.path.join(getServerModulesPath(), spec + MODULE_EXT),
         ]:
             if os.path.exists(path):
                 modulePath = path
                 break
-
     return os.path.normpath(modulePath) if modulePath else ""
 
 
