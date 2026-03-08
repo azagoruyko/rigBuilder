@@ -7,7 +7,11 @@
 </a>
 </div>
 
-**RigBuilder** is a visual, node-based tool for building character and creature rigs—and related pipeline tools—in DCC applications. It is **not bound to any single host**: you can use it with **Maya** , **Blender**, or any other DCC that supports Python. Instead of wiring scripts by hand, you compose reusable modules in a graph, set parameters and connections in the UI, and run the pipeline with progress feedback and logging. It is aimed at riggers and TDs who want a consistent, maintainable way to assemble rigs from building blocks (spine, limbs, face, fingers, etc.) and to share or version those setups as XML.
+**RigBuilder** is a visual, node-based tool for building character and creature rigs—and related pipeline tools—in DCC applications. 
+
+It is **not bound to any single host**: you can use it with **Maya** , **Blender**, or any other DCC that supports Python. Instead of wiring scripts by hand, you compose reusable modules in a graph, set parameters and connections in the UI, and run the pipeline with progress feedback and logging. 
+
+It is aimed at riggers and TDs who want a consistent, maintainable way to assemble rigs from building blocks (spine, limbs, face, fingers, etc.) and to share or version those setups as XML.
 
 <img width="1294" height="916" alt="image" src="https://github.com/user-attachments/assets/f47a27a8-57c5-4f32-b118-9ef77d513796" />
 
