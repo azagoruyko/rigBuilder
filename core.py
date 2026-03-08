@@ -741,24 +741,9 @@ class Module(object):
     @staticmethod
     def loadModule(spec: str, *, update: bool = True) -> 'Module': # spec can be full path, relative path or uid
         """Load module by spec (path, relative path, or UID)."""
-        modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec) # check local, then server uids
-
-        if not modulePath: # otherwise, find by path
-            specPath = os.path.expandvars(spec)
-
-            for path in [specPath, # absolute path
-                         specPath+".xml",
-                         os.path.join(getLocalModulesPath(), spec), # local path
-                         os.path.join(getLocalModulesPath(), spec+".xml"),
-                         os.path.join(getServerModulesPath(), spec), # server path
-                         os.path.join(getServerModulesPath(), spec+".xml")]:
-
-                if os.path.exists(path):
-                    modulePath = path
-                    break
-
-            if not modulePath:
-                raise ModuleNotFoundError("Module '{}' not found".format(spec))
+        modulePath = resolveModuleSpec(spec)
+        if not modulePath:
+            raise ModuleNotFoundError("Module '{}' not found".format(spec))
 
         module = Module.loadFromFile(modulePath)
         if update:
@@ -888,6 +873,30 @@ def getServerModulesPath() -> str:
     if path:
         return os.path.normpath(path) + os.sep
     return os.path.normpath(RigBuilderPath + "/modules") + os.sep
+
+
+def resolveModuleSpec(spec: str) -> str:
+    """Resolve spec (path or uid) to module file path, or empty string if not found."""
+    if not spec:
+        return ""
+
+    modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec)
+
+    if not modulePath:
+        specPath = os.path.expandvars(spec)
+        for path in [
+            specPath,
+            specPath + ".xml",
+            os.path.join(getLocalModulesPath(), spec),
+            os.path.join(getLocalModulesPath(), spec + ".xml"),
+            os.path.join(getServerModulesPath(), spec),
+            os.path.join(getServerModulesPath(), spec + ".xml"),
+        ]:
+            if os.path.exists(path):
+                modulePath = path
+                break
+
+    return os.path.normpath(modulePath) if modulePath else ""
 
 
 # Initialize directories and settings
