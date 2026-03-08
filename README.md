@@ -64,7 +64,7 @@ Notes:
 ## Module locations
 
 - Built-in modules: `modules/`
-- Local user modules: `%USERPROFILE%\rigBuilder\modules`
+- Local user modules: `~/rigBuilder/modules` (user home directory)
 
 RigBuilder creates the local directory and settings file automatically on first import.
 

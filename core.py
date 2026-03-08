@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
 RigBuilderPath = os.path.dirname(__file__)
-RigBuilderLocalPath = os.path.expandvars("$USERPROFILE\\rigBuilder")
+RigBuilderLocalPath = os.path.join(os.path.expanduser("~"), "rigBuilder")
 
 def getUidFromFile(path: str) -> Optional[str]:
     """Extract UID from XML file."""
@@ -891,7 +891,8 @@ def getServerModulesPath() -> str:
 
 
 # Initialize directories and settings
-settingsFile = RigBuilderLocalPath+"/settings.json"
+os.makedirs(RigBuilderLocalPath, exist_ok=True)
+settingsFile = os.path.join(RigBuilderLocalPath, "settings.json")
 
 Settings = {
     "vscode": "code",
