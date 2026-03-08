@@ -7,70 +7,62 @@
 </a>
 </div>
 
-RigBuilder is a Qt-based visual builder for Python tooling, with a strong focus on DCC workflows (Maya by default).
+**RigBuilder** is a visual, node-based tool for building character and creature rigs—and related pipeline tools—in DCC applications. It is **not bound to any single host**: you can use it with **Maya** , **Blender**, or any other DCC that supports Python. Instead of wiring scripts by hand, you compose reusable modules in a graph, set parameters and connections in the UI, and run the pipeline with progress feedback and logging. It is aimed at riggers and TDs who want a consistent, maintainable way to assemble rigs from building blocks (spine, limbs, face, fingers, etc.) and to share or version those setups as XML.
 
 <img width="1294" height="916" alt="image" src="https://github.com/user-attachments/assets/f47a27a8-57c5-4f32-b118-9ef77d513796" />
 
-## Current capabilities
+Full documentation is [here](https://github.com/azagoruyko/rigBuilder/wiki/Documentation).
 
-- Build hierarchical tools from modules and run them with progress + logging.
-- Store module definitions as XML files and reload/update them by UID.
-- Connect attributes between modules (`/path/to/attr` style references).
-- Execute per-attribute expressions and module-level Python code.
-- Launch a Function Browser to discover and run Python functions from a folder.
-- Run in Maya or standalone with either `PySide2` or `PySide6` (based on what is available).
+---
 
-## Widget template notes
+## ✨ What it does
 
-- The legacy `lineEdit` template has been deprecated and removed (since v5.4.0).
-- Use `lineEditAndButton` instead (you can keep the button disabled when needed).
-- Older module data that still contains `lineEdit` is auto-converted to `lineEditAndButton` at load time for backward compatibility.
+**Core of the system:** a **hierarchy of modules**, each with **attributes** (parameters, connections, widget types) and **run code** (module-level Python and per-attribute expressions). The graph defines execution order; when you run the pipeline, modules execute in that order and drive the DCC. Everything else builds on this.
 
-## Runtime modes
+- **📦 Module-based rig assembly** — Define rig steps as XML modules (e.g. spine, legs, face, fingers), arrange them in a hierarchy, and run the full pipeline from one place.
+- **🔗 Visual wiring** — Connect outputs of one module to inputs of another using path-style references (`/path/to/attr`). No need to remember script APIs; the graph shows the flow.
+- **🔍 Function browser** — Discover and run Python helpers from a folder without leaving the UI.
+- **🖥️ Any DCC or standalone** — Use it inside Maya (with `maya.cmds`), Blender, or any other Python-capable DCC by registering that host’s API; or run the same UI in a standalone Qt process for testing and tool development.
 
-### Maya mode (default)
+---
 
-If `RIG_BUILDER_DCC` is not set, the UI assumes Maya mode and imports `maya.cmds` APIs.
+## 🚀 Quick start
 
-Typical launch inside Maya:
+### In Maya
 
 ```python
 import rigBuilder.ui
 rigBuilder.ui.mainWindow.show()
 ```
 
-### Standalone mode
-
-Use `run.py`, which sets `RIG_BUILDER_DCC=standalone` before loading the UI:
+### Standalone 🖥️ (no DCC)
 
 ```bash
 python run.py
 ```
 
-## Dependencies
+`run.py` sets `RIG_BUILDER_DCC=standalone` so the UI runs without a DCC. Inside a host (Maya, Blender, etc.), leave `RIG_BUILDER_DCC` unset or set it to the host name; the UI will use that host’s API (e.g. `maya.cmds` when running in Maya).
+
+---
+
+## 📋 Dependencies
 
 From `requirements.txt`:
 
-- `PySide6>=6.0.0` (default standalone dependency in this repo)
-- `pytest>=7.0.0`
-- `pytest-cov>=4.0.0`
+- **PySide6** ≥ 6.0.0 (default for standalone in this repo)
+- **pytest** ≥ 7.0.0, **pytest-cov** ≥ 4.0.0 (for tests)
 
 Notes:
 
-- In Maya, `PySide2` is usually provided by the host application.
-- Standalone can use either `PySide2` or `PySide6`; `qt.py` tries `PySide2` first, then falls back to `PySide6`.
-- `requirements.txt` pins `PySide6` for convenience, but standalone is not limited to it.
+- In Maya, **PySide2** is usually provided by the application.
+- Standalone can use either PySide2 or PySide6; `qt.py` tries PySide2 first, then PySide6.
+- `requirements.txt` pins PySide6 for convenience; standalone is not limited to it.
 
-## Module locations
+---
 
-- Built-in modules: `modules/`
-- Local user modules: `~/rigBuilder/modules` (user home directory)
+## 🧪 Testing
 
-RigBuilder creates the local directory and settings file automatically on first import.
-
-## Testing
-
-Run core tests from this directory:
+From the project root:
 
 ```bash
 pytest test_core.py -v
