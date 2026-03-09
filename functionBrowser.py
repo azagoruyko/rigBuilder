@@ -886,7 +886,7 @@ def showFunctionBrowser():
         existing.activateWindow()
         return existing
 
-    window = FunctionBrowserWindow(parent=rigBuilderUi.ParentWindow)
+    window = FunctionBrowserWindow(parent=rigBuilderUi.parentWindow)
     FunctionBrowserWindow.windowInstance = window
     window.show()
     return window

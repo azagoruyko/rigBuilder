@@ -20,23 +20,7 @@ from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
 from .ui_utils import *
 
-DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
-ParentWindow = None
-
-if DCC == "maya":
-    import maya.cmds as cmds
-    import maya.OpenMayaUI as omui
-    import maya.OpenMaya as om
-
-    def getMayaMainWindow():
-        """Get Maya main window for available PySide binding."""
-        try:
-            return wrapInstance(int(omui.MQtUtil.mainWindow()), QMainWindow)
-        except Exception:
-            return
-    
-    ParentWindow = getMayaMainWindow()
-
+parentWindow = APIRegistry.getParentWindow()
 updateFilesThread = None 
 trackFileChangesThreads = {} # by file path
 
@@ -1121,9 +1105,9 @@ class TreeWidget(QTreeWidget):
 
     def importModule(self):
         sceneDir = getLocalModulesPath()
-
-        if DCC == "maya":
-            sceneDir = os.path.dirname(om.MFileIO.currentFile())
+        currentFile = APIRegistry.currentSceneFile()
+        if currentFile:
+            sceneDir = os.path.dirname(currentFile)
 
         filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import", sceneDir, "*.xml")
 
@@ -1897,7 +1881,7 @@ class RigBuilderWindow(QFrame):
     aboutToRunModule = Signal()
 
     def __init__(self):
-        super().__init__(parent=ParentWindow)
+        super().__init__(parent=parentWindow)
         self.modulesAutoReloadWatcher = None
 
         self.setWindowTitle("Rig Builder")
@@ -1956,14 +1940,11 @@ class RigBuilderWindow(QFrame):
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
         self.moduleSelectorWidget.modulesReloaded.connect(self.updateInfo)
-        self.openFunctionBrowserButton = QPushButton("Function Browser")
-        self.openFunctionBrowserButton.clicked.connect(self.openFunctionBrowser)
 
         self.moduleToolsWidget = QWidget()
         self.moduleToolsWidget.setLayout(QVBoxLayout())
         self.moduleToolsWidget.layout().setContentsMargins(0, 0, 0, 0)
         self.moduleToolsWidget.layout().addWidget(self.moduleSelectorWidget)
-        self.moduleToolsWidget.layout().addWidget(self.openFunctionBrowserButton)
 
         self.leftSplitter = WideSplitter(Qt.Vertical)
         self.leftSplitter.addWidget(self.treeWidget)
@@ -2046,6 +2027,9 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Remove all", self.removeAllModules)
 
         menu.addAction("Documentation", self.showDocumenation)
+        menu.addSeparator()
+        menu.addAction("API Browser", self.openApiBrowser)
+        menu.addAction("Function Browser", self.openFunctionBrowser)
 
         return menu
 
@@ -2183,6 +2167,10 @@ class RigBuilderWindow(QFrame):
 
     def showDocumenation(self):
         subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])
+
+    def openApiBrowser(self):
+        from .apiBrowser import showApiBrowser
+        showApiBrowser()
 
     def openFunctionBrowser(self):
         from .functionBrowser import showFunctionBrowser
@@ -2331,21 +2319,18 @@ class RigBuilderWindow(QFrame):
             APIRegistry.override("stepProgress", self.progressBarWidget.stepProgress)
             APIRegistry.override("endProgress", self.progressBarWidget.endProgress)
 
-            # Run with Maya undo support if available
             try:
-                if DCC == "maya":
-                    cmds.undoInfo(ock=True) # open undo chunk
-                    
+                APIRegistry.openUndoChunk()
+
                 currentItem.module.run(callback=uiCallback)
-                
+
             except ModuleRuntimeError as e:
                 self.logger.error(str(e))
             except Exception as e:
                 self.logger.error(f"Unexpected error in module '{currentItem.module.name()}': {str(e)}")
                 printErrorStack()
             finally:
-                if DCC == "maya":
-                    cmds.undoInfo(cck=True) # close undo chunk
+                APIRegistry.closeUndoChunk()
                     
                 if muted:
                     currentItem.module.mute()

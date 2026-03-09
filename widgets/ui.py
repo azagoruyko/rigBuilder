@@ -8,12 +8,7 @@ from ..ui_utils import *
 from ..editor import *
 from .jsonWidget import JsonWidget
 
-DCC = os.getenv("RIG_BUILDER_DCC") or "maya"
-
 RootPath = os.path.dirname(__file__) # Rig Builder root folder
-
-if DCC == "maya":
-    import maya.cmds as cmds
 
 class TemplateWidget(QFrame):
     somethingChanged = Signal()
@@ -345,13 +340,9 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        defaultCmd = {"label": "<", "command": 'value = "Hello world!"'}
-
         self.templates = {}
-        if DCC == "maya":
-            self.templates["Get selected"] = {"label": "<", "command":"import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]"}
-            defaultCmd = self.templates["Get selected"]
-
+        self.templates["Get selected"] = {"label": "<", "command": "nodes = getSelectedNodes()\nvalue = nodes[0] if nodes else ''"}
+        defaultCmd = self.templates["Get selected"]
         self.templates["Get open file"] = {"label": "...", "command":'''import os
 from rigBuilder.qt import QFileDialog
 path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
@@ -628,13 +619,12 @@ class ListBoxTemplateWidget(TemplateWidget):
         menu.addAction("Sort", f)
 
         menu.addSeparator()
-        
-        if DCC in ["maya"]:
-            dccLabel = DCC.capitalize()
-            menu.addAction("Get selected from "+dccLabel, Callback(self.getFromDCC, False))
-            menu.addAction("Add selected from "+dccLabel, Callback(self.getFromDCC, True))
-            menu.addAction("Select in "+dccLabel, Callback(self.selectInDCC, False))
-            menu.addAction("Select all in "+dccLabel, self.selectInDCC)
+
+        dccLabel = APIRegistry.getDccName() or "DCC"
+        menu.addAction("Get selected from " + dccLabel, Callback(self.getFromDCC, False))
+        menu.addAction("Add selected from " + dccLabel, Callback(self.getFromDCC, True))
+        menu.addAction("Select in " + dccLabel, Callback(self.selectInDCC, False))
+        menu.addAction("Select all in " + dccLabel, self.selectInDCC)
 
         menu.addSeparator()
         menu.addAction("Clear", self.clearItems)
@@ -667,8 +657,7 @@ class ListBoxTemplateWidget(TemplateWidget):
     def selectInDCC(self, allItems=True):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count()) if allItems or self.listWidget.item(i).isSelected()]
 
-        if DCC == "maya":
-            cmds.select(items)
+        APIRegistry.selectNodes(items)
 
     def getFromDCC(self, add=False):
         def updateUI(nodes):
@@ -682,9 +671,8 @@ class ListBoxTemplateWidget(TemplateWidget):
             self.resizeWidget()
             self.somethingChanged.emit()
 
-        if DCC == "maya":
-            nodes = [n for n in cmds.ls(sl=True)]
-            updateUI(nodes)
+        nodes = APIRegistry.getSelectedNodes() or []
+        updateUI(nodes)
 
     def clearItems(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
