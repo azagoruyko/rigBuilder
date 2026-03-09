@@ -7,7 +7,7 @@
 </a>
 </div>
 
-**RigBuilder** is a visual, node-based tool for building character and creature rigs—and related pipeline tools—in DCC applications. 
+**RigBuilder** is a visual, module-based tool for building character and creature rigs—and related pipeline tools—in DCC applications. 
 
 It is **not bound to any single host**: you can use it with **Maya** , **Blender**, or any other DCC that supports Python. Instead of wiring scripts by hand, you compose reusable modules in a graph, set parameters and connections in the UI, and run the pipeline with progress feedback and logging. 
 
@@ -26,7 +26,7 @@ Full documentation is [here](https://github.com/azagoruyko/rigBuilder/wiki/Docum
 - **📦 Module-based rig assembly** — Define rig steps as XML modules (e.g. spine, legs, face, fingers), arrange them in a hierarchy, and run the full pipeline from one place.
 - **🔗 Visual wiring** — Connect outputs of one module to inputs of another using path-style references (`/path/to/attr`). No need to remember script APIs; the graph shows the flow.
 - **🔍 Function browser** — Discover and run Python helpers from a folder without leaving the UI.
-- **🖥️ Any DCC or standalone** — Use it inside Maya (with `maya.cmds`), Blender, or any other Python-capable DCC by registering that host’s API; or run the same UI in a standalone Qt process for testing and tool development.
+- **🖥️ Any DCC or standalone** — Use it inside Maya, Blender, or any other Python-capable DCC by registering that host’s API; or run the same UI in a standalone Qt process for testing and tool development.
 
 ---
 
