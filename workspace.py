@@ -14,6 +14,14 @@ class WorkspaceMainWindow(Protocol):
     logger: object
 
 
+def flattenTreeItems(item) -> List:
+    """Return the item and all descendants in depth-first order."""
+    result = [item]
+    for i in range(item.childCount()):
+        result.extend(flattenTreeItems(item.child(i)))
+    return result
+
+
 def flattenModules(roots: List[Module]) -> List[Module]:
     """Return all modules in depth-first order (roots and every descendant)."""
     flat = []
@@ -28,23 +36,27 @@ def flattenModules(roots: List[Module]) -> List[Module]:
 def saveWorkspace(mainWindow: WorkspaceMainWindow) -> None:
     """Save top-level modules to workspace.xml. Modules stored as-is (toXml); meta holds per-module patch by index."""
     path = os.path.join(RigBuilderLocalPath, workspaceFilename)
-    roots = [
-        mainWindow.treeWidget.topLevelItem(i).module
-        for i in range(mainWindow.treeWidget.topLevelItemCount())
+    treeWidget = mainWindow.treeWidget
+    rootItems = [
+        treeWidget.topLevelItem(i)
+        for i in range(treeWidget.topLevelItemCount())
     ]
-    allModules = flattenModules(roots)
+    allItems = []
+    for root in rootItems:
+        allItems.extend(flattenTreeItems(root))
 
     lines = [
         '<workspace version="1">',
         "<modules>",
     ]
-    for module in roots:
-        lines.append(module.toXml(keepConnections=True).strip())
+    for item in rootItems:
+        lines.append(item.module.toXml(keepConnections=True).strip())
 
     lines.append("</modules>")
     lines.append("<meta>")
 
-    for index, module in enumerate(allModules):
+    for index, item in enumerate(allItems):
+        module = item.module
         if not module.filePath():
             continue
 
@@ -63,6 +75,11 @@ def saveWorkspace(mainWindow: WorkspaceMainWindow) -> None:
             lines.append("</module>")
 
     lines.append("</meta>")
+
+    if allItems:
+        value = ",".join(str(int(item.isExpanded())) for item in allItems)
+        lines.append('<expanded value="{}"/>'.format(value))
+
     lines.append("</workspace>")
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -133,3 +150,14 @@ def loadWorkspace(mainWindow: WorkspaceMainWindow) -> None:
         mainWindow.treeWidget.addTopLevelItem(
             mainWindow.treeWidget.makeItemFromModule(module)
         )
+
+    expandedEl = root.find("expanded")
+    if expandedEl is not None:
+        expanded = [x == "1" for x in expandedEl.attrib.get("value", "").split(",")]
+        
+        allItems = []
+        for i in range(mainWindow.treeWidget.topLevelItemCount()):
+            allItems.extend(flattenTreeItems(mainWindow.treeWidget.topLevelItem(i)))
+
+        for item, isExpanded in zip(allItems, expanded):
+            item.setExpanded(isExpanded)
