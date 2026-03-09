@@ -40,7 +40,25 @@ class CopyJsonError(Exception):pass
 class ModuleRuntimeError(Exception):pass
 class APIError(Exception):pass
 
-class APIRegistry:
+
+class APIRegistryMeta(type):
+    """Metaclass enabling APIRegistry.foo and APIRegistry.foo = func convenience."""
+
+    _reserved = frozenset({"_objects", "clear", "register", "unregister", "registerStub", "override", "api"})
+
+    def __getattr__(cls, name: str):
+        if name in cls._objects:
+            return cls._objects[name]
+        raise AttributeError(f"'{cls.__name__}' has no attribute '{name}'")
+
+    def __setattr__(cls, name: str, value: Any):
+        if name in APIRegistryMeta._reserved:
+            type.__setattr__(cls, name, value)
+        else:
+            cls._objects[name] = value
+
+
+class APIRegistry(metaclass=APIRegistryMeta):
     """Registry for functions and objects available to modules at runtime."""
 
     _objects: Dict[str, Any] = {}
@@ -82,7 +100,7 @@ class APIRegistry:
     @staticmethod
     def api() -> Dict[str, Any]:
         """Get all registered objects as dictionary for exec()."""
-        return dict(APIRegistry._objects)   
+        return dict(APIRegistry._objects)
 
 
 def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit        
@@ -968,3 +986,14 @@ APIRegistry.register("runButtonCommand", widgets_core.runButtonCommand)
 APIRegistry.registerStub("beginProgress") # UI functions placeholders
 APIRegistry.registerStub("stepProgress")
 APIRegistry.registerStub("endProgress")
+
+APIRegistry.registerStub("getSelectedNodes")  # DCC selection, overridden in dcc module
+APIRegistry.registerStub("selectNodes")
+APIRegistry.registerStub("getDccName")
+APIRegistry.registerStub("getParentWindow")
+APIRegistry.registerStub("currentSceneFile")
+APIRegistry.registerStub("openUndoChunk")
+APIRegistry.registerStub("closeUndoChunk")
+
+from . import dcc
+dcc.register()
