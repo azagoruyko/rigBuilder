@@ -1685,26 +1685,63 @@ class EditAttributesDialog(QDialog):
         centerWindow(self)
 
     def saveAttributes(self):
-        self.moduleItem.module.removeAttributes()
+        module = self.moduleItem.module
 
+        def attrMetaEqual(a, b):
+            return (a.name() == b.name() and a.category() == b.category() and
+                    a.template() == b.template() and a.connect() == b.connect() and
+                    a.expression() == b.expression())
+
+        origAttrs = list(module.attributes())
+        origByName = {a.name(): a for a in origAttrs if a.name()}
+        origModuleModified = module.modified()
+
+        newAttrs = self.buildAttributesFromTabs()
+        newRunCode = self.tabWidget.tempRunCode
+
+        module.removeAttributes()
+
+        anythingChanged = len(origAttrs) != len(newAttrs)
+        for a in newAttrs:
+            module.addAttribute(a)
+            if not a.name():
+                continue
+
+            orig = origByName.get(a.name())
+            if orig is None or not attrMetaEqual(orig, a) or orig.modified():
+                a._modified = True
+                anythingChanged = True
+
+        if module.runCode() != newRunCode:
+            module.setRunCode(newRunCode)
+            anythingChanged = True
+
+        if not anythingChanged and not origModuleModified:
+            module._modified = False
+
+        self.moduleItem.emitDataChanged()
+        self.accept()
+
+    def buildAttributesFromTabs(self):
+        attrs = []
         for i in range(self.tabWidget.count()):
-            attrsLayout = self.tabWidget.widget(i).widget().attributesLayout # tab/scrollArea/EditAttributesWidget
+            attrsLayout = self.tabWidget.widget(i).widget().attributesLayout
+            category = self.tabWidget.tabText(i)
 
             for k in range(attrsLayout.count()):
                 w = attrsLayout.itemAt(k).widget()
 
                 a = Attribute()
-                a.setName(w.nameWidget.text())
-                a.setData(w.templateWidget.getJsonData())
-                a.setTemplate(w.template)
-                a.setCategory(self.tabWidget.tabText(i))
-                a.setConnect(w.attrConnect)
-                a.setExpression(w.attrExpression)
-                self.moduleItem.module.addAttribute(a)
+                a._name = w.nameWidget.text()
+                a._category = category
+                a._template = w.template
+                a._connect = w.attrConnect
+                a._expression = w.attrExpression
+                a._data = copyJson(w.templateWidget.getJsonData())
 
-        self.moduleItem.module.setRunCode(self.tabWidget.tempRunCode)
-        self.moduleItem.emitDataChanged()
-        self.accept()
+                attrs.append(a)
+
+        return attrs
 
 class CodeEditorWidget(CodeEditorWithNumbersWidget):
     def __init__(self, moduleItem=None, *, mainWindow=None, **kwargs):
