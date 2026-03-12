@@ -1,12 +1,31 @@
-/* Base */
+/*
+ * RigBuilder stylesheet – dark theme
+ *
+ * Color palette:
+ *   background-base:   #1f232a
+ *   background-panel: #222831  #252b33  #252c36
+ *   border:           #2a313d  #313a47  #343c49  #3a4250
+ *   accent:           #6ea7ff  #3e7bd6  #4f9cff
+ *   text:             #e8eaed  #c8cfdb  #f3f4f6
+ *   muted:            #8a92a3  #7a8699
+ */
+
+
+/* =============================================================================
+   Base
+   ========================================================================== */
+
 QWidget {
 	background-color: #1f232a;
 	color: #e8eaed;
 	font-family: "Consolas";
-	/*font-size: 14px;*/
 }
 
-/* Choice Controls */
+
+/* =============================================================================
+   Choice controls (checkbox, radio)
+   ========================================================================== */
+
 QCheckBox,
 QRadioButton {
 	spacing: 6px;
@@ -39,7 +58,11 @@ QRadioButton::indicator:checked {
 	border: 1px solid #7fb2ff;
 }
 
-/* Text Inputs And Numeric Controls */
+
+/* =============================================================================
+   Text inputs
+   ========================================================================== */
+
 QLineEdit,
 QTextEdit,
 QPlainTextEdit,
@@ -72,12 +95,24 @@ QAbstractSpinBox:disabled {
 	border-color: #2f3642;
 }
 
+QLineEdit::placeholder-text,
+QTextEdit::placeholder-text,
+QPlainTextEdit::placeholder-text {
+	color: #7a8699;
+	font-style: italic;
+}
+
 QComboBox::drop-down {
 	border: none;
 	width: 20px;
+	image: url("{ROOT}/images/combo-arrow.svg");
 }
 
-/* Buttons */
+
+/* =============================================================================
+   Buttons
+   ========================================================================== */
+
 QPushButton {
 	background-color: #2f3948;
 	color: #f3f4f6;
@@ -102,7 +137,11 @@ QPushButton:disabled {
 	border-color: #303845;
 }
 
-/* Tabs */
+
+/* =============================================================================
+   Tabs
+   ========================================================================== */
+
 QTabWidget::pane {
 	border: 1px solid #313a47;
 	border-radius: 5px;
@@ -131,7 +170,32 @@ QTabBar::tab:selected {
 	font-weight: 600;
 }
 
-/* Data Views */
+
+/* =============================================================================
+   Group boxes
+   ========================================================================== */
+
+QGroupBox {
+	background-color: #222831;
+	border: 1px solid #313a47;
+	border-radius: 5px;
+	margin-top: 10px;
+	padding-top: 8px;
+}
+
+QGroupBox::title {
+	subcontrol-origin: margin;
+	subcontrol-position: top left;
+	left: 8px;
+	padding: 0 4px;
+	color: #c8cfdb;
+}
+
+
+/* =============================================================================
+   Data views (tables, trees, lists)
+   ========================================================================== */
+
 QHeaderView,
 QTableWidget,
 QTableView,
@@ -164,6 +228,18 @@ QListWidget::item:selected {
 	color: #ffffff;
 }
 
+QAbstractItemView QLineEdit {
+	padding: 1px 1px;
+	min-height: 0;
+}
+
+QAbstractItemView,
+QTreeView,
+QTreeWidget {
+	outline: none;
+}
+
+/* Tree view – items */
 QTreeView::item {
 	border-left: 1px solid #2a313d;
 	border-radius: 3px;
@@ -175,29 +251,36 @@ QTreeView::item:hover {
 	background-color: #2a313d;
 }
 
+QTreeView::item:selected,
 QTreeView::item:selected:hover {
 	background-color: #3e7bd6;
 	color: #ffffff;
+	border-left-color: #3e7bd6;
+	outline: none;
 }
 
-/* Group Boxes */
-QGroupBox {
+/* Tree view – branch indicators */
+QTreeView::branch {
 	background-color: #222831;
-	border: 1px solid #313a47;
-	border-radius: 5px;
-	margin-top: 10px;
-	padding-top: 8px;
 }
 
-QGroupBox::title {
-	subcontrol-origin: margin;
-	subcontrol-position: top left;
-	left: 8px;
-	padding: 0 4px;
-	color: #c8cfdb;
+QTreeView::branch:closed:has-children:!has-siblings,
+QTreeView::branch:closed:has-children:has-siblings {
+	border-image: none;
+	image: url("{ROOT}/images/tree-branch-closed.svg");
 }
 
-/* Menus */
+QTreeView::branch:open:has-children:!has-siblings,
+QTreeView::branch:open:has-children:has-siblings {
+	border-image: none;
+	image: url("{ROOT}/images/tree-branch-open.svg");
+}
+
+
+/* =============================================================================
+   Menus
+   ========================================================================== */
+
 QMenu {
 	background-color: #20262f;
 	border: 1px solid #313a47;
@@ -214,7 +297,11 @@ QMenu::item:selected {
 	color: #ffffff;
 }
 
-/* Progress Bar */
+
+/* =============================================================================
+   Progress bar
+   ========================================================================== */
+
 QProgressBar {
 	background-color: #222831;
 	border: 1px solid #313a47;
@@ -229,7 +316,73 @@ QProgressBar::chunk {
 	border-radius: 4px;
 }
 
-/* Scrollbars */
+
+/* =============================================================================
+   Sliders
+   ========================================================================== */
+
+QSlider::groove:horizontal,
+QSlider::groove:vertical {
+	background-color: #2a313d;
+	border: 1px solid #3d4654;
+	border-radius: 4px;
+}
+
+QSlider::groove:horizontal {
+	height: 8px;
+}
+
+QSlider::groove:vertical {
+	width: 8px;
+}
+
+QSlider::handle:horizontal,
+QSlider::handle:vertical {
+	background-color: #455463;
+	border: 1px solid #546478;
+	border-radius: 8px;
+}
+
+QSlider::handle:horizontal:hover,
+QSlider::handle:vertical:hover {
+	background-color: #546580;
+	border-color: #6ea7ff;
+}
+
+QSlider::handle:horizontal:pressed,
+QSlider::handle:vertical:pressed {
+	background-color: #657a94;
+	border-color: #6ea7ff;
+}
+
+QSlider::handle:horizontal {
+	width: 16px;
+	height: 16px;
+	margin: -4px 0;
+}
+
+QSlider::handle:vertical {
+	width: 16px;
+	height: 16px;
+	margin: 0 -4px;
+}
+
+QSlider::sub-page:horizontal,
+QSlider::sub-page:vertical {
+	background-color: #424e5e;
+	border-radius: 4px;
+}
+
+QSlider::add-page:horizontal,
+QSlider::add-page:vertical {
+	background: transparent;
+}
+
+
+/* =============================================================================
+   Scrollbars
+   ========================================================================== */
+
 QScrollBar:vertical,
 QScrollBar:horizontal {
 	background-color: #20262f;
@@ -263,4 +416,18 @@ QScrollBar::add-page,
 QScrollBar::sub-page {
 	background: none;
 	border: none;
+}
+
+
+/* =============================================================================
+   Tooltips
+   ========================================================================== */
+
+QToolTip {
+	background-color: #455160;
+	color: #c8cfdb;
+	border: 1px solid #3a4250;
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 12px;
 }

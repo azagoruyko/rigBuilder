@@ -180,7 +180,7 @@ class AttributesWidget(QWidget):
             templateWidget.somethingChanged.connect(lambda idx=idx: self.widgetOnChange(idx))
 
             nameWidget.setAlignment(Qt.AlignRight)
-            nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
+            nameWidget.setCursor(Qt.PointingHandCursor)
             nameWidget.contextMenuEvent = lambda event, idx=idx: self.nameContextMenuEvent(event, idx)
 
             layout.addWidget(nameWidget)
@@ -208,6 +208,12 @@ class AttributesWidget(QWidget):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         menu = QMenu(self)
+        titleAction = menu.addAction(attr.name())
+        titleAction.setEnabled(False)
+        font = titleAction.font()
+        font.setBold(True)
+        titleAction.setFont(font)
+        menu.addSeparator()
 
         if self.moduleItem and self.moduleItem.parent():
             makeConnectionMenu = menu.addMenu("Make connection")
@@ -302,14 +308,14 @@ class AttributesWidget(QWidget):
         if attr.expression():
             tooltip.append("Expression:\n" + attr.expression())
 
-        if attr.connect() and not attr.expression(): # only connection
-            style = "TemplateWidget { border: 4px solid #6e6e39; background-color: #6e6e39 }"
+        if attr.connect() and not attr.expression(): # only connection (yellow)
+            style = "TemplateWidget { border: 4px solid rgba(110, 110, 57, 0.45); background-color: rgba(110, 110, 57, 0.25) }"
         
-        elif attr.expression() and not attr.connect(): # only expression
-            style = "TemplateWidget { border: 4px solid #632094; background-color: #632094 }"
+        elif attr.expression() and not attr.connect(): # only expression (magenta)
+            style = "TemplateWidget { border: 4px solid rgba(99, 32, 148, 0.45); background-color: rgba(99, 32, 148, 0.25) }"
         
         elif attr.expression() and attr.connect(): # both
-            style = "TemplateWidget { border: 4px solid rgba(0,0,0,0); background: QLinearGradient( x1: 0, y1: 0, x2: 1, y2:0, stop: 0 #6e6e39, stop: 1 #632094);}"
+            style = "TemplateWidget { border: 4px solid rgba(0,0,0,0); background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 rgba(110, 110, 57, 0.25), stop: 1 rgba(99, 32, 148, 0.25)); }"
 
         nameWidget.setText(attr.name()+("*" if attr.modified() else ""))
 
@@ -401,7 +407,7 @@ class AttributesTabWidget(QTabWidget):
         self.tabsAttributes = {}
         self._attributesWidget = None
 
-        self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"])
+        self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"], parent=mainWindow)
         self.searchAndReplaceDialog.onReplace.connect(self.onReplace)
 
         self.currentChanged.connect(self.tabChanged)
@@ -1014,6 +1020,15 @@ class TreeWidget(QTreeWidget):
 
         self.setIndentation(16)
 
+    def drawRow(self, painter, option, index):
+        if self.selectionModel().isSelected(index):
+            fullRowRect = QRect(0, option.rect.y(), self.viewport().width(), option.rect.height())
+            painter.fillRect(fullRowRect, self.palette().highlight())
+            option.palette.setBrush(QPalette.Highlight, QBrush(Qt.transparent, Qt.NoBrush))
+        else:
+            option.palette.setBrush(QPalette.Highlight, self.palette().highlight())
+        super().drawRow(painter, option, index)
+
     def dragEnterEvent(self, event):
         super().dragEnterEvent(event)
 
@@ -1411,9 +1426,9 @@ class EditTemplateWidget(QWidget):
         self.nameWidget = QLabel(name)
         self.nameWidget.setAlignment(Qt.AlignRight)
         self.nameWidget.setFixedWidth(self.fontMetrics().averageCharWidth()*20)
+        self.nameWidget.setCursor(Qt.PointingHandCursor)
         self.nameWidget.mouseDoubleClickEvent = self.nameMouseDoubleClickEvent
         self.nameWidget.contextMenuEvent = self.nameContextMenuEvent
-        self.nameWidget.setStyleSheet("QLabel:hover:!pressed{ background-color: #666666; }")
 
         self.templateWidget = TemplateWidgets[template]()
 
@@ -1441,6 +1456,12 @@ class EditTemplateWidget(QWidget):
 
     def nameContextMenuEvent(self, event):
         menu = QMenu(self)
+        titleAction = menu.addAction(self.nameWidget.text())
+        titleAction.setEnabled(False)
+        font = titleAction.font()
+        font.setBold(True)
+        titleAction.setFont(font)
+        menu.addSeparator()
 
         menu.addAction("Copy", self.copyTemplate)
 
@@ -2013,6 +2034,7 @@ class RigBuilderWindow(QFrame):
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
+        applyStylesheet(self)
 
     def setupModulesAutoReloadWatcher(self):
         watchRoots = [getServerModulesPath(), getLocalModulesPath()]
@@ -2260,29 +2282,24 @@ class RigBuilderWindow(QFrame):
         self.infoWidget.clear()
         template = []
 
-        # recent updates
-        template.append("<center><h2 style='background-color: #666666'>Recent Changes</h2></center>")
-
         # local modules
         def displayFiles(files, *, local):
             prefix = "local" if local else "server"
             for k, v in files.items():
                 if v:
-                    template.append("<h3 style='background-color: #393939'>{}</h3>".format(escape(k)))
+                    template.append("<h3>{}</h3>".format(escape(k)))
                     root = getLocalModulesPath() if local else getServerModulesPath()
                     for file in v:
                         relPath = calculateRelativePath(file, root).replace(".xml", "").replace("\\", "/")
                         template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
 
         files = categorizeFilesByModificationTime(Module.LocalUids.values())
-        if files:
-            template.append("<h2 style='background-color: #444444'>Local modules</h2>")
-            displayFiles(files, local=True)
+        template.append("<h2>📁 Local modules updates</h2>")
+        displayFiles(files, local=True)
 
         files = categorizeFilesByModificationTime(Module.ServerUids.values())
-        if files:
-            template.append("<h2 style='background-color: #444444'>Server modules</h2>")
-            displayFiles(files, local=False)
+        template.append("<hr><h2>🌏 Server modules updates</h2>")
+        displayFiles(files, local=False)
 
         self.infoWidget.insertHtml("".join(template))
         self.infoWidget.moveCursor(QTextCursor.Start)
@@ -2542,7 +2559,8 @@ def cleanupVscode():
 
 cleanupVscode()
 
-mainWindow = RigBuilderWindow() # Initialize main window
+
+mainWindow = RigBuilderWindow()
 loadWorkspace(mainWindow)
 mainWindow.aboutToRunModule.connect(lambda: saveWorkspace(mainWindow))
 QApplication.instance().aboutToQuit.connect(lambda: saveWorkspace(mainWindow))

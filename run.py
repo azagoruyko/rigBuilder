@@ -11,10 +11,6 @@ os.environ["RIG_BUILDER_DCC"] = "standalone"
 if __name__ == "__main__":
     app = QApplication([])
 
-    # Apply stylesheet
-    with open(os.path.join(directory, "stylesheet.css"), "r") as f:
-        app.setStyleSheet(f.read())
-
     import rigBuilder.ui
     rigBuilder.ui.mainWindow.show()
 

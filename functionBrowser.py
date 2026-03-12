@@ -21,6 +21,7 @@ from .core import Attribute
 from .core import Module
 from .qt import *
 from .ui import AttributesWidget
+from .ui_utils import applyStylesheet
 from . import ui as rigBuilderUi
 
 
@@ -199,10 +200,6 @@ class FunctionBrowserWindow(QWidget):
         self.currentFunctionKey = None
         self.currentAttributesWidget = None
 
-        self._buildUi()
-        self.refreshTree()
-
-    def _buildUi(self):
         rootLayout = QVBoxLayout()
         self.setLayout(rootLayout)
 
@@ -292,6 +289,9 @@ class FunctionBrowserWindow(QWidget):
         self.treeWidget.itemSelectionChanged.connect(self._onTreeSelectionChanged)
         self.treeWidget.customContextMenuRequested.connect(self._showTreeContextMenu)
         self.runButton.clicked.connect(self.runSelectedFunction)
+
+        self.refreshTree()
+        applyStylesheet(self)
 
     def _browseFolder(self):
         currentPath = self.folderEdit.text().strip() or self.scanRootPath
