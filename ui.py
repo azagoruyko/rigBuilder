@@ -2128,7 +2128,7 @@ class RigBuilderWindow(QFrame):
 
         for k, v in env.items():
             if callable(v):
-                predefinedCode.append(getFunctionDefinition(v))
+                predefinedCode.append(getFunctionDefinition(v, name=k))
             else:
                 predefinedCode.append("{} = {}".format(k, getVariableValue(v)))
 
