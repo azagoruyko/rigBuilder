@@ -13,7 +13,7 @@ It is **not bound to any single host**: you can use it with **Maya**, **Blender*
 
 It is aimed at riggers and TDs who want a consistent, maintainable way to assemble rigs from building blocks (spine, limbs, face, fingers, etc.) and to share or version those setups as XML.
 
-<img width="1294" height="916" alt="image" src="https://github.com/user-attachments/assets/f47a27a8-57c5-4f32-b118-9ef77d513796" />
+<img width="1295" height="911" alt="image" src="https://github.com/user-attachments/assets/922a8f6e-c48e-41e2-bcfb-ab4596f90ea0" />
 
 Full documentation is [here](https://github.com/azagoruyko/rigBuilder/wiki/Documentation).
 
