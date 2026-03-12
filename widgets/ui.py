@@ -342,7 +342,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
 
         self.templates = {}
         self.templates["Get selected"] = {"label": "<", "command": "nodes = getSelectedNodes()\nvalue = nodes[0] if nodes else ''"}
-        defaultCmd = self.templates["Get selected"]
+        
         self.templates["Get open file"] = {"label": "...", "command":'''import os
 from rigBuilder.qt import QFileDialog
 path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
@@ -358,7 +358,7 @@ from rigBuilder.qt import QFileDialog
 path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
 value = path or value'''}
 
-        self.buttonCommand = defaultCmd["command"]
+        self.buttonCommand = 'print("Hello, world!")'
         self.buttonEnabled = True
         self.value = ""
         self.minValue = 0
@@ -379,7 +379,7 @@ value = path or value'''}
         self.sliderWidget.valueChanged.connect(self.sliderValueChanged)
         self.sliderWidget.hide()
 
-        self.buttonWidget = QPushButton(defaultCmd["label"])
+        self.buttonWidget = QPushButton("Button")
         self.buttonWidget.clicked.connect(self.buttonClicked)
         self.buttonWidget.contextMenuEvent = self.buttonContextMenuEvent
 
