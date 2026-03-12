@@ -9,7 +9,7 @@ from .qt import *
 from . import ui as rigBuilderUi
 
 TABLE_COLUMNS = ["Name", "Type"]
-DEFAULT_WINDOW_SIZE = (800, 500)
+DEFAULT_WINDOW_SIZE = (400, 700)
 
 
 def _formatEntry(name, obj):
@@ -61,37 +61,42 @@ class ApiBrowserWindow(QWidget):
         self.refreshButton.clicked.connect(self.refreshList)
         toolLayout.addWidget(self.refreshButton)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Vertical)
         rootLayout.addWidget(splitter, 1)
 
-        leftPane = QWidget()
-        leftLayout = QVBoxLayout()
-        leftLayout.setContentsMargins(0, 0, 0, 0)
-        leftPane.setLayout(leftLayout)
-        leftLayout.addWidget(QLabel("Registered API"))
+        tablePane = QWidget()
+        tableLayout = QVBoxLayout()
+        tableLayout.setContentsMargins(0, 0, 0, 0)
+        tablePane.setLayout(tableLayout)
+        tableLayout.addWidget(QLabel("Registered API"))
         self.tableWidget = QTableWidget()
         self.tableWidget.setColumnCount(len(TABLE_COLUMNS))
         self.tableWidget.setHorizontalHeaderLabels(TABLE_COLUMNS)
         self.tableWidget.setAlternatingRowColors(True)
         self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tableWidget.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.tableWidget.horizontalHeader().setStretchLastSection(True)
+        
+        header = self.tableWidget.horizontalHeader()
+        for i in range(len(TABLE_COLUMNS)):
+            header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
+
         self.tableWidget.setSortingEnabled(True)
         self.tableWidget.itemSelectionChanged.connect(self._onSelectionChanged)
-        leftLayout.addWidget(self.tableWidget)
-        splitter.addWidget(leftPane)
+        tableLayout.addWidget(self.tableWidget)
+        splitter.addWidget(tablePane)
 
-        rightPane = QWidget()
-        rightLayout = QVBoxLayout()
-        rightLayout.setContentsMargins(0, 0, 0, 0)
-        rightPane.setLayout(rightLayout)
-        rightLayout.addWidget(QLabel("Details"))
+        detailsPane = QWidget()
+        detailsLayout = QVBoxLayout()
+        detailsLayout.setContentsMargins(0, 0, 0, 0)
+        detailsPane.setLayout(detailsLayout)
+        detailsLayout.addWidget(QLabel("Details"))
         self.detailsText = QTextEdit()
         self.detailsText.setReadOnly(True)
         self.detailsText.setPlaceholderText("Select an entry to view details.")
-        rightLayout.addWidget(self.detailsText)
-        splitter.addWidget(rightPane)
-        splitter.setStretchFactor(1, 1)
+        detailsLayout.addWidget(self.detailsText)
+        splitter.addWidget(detailsPane)
+        splitter.setStretchFactor(0, 8)
+        splitter.setStretchFactor(1, 2)
 
         self.refreshList()
 
