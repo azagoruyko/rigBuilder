@@ -13,6 +13,7 @@ from xml.sax.saxutils import escape
 
 from .qt import *
 
+from . import __version__
 from .core import *
 from .editor import *
 from .workspace import saveWorkspace, loadWorkspace
@@ -1921,7 +1922,7 @@ class RigBuilderWindow(QFrame):
         super().__init__(parent=parentWindow)
         self.modulesAutoReloadWatcher = None
 
-        self.setWindowTitle("Rig Builder")
+        self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 700)
 
         self.setWindowFlags(self.windowFlags() | Qt.Window)
