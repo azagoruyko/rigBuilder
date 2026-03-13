@@ -1145,6 +1145,36 @@ class TreeWidget(QTreeWidget):
             self.mainWindow.logger.error(f"'{filePath}': invalid module")
             self.mainWindow.showLog()
 
+    def importScript(self):
+        """Import .py file as new module: create empty module named after file, set run code to script content."""
+        sceneDir = getLocalModulesPath()
+        currentFile = APIRegistry.currentSceneFile()
+        if currentFile:
+            sceneDir = os.path.dirname(currentFile)
+
+        filePath, _ = QFileDialog.getOpenFileName(
+            self.mainWindow, "Import script", sceneDir, "Python (*.py);;All files (*)"
+        )
+        if not filePath:
+            return
+
+        try:
+            with open(filePath, "r", encoding="utf-8") as f:
+                code = f.read()
+        except OSError as e:
+            self.mainWindow.logger.error(f"Cannot read '{filePath}': {e}")
+            self.mainWindow.showLog()
+            return
+
+        name = os.path.splitext(os.path.basename(filePath))[0]
+        m = Module()
+        m.setName(name)
+        m.setRunCode(code)
+        item = self.makeItemFromModule(m)
+
+        self.addTopLevelItem(item)
+        self.mainWindow.selectModule(item)
+
     def saveModule(self):
         selectedItems = self.selectedItems()
         if not selectedItems:
@@ -2064,6 +2094,7 @@ class RigBuilderWindow(QFrame):
 
         menu.addAction("New", self.treeWidget.insertModule, "Insert")
         menu.addAction("Import", self.treeWidget.importModule, "Ctrl+I")
+        menu.addAction("Import script", self.treeWidget.importScript)
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
         menu.addAction("Save as", self.treeWidget.saveAsModule)
