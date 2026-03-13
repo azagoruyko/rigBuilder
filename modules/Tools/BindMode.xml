@@ -32,7 +32,7 @@ elif @mode == 1: # unbind
     print("Unbinded")
         ]]></run>
 <attributes>
-<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> to enter Bind mode.<br>\n2. Change joints position.<br>\n3. Press <b>Run</b> to exit Bind mode.<br>\n</html>", "default": "text"}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> with Unbind mode.<br>\n2. Change joints position and press <b>Run</b> with Bind mode.<br>\n</html>", "default": "text"}]]></attr>
 <attr name="mode" template="radioButton" category="General" connect=""><![CDATA[{"items": ["Bind", "Unbind"], "current": 0, "columns": 3, "default": "current"}]]></attr>
 <attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"items": ["pelvis"], "selected": [], "default": "items"}]]></attr>
 </attributes>
