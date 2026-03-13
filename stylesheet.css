@@ -104,7 +104,8 @@ QPlainTextEdit::placeholder-text {
 
 QComboBox::drop-down {
 	border: none;
-	width: 20px;
+	width: 12px;
+	margin-right: 5px;
 	image: url("{ROOT}/images/combo-arrow.svg");
 }
 
