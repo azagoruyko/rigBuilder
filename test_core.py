@@ -1590,9 +1590,9 @@ class TestPathAndSettings:
         module.saveToFile(filePath)
 
         envVarName = "RB_TEST_MODULE"
-        # Use %VAR% style so it works on Windows
+        # Use $VAR style so it works on Unix and Windows (Python's expandvars supports both)
         monkeypatch.setenv(envVarName, filePath)
-        spec = "%{}%".format(envVarName)
+        spec = "${}".format(envVarName)
 
         resolved = resolveModuleSpec(spec)
         assert os.path.normpath(resolved) == os.path.normpath(filePath)
