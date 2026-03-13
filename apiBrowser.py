@@ -6,7 +6,6 @@ import inspect
 
 from .core import APIRegistry
 from .qt import *
-from .ui_utils import applyStylesheet
 from . import ui as rigBuilderUi
 
 TABLE_COLUMNS = ["Name", "Type"]
@@ -99,7 +98,6 @@ class ApiBrowserWindow(QWidget):
         splitter.setStretchFactor(0, 8)
         splitter.setStretchFactor(1, 2)
 
-        applyStylesheet(self)
         self.refreshList()
 
     def refreshList(self):
@@ -148,8 +146,7 @@ def showApiBrowser():
         existing.activateWindow()
         return existing
 
-    parent = getattr(rigBuilderUi, "parentWindow", None) or getattr(rigBuilderUi, "ParentWindow", None)
-    window = ApiBrowserWindow(parent=parent)
+    window = ApiBrowserWindow(parent=rigBuilderUi.mainWindow)
     ApiBrowserWindow.windowInstance = window
     window.show()
     return window

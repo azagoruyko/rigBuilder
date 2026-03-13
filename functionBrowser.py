@@ -21,7 +21,6 @@ from .core import Attribute
 from .core import Module
 from .qt import *
 from .ui import AttributesWidget
-from .ui_utils import applyStylesheet
 from . import ui as rigBuilderUi
 
 
@@ -291,7 +290,6 @@ class FunctionBrowserWindow(QWidget):
         self.runButton.clicked.connect(self.runSelectedFunction)
 
         self.refreshTree()
-        applyStylesheet(self)
 
     def _browseFolder(self):
         currentPath = self.folderEdit.text().strip() or self.scanRootPath
@@ -886,7 +884,7 @@ def showFunctionBrowser():
         existing.activateWindow()
         return existing
 
-    window = FunctionBrowserWindow(parent=rigBuilderUi.parentWindow)
+    window = FunctionBrowserWindow(parent=rigBuilderUi.mainWindow)
     FunctionBrowserWindow.windowInstance = window
     window.show()
     return window
