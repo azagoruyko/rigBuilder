@@ -610,9 +610,13 @@ class ModuleSelectorWidget(QWidget):
         self.updateSourceWidget.setCurrentIndex({"all": 0, "server": 1, "local": 2, "": 3}[Module.UpdateSource])
         self.updateSourceWidget.currentIndexChanged.connect(lambda _=None: self.updateSource())
 
-        self.modulesFromWidget = QComboBox()
-        self.modulesFromWidget.addItems(["Server", "Local"])
-        self.modulesFromWidget.currentIndexChanged.connect(lambda _=None: self.maskChanged())
+        self.modulesFromButtonGroup = QButtonGroup(self)
+        self.modulesFromServerRadio = QRadioButton("Server")
+        self.modulesFromLocalRadio = QRadioButton("Local")
+        self.modulesFromButtonGroup.addButton(self.modulesFromServerRadio, 0)
+        self.modulesFromButtonGroup.addButton(self.modulesFromLocalRadio, 1)
+        self.modulesFromServerRadio.setChecked(True)
+        self.modulesFromButtonGroup.buttonClicked.connect(lambda _: self.maskChanged())
 
         self.maskWidget = QLineEdit()
         self.maskWidget.setPlaceholderText("Filter modules...")
@@ -636,10 +640,11 @@ class ModuleSelectorWidget(QWidget):
 
         controlsLayout = QHBoxLayout()
         controlsLayout.addWidget(QLabel("Modules from"))
-        controlsLayout.addWidget(self.modulesFromWidget)
+        controlsLayout.addWidget(self.modulesFromServerRadio)
+        controlsLayout.addWidget(self.modulesFromLocalRadio)
+        controlsLayout.addStretch()
         controlsLayout.addWidget(QLabel("Update source"))
         controlsLayout.addWidget(self.updateSourceWidget)
-        controlsLayout.addStretch()
 
         layout.addWidget(self.treeWidget)
         layout.addWidget(self.loadingLabel)
@@ -685,7 +690,7 @@ class ModuleSelectorWidget(QWidget):
         self.maskChanged()
 
     def getModulesRootDirectory(self):
-        modulesFrom = self.modulesFromWidget.currentIndex()
+        modulesFrom = self.modulesFromButtonGroup.checkedId()
         return getServerModulesPath() if modulesFrom == 0 else getLocalModulesPath()
 
     def maskChanged(self):
@@ -695,7 +700,7 @@ class ModuleSelectorWidget(QWidget):
                 if text == ch.text(column):
                     return ch
 
-        modulesFrom = self.modulesFromWidget.currentIndex()
+        modulesFrom = self.modulesFromButtonGroup.checkedId()
         modulesDirectory = self.getModulesRootDirectory()
         modules = list(Module.ServerUids.values()) if modulesFrom == 0 else list(Module.LocalUids.values())
         modules = sorted(modules)
