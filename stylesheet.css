@@ -203,7 +203,7 @@ QTreeWidget,
 QTreeView,
 QListWidget {
 	background-color: #222831;
-	border: 1px solid #313a47;
+	border: none;
 	alternate-background-color: #252c36;
 }
 
@@ -221,11 +221,14 @@ QTableView QTableCornerButton::section {
 
 QTableWidget::item:selected,
 QTableView::item:selected,
-QTreeWidget::item:selected,
 QTreeView::item:selected,
+QTreeView::item:selected:hover,
+QTreeWidget::item:selected,
+QTreeWidget::item:selected:hover,
 QListWidget::item:selected {
 	background-color: #3e7bd6;
 	color: #ffffff;
+	outline: none;
 }
 
 QAbstractItemView QLineEdit {
@@ -233,30 +236,20 @@ QAbstractItemView QLineEdit {
 	min-height: 0;
 }
 
-QAbstractItemView,
-QTreeView,
-QTreeWidget {
+QAbstractItemView {
 	outline: none;
 }
 
 /* Tree view – items */
-QTreeView::item {
+QTreeView::item,
+QTreeWidget::item {
 	border-left: 1px solid #2a313d;
-	border-radius: 3px;
 	padding: 2px 4px;
-	margin: 1px 0;
 }
 
-QTreeView::item:hover {
+QTreeView::item:hover,
+QTreeWidget::item:hover {
 	background-color: #2a313d;
-}
-
-QTreeView::item:selected,
-QTreeView::item:selected:hover {
-	background-color: #3e7bd6;
-	color: #ffffff;
-	border-left-color: #3e7bd6;
-	outline: none;
 }
 
 /* Tree view – branch indicators */
@@ -343,18 +336,6 @@ QSlider::handle:vertical {
 	border-radius: 8px;
 }
 
-QSlider::handle:horizontal:hover,
-QSlider::handle:vertical:hover {
-	background-color: #546580;
-	border-color: #6ea7ff;
-}
-
-QSlider::handle:horizontal:pressed,
-QSlider::handle:vertical:pressed {
-	background-color: #657a94;
-	border-color: #6ea7ff;
-}
-
 QSlider::handle:horizontal {
 	width: 16px;
 	height: 16px;
@@ -365,6 +346,18 @@ QSlider::handle:vertical {
 	width: 16px;
 	height: 16px;
 	margin: 0 -4px;
+}
+
+QSlider::handle:horizontal:hover,
+QSlider::handle:vertical:hover {
+	background-color: #546580;
+	border-color: #6ea7ff;
+}
+
+QSlider::handle:horizontal:pressed,
+QSlider::handle:vertical:pressed {
+	background-color: #657a94;
+	border-color: #6ea7ff;
 }
 
 QSlider::sub-page:horizontal,
