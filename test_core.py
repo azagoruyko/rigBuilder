@@ -9,7 +9,8 @@ from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, Dict,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, ModuleRuntimeError, APIError,
-    getUidFromFile, calculateRelativePath,
+    getUidFromFile, calculateRelativePath, getLocalModulesPath,
+    getServerModulesPath, resolveModuleSpec,
     printError, printWarning, exitModule,
     APIRegistry, RigBuilderPath, RigBuilderLocalPath
 )
@@ -388,6 +389,18 @@ class TestModule:
         assert len(copy.attributes()) == len(simpleModule.attributes())
         assert copy is not simpleModule
         assert copy.attributes()[0] is not simpleModule.attributes()[0]
+
+    def testEmbedClearsState(self):
+        """embed() should clear uid and filePath and mark module as modified."""
+        module = createModule("test")
+        module._uid = "someUid"
+        module._modified = False
+        module._filePath = os.path.join("C:\\", "folder", "module.xml")
+
+        module.embed()
+        assert module.uid() == ""
+        assert module.filePath() == ""
+        assert module.modified() is True
 
 
 class TestModuleChildren:
@@ -1470,3 +1483,129 @@ class TestIntegration:
         # Path should work
         path = current.path()
         assert path.count("/") == depth
+
+
+class TestPathAndSettings:
+    """Tests for path and settings helpers."""
+
+    def testCalculateRelativePath_insideRoot(self):
+        """calculateRelativePath should strip root prefix (case-insensitive)."""
+        root = os.path.join("C:\\", "Projects", "Rig")
+        path = os.path.join("C:\\", "Projects", "Rig", "sub", "file.xml")
+        result = calculateRelativePath(path, root.lower())
+        assert result == os.path.join("sub", "file.xml")
+
+    def testCalculateRelativePath_outsideRoot(self):
+        """calculateRelativePath should return original path when outside root."""
+        root = os.path.join("C:\\", "Projects", "Rig")
+        path = os.path.join("C:\\", "Other", "Rig", "file.xml")
+        result = calculateRelativePath(path, root)
+        assert result == os.path.normpath(path)
+
+    def testGetLocalModulesPath(self):
+        """getLocalModulesPath returns normalized path under RigBuilderLocalPath."""
+        expected = os.path.normpath(os.path.join(RigBuilderLocalPath, "modules"))
+        assert getLocalModulesPath() == expected
+
+    def testResolveModuleSpec_empty(self):
+        """Empty spec should return empty string."""
+        assert resolveModuleSpec("") == ""
+
+    def testResolveModuleSpec_byUidAndPathVariants(self, tempDir):
+        """resolveModuleSpec should resolve by uid and path variants."""
+        # Create and save module in local modules path
+        module = createModule("resolveTest")
+        filePath = os.path.join(tempDir, "resolveTest.xml")
+        module.saveToFile(filePath)
+        Module.updateUidsCache()
+
+        uid = module.uid()
+        assert uid in Module.LocalUids
+
+        # By UID
+        resolvedByUid = resolveModuleSpec(uid)
+        assert os.path.normpath(resolvedByUid) == os.path.normpath(filePath)
+
+        # By full path without extension
+        noExt = filePath[:-4]
+        resolvedNoExt = resolveModuleSpec(noExt)
+        assert os.path.normpath(resolvedNoExt) == os.path.normpath(filePath)
+
+        # By relative name under local modules root
+        relName = os.path.relpath(filePath, getLocalModulesPath())
+        # Use name without extension relative to local modules path
+        relNameNoExt = relName[:-4]
+        resolvedRel = resolveModuleSpec(relNameNoExt)
+        assert os.path.normpath(resolvedRel) == os.path.normpath(filePath)
+
+    def testResolveModuleSpec_withEnvVar(self, tempDir, monkeypatch):
+        """resolveModuleSpec should expand environment variables."""
+        module = createModule("envResolve")
+        filePath = os.path.join(tempDir, "envResolve.xml")
+        module.saveToFile(filePath)
+
+        envVarName = "RB_TEST_MODULE"
+        # Use %VAR% style so it works on Windows
+        monkeypatch.setenv(envVarName, filePath)
+        spec = "%{}%".format(envVarName)
+
+        resolved = resolveModuleSpec(spec)
+        assert os.path.normpath(resolved) == os.path.normpath(filePath)
+
+class TestAPIRegistry:
+    """Additional tests for APIRegistry metaclass behaviour."""
+
+    def testAttributeAccessAndMissingAttribute(self, cleanAPIRegistry):
+        """Accessing registered objects via attributes should work, missing should raise."""
+        def func():
+            return 123
+
+        APIRegistry.register("attrFunc", func)
+        # Access via attribute (__getattr__)
+        assert APIRegistry.attrFunc() == 123
+
+        # Missing attribute should raise AttributeError
+        with pytest.raises(AttributeError):
+            _ = APIRegistry.nonexistentAttribute
+
+    def testAttributeAssignmentStoresInObjects(self, cleanAPIRegistry):
+        """Assigning attributes should store them in _objects for non-reserved names."""
+        APIRegistry.newFunc = lambda: 42
+        api = APIRegistry.api()
+        assert "newFunc" in api
+        assert api["newFunc"]() == 42
+
+    def testReservedNamesAreNotStoredInObjects(self, cleanAPIRegistry):
+        """Assigning to reserved names should not affect _objects."""
+        originalApi = APIRegistry.api
+        try:
+            APIRegistry.api = lambda: {"overridden": True}
+            # Reserved name: "api" should not be stored in _objects
+            apiDict = APIRegistry._objects
+            assert "api" not in apiDict
+            # But attribute access should now return the overridden function
+            assert APIRegistry.api()["overridden"] is True
+        finally:
+            APIRegistry.api = originalApi
+
+    def testUnregisterAndClear(self, cleanAPIRegistry):
+        """Test unregister and clear behaviour."""
+        def testFunc():
+            return 1
+
+        APIRegistry.register("toRemove", testFunc)
+        assert "toRemove" in APIRegistry.api()
+
+        # Unregister existing
+        APIRegistry.unregister("toRemove")
+        assert "toRemove" not in APIRegistry.api()
+
+        # Unregister non-existing should raise
+        with pytest.raises(APIError, match="is not registered"):
+            APIRegistry.unregister("toRemove")
+
+        # Clear should remove all objects
+        APIRegistry.register("another", testFunc)
+        assert APIRegistry.api() != {}
+        APIRegistry.clear()
+        assert APIRegistry.api() == {}
