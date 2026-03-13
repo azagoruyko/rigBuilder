@@ -26,8 +26,10 @@ def getUidFromFile(path: str) -> Optional[str]:
 
 def calculateRelativePath(path: str, root: str) -> str:
     """Calculate relative path from root directory."""
-    if path.lower().startswith(root.lower()):
-        return path[len(root):]
+    path = os.path.normpath(path)
+    root = os.path.normpath(root)
+    if path.lower().startswith(root.lower() + os.sep):
+        return path[len(root) + 1:]
     else:
         return path
 
@@ -658,9 +660,9 @@ class Module(object):
     def relativePath(self) -> str:
         """Get relative path from modules directory."""
         if self.loadedFromServer():
-            return calculateRelativePath(self._filePath, getServerModulesPath() + os.sep)
+            return calculateRelativePath(self._filePath, getServerModulesPath())
         elif self.loadedFromLocal():
-            return calculateRelativePath(self._filePath, getLocalModulesPath() + os.sep)
+            return calculateRelativePath(self._filePath, getLocalModulesPath())
         else:
             return self._filePath
 
