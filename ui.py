@@ -514,7 +514,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         self.setHeaderLabels(["Module", "Modification time"])
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.setSortingEnabled(True)
-        self.sortItems(1, Qt.AscendingOrder)
+        self.sortItems(1, Qt.DescendingOrder)
 
         self.setDragEnabled(True)
         self.setAcceptDrops(False)
