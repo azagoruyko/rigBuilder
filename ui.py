@@ -192,7 +192,7 @@ class AttributesWidget(QWidget):
     def connectionMenu(self, menu, module, attrWidgetIndex, path="/"):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        subMenu = QMenu(module.name())
+        subMenu = QMenu(module.name(), self)
 
         for a in module.attributes():
             if a.template() == attr.template() and a.name(): # skip empty names as well
