@@ -682,7 +682,7 @@ class TestModuleFileOperations:
         # Save
         simpleModule.saveToFile(filePath)
         assert os.path.exists(filePath)
-        assert simpleModule.filePath() == os.path.normcase(os.path.normpath(filePath))
+        assert simpleModule.filePath() == os.path.normpath(filePath)
         assert simpleModule.uid() != ""
 
         # Load

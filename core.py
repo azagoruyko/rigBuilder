@@ -24,15 +24,12 @@ def getUidFromFile(path: str) -> Optional[str]:
         if r:
             return r.group(1)
 
-def normpath(path):
-    """Normalize path for robust, case-insensitive comparisons."""
-    return os.path.normcase(os.path.normpath(path))
-
 def calculateRelativePath(path: str, root: str) -> str:
     """Calculate relative path from root directory."""
-    path = normpath(path)
-    root_norm = normpath(root) + os.sep
-    return path.replace(root_norm, "")
+    if path.lower().startswith(root.lower()):
+        return path[len(root):]
+    else:
+        return path
 
 class ExitModuleException(Exception):pass
 class AttributeResolverError(Exception):pass
@@ -641,14 +638,14 @@ class Module(object):
 
     def loadedFromServer(self) -> bool:
         """Check if module was loaded from server."""
-        filePath = normpath(self._filePath or "")
-        serverRoot = normpath(getServerModulesPath())
+        filePath = os.path.normpath(self._filePath or "")
+        serverRoot = getServerModulesPath()
         return filePath.startswith(serverRoot + os.sep)
 
     def loadedFromLocal(self) -> bool:
         """Check if module was loaded from local path."""        
-        filePath = normpath(self._filePath or "")
-        localRoot = normpath(getLocalModulesPath())
+        filePath = os.path.normpath(self._filePath or "")
+        localRoot = getLocalModulesPath()
         return filePath.startswith(localRoot + os.sep)
 
     def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
@@ -661,9 +658,9 @@ class Module(object):
     def relativePath(self) -> str:
         """Get relative path from modules directory."""
         if self.loadedFromServer():
-            return calculateRelativePath(self._filePath, getServerModulesPath())
+            return calculateRelativePath(self._filePath, getServerModulesPath() + os.sep)
         elif self.loadedFromLocal():
-            return calculateRelativePath(self._filePath, getLocalModulesPath())
+            return calculateRelativePath(self._filePath, getLocalModulesPath() + os.sep)
         else:
             return self._filePath
 
@@ -760,14 +757,14 @@ class Module(object):
         with open(os.path.realpath(fileName), "w") as f: # resolve links
             f.write(self.toXml(keepConnections=False)) # don't keep outer connections
 
-        self._filePath = normpath(fileName)
+        self._filePath = os.path.normpath(fileName)
         self._clearModificationFlag()
 
     @staticmethod
     def loadFromFile(fileName: str) -> 'Module':
         """Load module from XML file."""
         m = Module.fromXml(ET.parse(fileName).getroot())
-        m._filePath = normpath(fileName)
+        m._filePath = os.path.normpath(fileName)
         m._muted = False
         return m
 
@@ -896,16 +893,16 @@ class Module(object):
 def getLocalModulesPath() -> str:
     """Return the local modules root directory, normalized (no user override)."""
     localModulesRoot = os.path.join(RigBuilderLocalPath, "modules")
-    return normpath(localModulesRoot)
+    return os.path.normpath(localModulesRoot)
 
 def getServerModulesPath() -> str:
     """Return the server modules root directory, normalized (from settings or default)."""
     path = Settings.get("serverModulesPath") or ""
     if path:
-        return normpath(path)
+        return os.path.normpath(path)
 
     defaultServerRoot = os.path.join(RigBuilderPath, "modules")
-    return normpath(defaultServerRoot)
+    return os.path.normpath(defaultServerRoot)
 
 
 def resolveModuleSpec(spec: str) -> str:
@@ -926,7 +923,7 @@ def resolveModuleSpec(spec: str) -> str:
             if os.path.exists(path):
                 modulePath = path
                 break
-    return normpath(modulePath) if modulePath else ""
+    return os.path.normpath(modulePath) if modulePath else ""
 
 
 # Initialize directories and settings
