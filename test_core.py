@@ -10,9 +10,8 @@ from rigBuilder.core import (
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, ModuleRuntimeError, APIError,
     getUidFromFile, calculateRelativePath, getLocalModulesPath,
-    getServerModulesPath, resolveModuleSpec,
-    printError, printWarning, exitModule,
-    APIRegistry, RigBuilderPath, RigBuilderLocalPath
+    resolveModuleSpec, printError, printWarning, exitModule,
+    APIRegistry, RigBuilderLocalPath
 )
 from rigBuilder.utils import copyJson
 
@@ -1144,6 +1143,52 @@ class TestHelperClasses:
         strRepr = str(accessor)
         assert isinstance(strRepr, str)
         assert "value" in strRepr
+
+
+class TestCopyJson:
+    """Tests for copyJson utility function."""
+
+    def testCopyJson_primitivesAndNone(self):
+        """Primitive JSON types and None should be returned as-is."""
+        assert copyJson(None) is None
+        assert copyJson(1) == 1
+        assert copyJson(3.14) == 3.14
+        assert copyJson(True) is True
+        assert copyJson("text") == "text"
+
+    def testCopyJson_listsTuplesAndDicts(self):
+        """Lists, tuples and dicts should be deep-copied."""
+        original = {
+            "num": 1,
+            "list": [1, 2, {"nested": "value"}],
+            "tuple": (3, 4),
+            "map": {"a": [5, 6]},
+        }
+
+        copied = copyJson(original)
+
+        # Structure equality
+        assert copied == {
+            "num": 1,
+            "list": [1, 2, {"nested": "value"}],
+            "tuple": [3, 4],
+            "map": {"a": [5, 6]},
+        }
+
+        # Deep copy: mutating copy does not affect original
+        copied["list"][2]["nested"] = "changed"
+        copied["map"]["a"].append(7)
+
+        assert original["list"][2]["nested"] == "value"
+        assert original["map"]["a"] == [5, 6]
+
+    def testCopyJson_unsupportedTypeRaises(self):
+        """Unsupported data types should raise TypeError."""
+        class Custom:
+            pass
+
+        with pytest.raises(TypeError):
+            copyJson(Custom())
 
 
 # ============================================================================
