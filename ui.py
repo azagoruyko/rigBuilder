@@ -2522,28 +2522,26 @@ def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, rel
 
     return w
 
-def setupVscode(): # path to .vscode folder
+def setupVscode():  # path to .vscode folder
     settings = {
         "python.autoComplete.extraPaths": [],
-        "python.analysis.extraPaths": [],
-        "github.copilot.editor.enableAutoCompletions": True,
-        "github.copilot.advanced": {}
     }
 
-    folder = RigBuilderLocalPath+"/vscode/.vscode"
+    folder = os.path.join(RigBuilderLocalPath, "vscode", ".vscode")
     os.makedirs(folder, exist_ok=True)
-    settingsFile = folder+"/settings.json"
+    settingsFile = os.path.join(folder, "settings.json")
 
-    if os.path.exists(settingsFile):        
+    if os.path.exists(settingsFile):
         with open(settingsFile, "r") as f:
             settings.update(json.load(f))
 
+    # ensure key exists even if missing in existing settings
+    settings.setdefault("python.autoComplete.extraPaths", [])
+
     # add paths
     for path in sys.path:
-        path = path.replace("\\", "/")
-        for section in ["python.autoComplete.extraPaths", "python.analysis.extraPaths"]:
-            if path not in settings[section]:
-                settings[section].append(path)
+        if path not in settings["python.autoComplete.extraPaths"]:
+            settings["python.autoComplete.extraPaths"].append(path)
 
     with open(settingsFile, "w") as f:
         json.dump(settings, f, indent=4)
