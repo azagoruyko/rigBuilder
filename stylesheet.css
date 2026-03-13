@@ -211,7 +211,25 @@ QHeaderView::section {
 	background-color: #222831;
 	color: #c8cfdb;
 	border: 1px solid #313a47;
-	padding: 4px 6px;
+	padding: 4px 12px 4px 6px;
+}
+
+QHeaderView::down-arrow {
+	image: url("{ROOT}/images/header-arrow-down.svg");
+	subcontrol-origin: content;
+	subcontrol-position: center right;
+	width: 12px;
+	height: 12px;
+	margin-right: 10px;
+}
+
+QHeaderView::up-arrow {
+	image: url("{ROOT}/images/header-arrow-up.svg");
+	subcontrol-origin: content;
+	subcontrol-position: center right;
+	width: 12px;
+	height: 12px;
+	margin-right: 10px;
 }
 
 QTableView QTableCornerButton::section {
