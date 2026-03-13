@@ -1537,7 +1537,7 @@ class EditAttributesWidget(QWidget):
             if a.category() == self.category:
                 w = self.insertCustomWidget(a.template())
                 w.nameWidget.setText(a.name())
-                w.templateWidget.setJsonData(a.data())
+                w.templateWidget.setJsonData(a.localData())
                 w.attrConnect = a.connect()
                 w.attrExpression = a.expression()
                 w.attrModified = a.modified()
