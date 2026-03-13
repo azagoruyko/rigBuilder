@@ -1,17 +1,13 @@
 """DCC abstraction layer. Provides selection and other DCC operations via APIRegistry."""
 
-import os
+import sys
 
 
 def detectDcc():
-    """Detect current DCC. RIG_BUILDER_DCC overrides; otherwise auto-detect via imports."""
-    if os.getenv("RIG_BUILDER_DCC"):
-        return os.getenv("RIG_BUILDER_DCC")
-    try:
-        import maya.cmds  # noqa: F401
+    """Detect current DCC from already-loaded modules (avoids importing maya.cmds in standalone)."""
+    if "maya.cmds" in sys.modules:
         return "maya"
-    except ImportError:
-        return "standalone"
+    return "standalone"
 
 
 DCC = detectDcc()

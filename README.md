@@ -47,7 +47,7 @@ rigBuilder.ui.mainWindow.show()
 python run.py
 ```
 
-`run.py` sets `RIG_BUILDER_DCC=standalone` so the UI runs without a DCC. Inside a host (Maya, Blender, etc.), leave `RIG_BUILDER_DCC` unset or set it to the host name; the active DCC registers its operations into `APIRegistry`, so modules and the UI call DCC operations through that abstraction rather than host-specific APIs.
+DCC is auto-detected (e.g. Maya when `maya.cmds` is available); otherwise the UI runs in standalone mode. The active DCC registers its operations into `APIRegistry`, so modules and the UI call DCC operations through that abstraction rather than host-specific APIs.
 
 ---
 
