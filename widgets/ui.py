@@ -765,7 +765,9 @@ class RadioButtonTemplateWidget(TemplateWidget):
 
     def colorizeButtons(self):
         for b in self.buttonsGroupWidget.buttons():
-            b.setStyleSheet("QRadioButton {background-color: #2a6931}" if b.isChecked() else "")
+            font = b.font()
+            font.setBold(b.isChecked())
+            b.setFont(font)
 
     def buttonClicked(self, b):
         self.colorizeButtons()
