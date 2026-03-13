@@ -2075,7 +2075,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
 
         diffMenu = menu.addMenu("Diff")
-        diffMenu.addAction("vs File", lambda: self.diffModule())
+        diffMenu.addAction("vs File", lambda: self.diffModule(), "Alt+D")
         diffMenu.addAction("vs Server", lambda: self.diffModule(reference="server"))
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
@@ -2086,7 +2086,7 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
         menu.addAction("Remove all", self.removeAllModules)
 
-        menu.addAction("Documentation", self.showDocumenation)
+        menu.addAction("Documentation", self.showDocumenation, "F1")
         menu.addSeparator()
         menu.addAction("API Browser", self.openApiBrowser)
         menu.addAction("Function Browser", self.openFunctionBrowser)
