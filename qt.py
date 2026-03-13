@@ -4,26 +4,17 @@ qtBinding = None
 _qtWrapInstance = None
 
 try:
-    from PySide2.QtCore import *  # noqa: F401,F403
-    from PySide2.QtGui import *  # noqa: F401,F403
-    from PySide2.QtWidgets import *  # noqa: F401,F403
-
-    import PySide2.QtCore as QtCore
-    import PySide2.QtGui as QtGui
-    import PySide2.QtWidgets as QtWidgets
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
     from shiboken2 import wrapInstance as _qtWrapInstance
-
     qtBinding = "PySide2"
+
 except ImportError:
-    from PySide6.QtCore import *  # noqa: F401,F403
-    from PySide6.QtGui import *  # noqa: F401,F403
-    from PySide6.QtWidgets import *  # noqa: F401,F403
-
-    import PySide6.QtCore as QtCore
-    import PySide6.QtGui as QtGui
-    import PySide6.QtWidgets as QtWidgets
+    from PySide6.QtCore import *
+    from PySide6.QtGui import *
+    from PySide6.QtWidgets import *
     from shiboken6 import wrapInstance as _qtWrapInstance
-
     qtBinding = "PySide6"
 
 
