@@ -1715,9 +1715,12 @@ class EditAttributesDialog(QDialog):
         module = self.moduleItem.module
 
         def attrMetaEqual(a, b):
-            return (a.name() == b.name() and a.category() == b.category() and
-                    a.template() == b.template() and a.connect() == b.connect() and
-                    a.expression() == b.expression())
+            return (a.name() == b.name()
+                    and a.category() == b.category()
+                    and a.template() == b.template()
+                    and a.connect() == b.connect()
+                    and a.expression() == b.expression()
+                    and a.localData() == b.localData())
 
         origAttrs = list(module.attributes())
         origByName = {a.name(): a for a in origAttrs if a.name()}
@@ -1765,7 +1768,6 @@ class EditAttributesDialog(QDialog):
                 a._connect = w.attrConnect
                 a._expression = w.attrExpression
                 a._data = copyJson(w.templateWidget.getJsonData())
-
                 attrs.append(a)
 
         return attrs
@@ -2065,7 +2067,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
         menu.addAction("Save as", self.treeWidget.saveAsModule)
-        menu.addAction("Send to server", self.treeWidget.sendModuleToServer)
+        menu.addAction("Send to server", self.treeWidget.sendModuleToServer, "Ctrl+P")
         menu.addSeparator()
 
         menu.addAction("Locate file", self.locateModuleFile)
@@ -2081,7 +2083,7 @@ class RigBuilderWindow(QFrame):
 
         diffMenu = menu.addMenu("Diff")
         diffMenu.addAction("vs File", lambda: self.diffModule(), "Alt+D")
-        diffMenu.addAction("vs Server", lambda: self.diffModule(reference="server"))
+        diffMenu.addAction("vs Server", lambda: self.diffModule(reference="server"), "Ctrl+Alt+D")
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
         menu.addAction("Embed", self.treeWidget.embedModule)
