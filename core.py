@@ -640,13 +640,13 @@ class Module(object):
         """Check if module was loaded from server."""
         filePath = os.path.normpath(self._filePath or "")
         serverRoot = getServerModulesPath()
-        return filePath.startswith(serverRoot + os.sep)
+        return filePath.lower().startswith(serverRoot.lower() + os.sep)
 
     def loadedFromLocal(self) -> bool:
         """Check if module was loaded from local path."""        
         filePath = os.path.normpath(self._filePath or "")
         localRoot = getLocalModulesPath()
-        return filePath.startswith(localRoot + os.sep)
+        return filePath.lower().startswith(localRoot.lower() + os.sep)
 
     def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
         """Get reference file path based on source preference."""
