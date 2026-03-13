@@ -572,7 +572,8 @@ class ModuleBrowserTreeWidget(QTreeWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
-        menu.addAction("Open folder", self.openModuleFolder)
+        menu.addAction("Open server folder", self.openServerModulesFolder)
+        menu.addAction("Open local folder", self.openLocalModulesFolder)
         menu.addSeparator()
         menu.addAction("Set server modules folder...", self.parent().browseServerModulesPath)
         menu.addAction("Clear server modules folder", self.parent().clearServerModulesPath)
@@ -585,9 +586,13 @@ class ModuleBrowserTreeWidget(QTreeWidget):
             if item.childCount() == 0:
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
-    def openModuleFolder(self):
-        folderPath = self.parentWidget().getModulesRootDirectory()
-        subprocess.call("explorer \"{}\"".format(os.path.normpath(folderPath)))
+    def openServerModulesFolder(self):
+        folderPath = getServerModulesPath()
+        subprocess.call("explorer \"{}\"".format(folderPath))
+
+    def openLocalModulesFolder(self):
+        folderPath = getLocalModulesPath()
+        subprocess.call("explorer \"{}\"".format(folderPath))
 
 class ModuleSelectorWidget(QWidget):
     """Embeddable module selector with filter, source options, and module tree."""
