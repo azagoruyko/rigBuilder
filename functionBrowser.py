@@ -315,7 +315,8 @@ class FunctionBrowserWindow(QWidget):
             "<b>{}</b>".format(html.escape(titleText)),
         ]
         if resolvedDocString:
-            lines.append(html.escape(resolvedDocString).replace("\n", "<br>"))
+            docHtml = html.escape(resolvedDocString).replace("\n", "<br>")
+            lines.append("<i>{}</i>".format(docHtml))
         if notRunnableMessage:
             lines.extend(["", "Not runnable: {}".format(html.escape(notRunnableMessage))])
         self.functionInfoLabel.setText("<br>".join(lines))
