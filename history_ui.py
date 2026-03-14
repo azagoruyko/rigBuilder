@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from typing import Tuple
 
 from . import history
-from .core import Module, getHistoryPath, MODULE_EXT
+from .core import Module, getHistoryPath, MODULE_EXT, Settings
 from .qt import (
     QCheckBox,
     QDialog,
@@ -81,8 +81,9 @@ class ModuleHistoryWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.trackHistoryCheckbox = QCheckBox("Track history")
-        self.trackHistoryCheckbox.setChecked(True)
+        self.trackHistoryCheckbox.setChecked(Settings.get("trackHistory", True))
         self.trackHistoryCheckbox.setToolTip("When unchecked, saves are not committed to git history")
+        self.trackHistoryCheckbox.stateChanged.connect(self._onTrackHistoryToggled)
         self.filterEdit = QLineEdit()
         self.filterEdit.setPlaceholderText("Filter by module name or UID")
         self.filterEdit.setClearButtonEnabled(True)
@@ -102,6 +103,10 @@ class ModuleHistoryWidget(QWidget):
     def isHistoryTrackingEnabled(self) -> bool:
         """Return True if git history tracking is enabled (saves will be committed)."""
         return self.trackHistoryCheckbox.isChecked()
+
+    def _onTrackHistoryToggled(self, state):
+        """Update in-memory track history setting; persisted when workspace is saved."""
+        Settings["trackHistory"] = state == Qt.Checked
 
     def handleHistoryLink(self, url) -> bool:
         """

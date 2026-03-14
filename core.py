@@ -956,7 +956,8 @@ settingsFile = os.path.join(RigBuilderLocalPath, "settings.json")
 
 Settings = {
     "vscode": "code",
-    "serverModulesPath": ""
+    "serverModulesPath": "",
+    "trackHistory": True
 }
 
 if os.path.exists(settingsFile):

@@ -681,13 +681,11 @@ class ModuleSelectorWidget(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Server modules folder", current)
         if folder:
             Settings["serverModulesPath"] = folder
-            saveSettings()
             Module.updateUidsCache()
             self.maskChanged()
 
     def clearServerModulesPath(self):
         Settings["serverModulesPath"] = ""
-        saveSettings()
         Module.updateUidsCache()
         self.maskChanged()
 
@@ -1216,10 +1214,9 @@ class TreeWidget(QTreeWidget):
         if QMessageBox.question(self, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
+        shouldCommit, commitMessage = False, ""
         if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
-            ok, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
-            if not ok:
-                return
+            shouldCommit, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
 
         for item in selectedItems:
             outputPath = item.module.getSavePath()
@@ -1237,7 +1234,7 @@ class TreeWidget(QTreeWidget):
                 except Exception as e:
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
-                    if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+                    if shouldCommit:
                         history.recordModuleSave(item.module, commitMessage)
 
                     item.emitDataChanged() # path changed
@@ -1249,10 +1246,9 @@ class TreeWidget(QTreeWidget):
         if not selectedItems:
             return
 
+        shouldCommit, commitMessage = False, ""
         if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
-            ok, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
-            if not ok:
-                return
+            shouldCommit, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
 
         for item in selectedItems:
             outputDir = os.path.dirname(item.module.filePath()) or getLocalModulesPath()
@@ -1264,7 +1260,7 @@ class TreeWidget(QTreeWidget):
                 except Exception as e:
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
-                    if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+                    if shouldCommit:
                         history.recordModuleSave(item.module, commitMessage)
                         
                     item.emitDataChanged() # path and uid changed
@@ -2665,11 +2661,16 @@ def cleanupVscode():
         if f.endswith(".py"): # remove python files
             os.remove(os.path.join(vscodeFolder, f))
 
-cleanupVscode()
+def aboutToQuit():
+    """Save workspace and settings (on quit)."""
+    saveWorkspace(mainWindow)
+    saveSettings()
 
+
+cleanupVscode()
 
 mainWindow = RigBuilderWindow()
 loadWorkspace(mainWindow)
 mainWindow.aboutToRunModule.connect(lambda: saveWorkspace(mainWindow))
-QApplication.instance().aboutToQuit.connect(lambda: saveWorkspace(mainWindow))
+QApplication.instance().aboutToQuit.connect(aboutToQuit)
 mainWindow.setupModulesAutoReloadWatcher()
