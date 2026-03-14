@@ -514,7 +514,7 @@ class TestModuleAttributes:
         assert len(module.attributes()) == 0
 
     def testAttributeModificationMarksModule(self):
-        """Modifying an attribute marks the owning module as modified."""
+        """Internal attribute changes (e.g. name) mark the owning module as modified; default value change does not."""
         module = createModule("test")
         attr = createAttribute("input", "input", "float", 5.0)
         module.addAttribute(attr)
@@ -523,7 +523,11 @@ class TestModuleAttributes:
         assert module.modified() is False
         assert attr.modified() is False
 
-        attr.set(10.0)
+        attr.set(10.0)  # default value only – preserved by update, does not mark modified
+        assert attr.modified() is False
+        assert module.modified() is False
+
+        attr.setName("other")  # structural change – would be reset by update, marks modified
         assert attr.modified() is True
         assert module.modified() is True
 

@@ -212,12 +212,11 @@ class Attribute(object):
             return copyJson(self._data[self._data["default"]])
     
     def _setDefaultValue(self, value: Any):
-        """Set default value in attribute data."""
+        """Set default value in attribute data. Does not mark modified (preserved by update)."""
         if "default" in self._data:
             newValue = copyJson(value)
             if newValue != self._defaultValue():
                 self._data[self._data["default"]] = newValue
-                self._markModified()
     
     def data(self) -> Dict[str, Any]: # return actual read-only copy of all data
         """Get read-only copy of all attribute data."""
@@ -229,10 +228,27 @@ class Attribute(object):
         return copyJson(self._data)
     
     def setLocalData(self, data: Dict[str, Any]):
-        """Set local data without pushing to connections."""
+        """Set local data without pushing to connections. Marks modified only if change is not solely the default value."""
         newData = copyJson(data)
-        if newData != self._data:
-            self._data = newData
+
+        if newData == self._data:
+            return
+            
+        oldData = self._data
+        defaultKey = oldData.get("default") or newData.get("default")
+        
+        onlyDefaultValueChanged = (
+            set(oldData.keys()) == set(newData.keys())
+            and oldData.get("default") == newData.get("default")
+            and all(
+                oldData.get(k) == newData.get(k)
+                for k in oldData
+                if k != defaultKey
+            )
+        )
+
+        self._data = newData
+        if not onlyDefaultValueChanged:
             self._markModified()
     
     def setData(self, data: Dict[str, Any]):
@@ -273,11 +289,12 @@ class Attribute(object):
 
         if not key:
             self._setDefaultValue(valueCopy)
-            self.push()          
+            self.push()
         else:
             if self._data.get(key) != valueCopy:
                 self._data[key] = valueCopy
-                self._markModified()
+                if key != self._data.get("default"):
+                    self._markModified()
                 self.push()
 
     def executeExpression(self):
