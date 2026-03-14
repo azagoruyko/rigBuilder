@@ -1096,6 +1096,30 @@ class TreeWidget(QTreeWidget):
 
         return item
 
+    def replaceModule(self, item, newModule):
+        """Replace a tree item with a new one built from newModule, preserving position and expanded state."""
+        newItem = self.makeItemFromModule(newModule)
+        expanded = item.isExpanded()
+
+        if item.parent():
+            parent = item.parent()
+            idx = parent.indexOfChild(item)
+            parent.removeChild(item)
+            parent.insertChild(idx, newItem)
+
+            parent.module.removeChild(item.module)
+            parent.module.insertChild(idx, newItem.module)
+
+        else:
+            parent = self.invisibleRootItem()
+            idx = parent.indexOfChild(item)
+            parent.removeChild(item)
+            parent.insertChild(idx, newItem)
+
+        newItem.setExpanded(expanded)
+        newItem.setSelected(True)
+        return newItem
+
     def contextMenuEvent(self, event):
         self.mainWindow.menu().popup(event.globalPos())
 
@@ -1255,27 +1279,7 @@ class TreeWidget(QTreeWidget):
 
             item.module.update()
 
-            newItem = self.makeItemFromModule(item.module)
-
-            expanded = item.isExpanded()
-
-            if item.parent():
-                parent = item.parent()
-                idx = parent.indexOfChild(item)
-                parent.removeChild(item)
-                parent.insertChild(idx, newItem)
-
-                parent.module.removeChild(item.module)
-                parent.module.insertChild(idx, newItem.module)
-
-            else:
-                parent = self.invisibleRootItem()
-                idx = parent.indexOfChild(item)
-                parent.removeChild(item)
-                parent.insertChild(idx, newItem)
-
-            newItem.setExpanded(expanded)
-            newItem.setSelected(True)
+            self.replaceModule(item, item.module)
 
     def muteModule(self):
         for item in self.selectedItems():
