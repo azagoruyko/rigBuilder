@@ -16,6 +16,8 @@ from .qt import *
 from . import __version__
 from .core import *
 from .editor import *
+from . import history
+from .history_ui import ModuleHistoryWidget
 from .workspace import saveWorkspace, loadWorkspace
 from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
@@ -1214,6 +1216,11 @@ class TreeWidget(QTreeWidget):
         if QMessageBox.question(self, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
+        if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+            ok, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
+            if not ok:
+                return
+
         for item in selectedItems:
             outputPath = item.module.getSavePath()
 
@@ -1230,11 +1237,24 @@ class TreeWidget(QTreeWidget):
                 except Exception as e:
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
+                    if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+                        history.recordModuleSave(item.module, commitMessage)
+
                     item.emitDataChanged() # path changed
                     self.mainWindow.attributesTabWidget.updateWidgetStyles()
+        self.mainWindow.moduleHistoryWidget.updateModuleHistory()
 
     def saveAsModule(self):
-        for item in self.selectedItems():
+        selectedItems = self.selectedItems()
+        if not selectedItems:
+            return
+
+        if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+            ok, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
+            if not ok:
+                return
+
+        for item in selectedItems:
             outputDir = os.path.dirname(item.module.filePath()) or getLocalModulesPath()
             outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name(), outputDir + "/" +item.module.name(), "*.xml")
 
@@ -1244,8 +1264,13 @@ class TreeWidget(QTreeWidget):
                 except Exception as e:
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
+                    if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+                        history.recordModuleSave(item.module, commitMessage)
+                        
                     item.emitDataChanged() # path and uid changed
                     self.mainWindow.attributesTabWidget.updateWidgetStyles()
+
+        self.mainWindow.moduleHistoryWidget.updateModuleHistory()
 
     def embedModule(self):
         selectedItems = self.selectedItems()
@@ -1392,10 +1417,6 @@ class TreeWidget(QTreeWidget):
 
     def addModule(self, module):
         self.addTopLevelItem(self.makeItemFromModule(module))
-
-        # Keep the right-side info panel in sync with recent selections.
-        self.mainWindow.updateInfo()
-
         return module
 
 class TemplateSelectorDialog(QDialog):
@@ -2083,27 +2104,24 @@ class RigBuilderWindow(QFrame):
         vscodeBtn.clicked.connect(self.editInVSCode)
         self.codeWidget = QWidget()
         self.codeWidget.setLayout(QVBoxLayout())
-        self.codeWidget.layout().addWidget(vscodeBtn)
         self.codeWidget.layout().addWidget(self.codeEditorWidget)
+        self.codeWidget.layout().addWidget(vscodeBtn)
 
         self.runBtn = QPushButton("Run!")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
         self.runBtn.clicked.connect(self.runModule)
         self.runBtn.hide()
 
-        self.infoWidget = QTextBrowser()
-        self.infoWidget.anchorClicked.connect(self.infoLinkClicked)
-        self.infoWidget.setOpenLinks(False)
-        self.updateInfo()
+        self.moduleHistoryWidget = ModuleHistoryWidget(self)
+        self.moduleHistoryWidget.linkClicked.connect(self.moduleHistoryLinkClicked)
 
         attrsToolsWidget = QWidget()
         attrsToolsWidget.setLayout(QVBoxLayout())
-        attrsToolsWidget.layout().addWidget(self.infoWidget)
+        attrsToolsWidget.layout().addWidget(self.moduleHistoryWidget)
         attrsToolsWidget.layout().addWidget(self.attributesTabWidget)
         attrsToolsWidget.layout().addWidget(self.runBtn)
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
-        self.moduleSelectorWidget.modulesReloaded.connect(self.updateInfo)
 
         self.moduleToolsWidget = QWidget()
         self.moduleToolsWidget.setLayout(QVBoxLayout())
@@ -2155,7 +2173,6 @@ class RigBuilderWindow(QFrame):
     def reloadModulesAndUpdateInfo(self):
         Module.updateUidsCache()
         self.moduleSelectorWidget.maskChanged()
-        self.updateInfo()
 
     def menu(self):
         menu = QMenu(self)
@@ -2171,6 +2188,7 @@ class RigBuilderWindow(QFrame):
 
         menu.addAction("Locate file", self.locateModuleFile)
         menu.addAction("Copy tool code", self.copyToolCode)
+        menu.addAction("View edit history", self.showModuleInHistory)
         menu.addSeparator()
         menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
         menu.addSeparator()
@@ -2354,7 +2372,7 @@ class RigBuilderWindow(QFrame):
         en = True if selectedItems else False
         self.attributesTabWidget.setVisible(en)
         self.runBtn.setVisible(en)
-        self.infoWidget.setVisible(not en)
+        self.moduleHistoryWidget.setVisible(not en)
         self.codeWidget.setEnabled(en and not self.isCodeEditorHidden())
 
         if selectedItems:
@@ -2375,42 +2393,14 @@ class RigBuilderWindow(QFrame):
             # Emit API signal
             self.moduleSelected.emit(item)
 
-    def infoLinkClicked(self, url):
-        scheme = url.scheme()
-        path = url.path()
-        modulesRoot = getServerModulesPath() if scheme == "server" else getLocalModulesPath()
-        urlPath = PurePosixPath(path)
-        if urlPath.is_absolute():
-            urlPath = urlPath.relative_to("/")
-        modulePath = (Path(modulesRoot) / urlPath).with_suffix(".xml")
-        module = Module.loadModule(str(modulePath))
-        self.treeWidget.addModule(module)
+    def showDiffView(self, diffText, fromDesc, toDesc):
+        """Show diff in a modal dialog (used by history link handler)."""
+        dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
+        execFunc(dlg)
 
-    def updateInfo(self):
-        self.infoWidget.clear()
-        template = []
-
-        # local modules
-        def displayFiles(files, *, local):
-            prefix = "local" if local else "server"
-            for k, v in files.items():
-                if v:
-                    template.append("<h3>{}</h3>".format(escape(k)))
-                    root = getLocalModulesPath() if local else getServerModulesPath()
-                    for file in v:
-                        relPath = calculateRelativePath(file, root).replace(".xml", "").replace("\\", "/")
-                        template.append("<p><a style='color: #55aaee' href='{0}:{1}'>{1}</a></p>".format(prefix, escape(relPath)))
-
-        files = categorizeFilesByModificationTime(Module.LocalUids.values())
-        template.append("<h2>📁 Local modules updates</h2>")
-        displayFiles(files, local=True)
-
-        files = categorizeFilesByModificationTime(Module.ServerUids.values())
-        template.append("<hr><h2>🌏 Server modules updates</h2>")
-        displayFiles(files, local=False)
-
-        self.infoWidget.insertHtml("".join(template))
-        self.infoWidget.moveCursor(QTextCursor.Start)
+    def moduleHistoryLinkClicked(self, url):
+        if url.scheme() in ("http", "https"):
+            QDesktopServices.openUrl(url)
 
     def isCodeEditorHidden(self):
         return self.workspaceSplitter.sizes()[1] == 0 # code section size
@@ -2547,6 +2537,18 @@ class RigBuilderWindow(QFrame):
         
         self.moduleRemoved.emit(moduleItem)
     
+    def showModuleInHistory(self):
+        """Put selected module UID into history browser filter and clear selection so user can view history."""
+        selected = self.treeWidget.selectedItems()
+        if not selected:
+            return
+
+        module = selected[0].module        
+        uid = module.uid()
+        filterStr = uid if uid else module.name()
+        self.moduleHistoryWidget.filterEdit.setText(filterStr)
+        self.treeWidget.clearSelection()
+
     def selectedModules(self):
         """Get list of currently selected ModuleItems."""
         return self.treeWidget.selectedItems()

@@ -924,6 +924,11 @@ def getServerModulesPath() -> str:
     return os.path.normpath(defaultServerRoot)
 
 
+def getHistoryPath() -> str:
+    """Return the history directory for module version history (git-tracked)."""
+    return os.path.normpath(os.path.join(RigBuilderLocalPath, "history"))
+
+
 def resolveModuleSpec(spec: str) -> str:
     """Resolve spec (path or uid) to module file path, or empty string if not found."""
     if not spec:
@@ -967,6 +972,7 @@ def saveSettings():
         json.dump(Settings, f, indent=4)
         
 os.makedirs(getLocalModulesPath(), exist_ok=True)
+os.makedirs(getHistoryPath(), exist_ok=True)
 
 Module.updateUidsCache()
 
