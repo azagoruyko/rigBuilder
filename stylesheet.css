@@ -250,9 +250,23 @@ QListWidget::item:selected {
 	outline: none;
 }
 
-QAbstractItemView QLineEdit {
-	padding: 1px 1px;
-	min-height: 0;
+/* Inline editor (edit mode in tree/table/list) */
+QAbstractItemView QLineEdit,
+QAbstractItemView QComboBox,
+QAbstractItemView QAbstractSpinBox {
+	background-color: #252b33;
+	color: #e8eaed;
+	border: none;
+	padding: 1px;
+	min-height: 0px;
+	selection-background-color: #3e7bd6;
+	selection-color: #ffffff;
+}
+
+QAbstractItemView QLineEdit:focus,
+QAbstractItemView QComboBox:focus,
+QAbstractItemView QAbstractSpinBox:focus {
+	border: 1px solid #6ea7ff;
 }
 
 QAbstractItemView {
