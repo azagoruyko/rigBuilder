@@ -1479,15 +1479,15 @@ class EditTemplateWidget(QWidget):
         buttonsLayout = QHBoxLayout()
         buttonsLayout.setContentsMargins(0,0,0,0)
         upBtn = QPushButton("<")
-        upBtn.setFixedSize(25, 25)
+        upBtn.setFixedSize(35, 25)
         upBtn.clicked.connect(self.upBtnClicked)
 
         downBtn = QPushButton(">")
-        downBtn.setFixedSize(25, 25)
+        downBtn.setFixedSize(35, 25)
         downBtn.clicked.connect(self.downBtnClicked)
 
         removeBtn = QPushButton("x")
-        removeBtn.setFixedSize(25, 25)
+        removeBtn.setFixedSize(35, 25)
         removeBtn.clicked.connect(self.removeBtnClicked)
 
         buttonsLayout.addWidget(upBtn)
