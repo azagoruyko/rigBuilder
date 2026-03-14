@@ -1897,6 +1897,65 @@ class LogWidget(QTextEdit):
     def flush(self):
         return
 
+
+class DiffHighlighter(QSyntaxHighlighter):
+    """Git-style coloring for unified diff: removed red, added green, hunk header blue."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.defaultFormat = QTextCharFormat()
+        self.defaultFormat.setForeground(QColor(180, 180, 180))
+
+        self.removedFormat = QTextCharFormat()
+        self.removedFormat.setForeground(QColor(200, 100, 100))
+
+        self.addedFormat = QTextCharFormat()
+        self.addedFormat.setForeground(QColor(100, 200, 100))
+
+        self.hunkFormat = QTextCharFormat()
+        self.hunkFormat.setForeground(QColor(130, 130, 220))
+        self.hunkFormat.setFontWeight(QFont.Bold)
+
+    def highlightBlock(self, text):
+        if not text:
+            return
+        
+        if text.startswith("-") and not text.startswith("---"):
+            self.setFormat(0, len(text), self.removedFormat)
+        elif text.startswith("+") and not text.startswith("+++"):
+            self.setFormat(0, len(text), self.addedFormat)
+        elif text.startswith("@@"):
+            self.setFormat(0, len(text), self.hunkFormat)
+        else:
+            self.setFormat(0, len(text), self.defaultFormat)
+
+
+class DiffViewDialog(QDialog):
+    """Modal dialog showing inline unified diff with git-style coloring."""
+
+    def __init__(self, diffText, fromDesc, toDesc, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Diff: {} vs {}".format(fromDesc, toDesc))
+        self.setMinimumSize(700, 450)
+        self.resize(900, 550)
+
+        layout = QVBoxLayout(self)
+        self.textEdit = QPlainTextEdit()
+        self.textEdit.setReadOnly(True)
+        self.textEdit.setFont(QFont("Consolas", 10))
+        self.textEdit.setPlainText(diffText)
+        DiffHighlighter(self.textEdit.document())
+        layout.addWidget(self.textEdit)
+
+        closeBtn = QPushButton("Close")
+        closeBtn.clicked.connect(self.accept)
+        layout.addWidget(closeBtn)
+
+        centerWindow(self)
+
+
 class WideSplitterHandle(QSplitterHandle):
     def __init__(self, orientation, parent, **kwargs):
         super().__init__(orientation, parent, **kwargs)
@@ -2224,35 +2283,37 @@ class RigBuilderWindow(QFrame):
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
     def diffModule(self, *, reference=None):
-        import webbrowser
-        import html
         import difflib
-        diff = difflib.HtmlDiff(wrapcolumn=120)
 
         selectedItems = self.treeWidget.selectedItems()
         if not selectedItems:
             return
-        
+
         module = selectedItems[0].module
-        
+
         path = module.referenceFile(source=reference) if reference else module.filePath()
-        if path:
-            path = os.path.normpath(path)
-            currentXml = module.toXml()
-
-            with open(path, "r") as f:
-                originalXml = f.read()
-
-            tmpFile = os.path.expandvars("$TEMP/rigBuilderDiff.html")
-            diffHtml = diff.make_file(originalXml.splitlines(), currentXml.splitlines(), 
-                                      fromdesc=html.escape(path), 
-                                      todesc="Current",
-                                      context=True, numlines=3)
-            with open(tmpFile, "w") as f:
-                f.write(diffHtml)
-            webbrowser.open("file://"+tmpFile)
-        else:
+        if not path:
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file")
+            return
+
+        path = os.path.normpath(path)
+        currentXml = module.toXml()
+        with open(path, "r") as f:
+            originalXml = f.read()
+
+        fromDesc = path
+        toDesc = "Current"
+        diffLines = difflib.unified_diff(
+            originalXml.splitlines(),
+            currentXml.splitlines(),
+            fromfile=fromDesc,
+            tofile=toDesc,
+            lineterm="",
+        )
+        diffText = "\n".join(diffLines)
+
+        dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
+        execFunc(dlg)
                     
     def copyToolCode(self):
         selectedItems = self.treeWidget.selectedItems()
