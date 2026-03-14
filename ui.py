@@ -2184,7 +2184,7 @@ class RigBuilderWindow(QFrame):
 
         menu.addAction("Locate file", self.locateModuleFile)
         menu.addAction("Copy tool code", self.copyToolCode)
-        menu.addAction("View edit history", self.showModuleInHistory)
+        menu.addAction("View edit history", self.showModuleInHistory, "Ctrl+H")
         menu.addSeparator()
         menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
         menu.addSeparator()
