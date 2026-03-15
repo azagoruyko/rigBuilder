@@ -16,8 +16,8 @@ from .qt import *
 from . import __version__
 from .core import *
 from .editor import *
-from . import history
-from .history_ui import ModuleHistoryWidget
+from . import moduleHistoryBrowser
+from .moduleHistoryBrowser import ModuleHistoryWidget
 from .workspace import saveWorkspace, loadWorkspace
 from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
@@ -1235,7 +1235,7 @@ class TreeWidget(QTreeWidget):
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
                     if shouldCommit:
-                        history.recordModuleSave(item.module, commitMessage)
+                        moduleHistoryBrowser.recordModuleSave(item.module, commitMessage)
 
                     item.emitDataChanged() # path changed
                     self.mainWindow.attributesTabWidget.updateWidgetStyles()
@@ -1261,7 +1261,7 @@ class TreeWidget(QTreeWidget):
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
                     if shouldCommit:
-                        history.recordModuleSave(item.module, commitMessage)
+                        moduleHistoryBrowser.recordModuleSave(item.module, commitMessage)
                         
                     item.emitDataChanged() # path and uid changed
                     self.mainWindow.attributesTabWidget.updateWidgetStyles()
