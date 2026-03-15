@@ -4,11 +4,7 @@ from ..core import APIRegistry
 
 
 def register():
-    """Override stubs with no-op implementations."""
-    APIRegistry.override("getSelectedNodes", lambda: [])
-    APIRegistry.override("selectNodes", lambda nodes: None)
+    """Register standalone functions into APIRegistry."""
     APIRegistry.override("getDccName", lambda: "standalone")
-    APIRegistry.override("getParentWindow", lambda: None)
-    APIRegistry.override("currentSceneFile", lambda: None)
-    APIRegistry.override("openUndoChunk", lambda: None)
-    APIRegistry.override("closeUndoChunk", lambda: None)
+    
+

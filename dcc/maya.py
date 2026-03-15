@@ -17,7 +17,7 @@ def getParentWindow():
 
 
 def register():
-    """Override stubs with Maya implementations."""
+    """Register Maya functions into APIRegistry."""
     APIRegistry.override("getSelectedNodes", lambda: [n for n in cmds.ls(sl=True)])
     APIRegistry.override("selectNodes", lambda nodes: cmds.select(nodes))
     APIRegistry.override("getDccName", lambda: "maya")

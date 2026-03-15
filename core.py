@@ -45,7 +45,7 @@ class APIError(Exception):pass
 class APIRegistryMeta(type):
     """Metaclass enabling APIRegistry.foo and APIRegistry.foo = func convenience."""
 
-    _reserved = frozenset({"_objects", "clear", "register", "unregister", "registerStub", "override", "api"})
+    _reserved = frozenset({"_objects", "clear", "register", "unregister", "override", "api"})
 
     def __getattr__(cls, name: str):
         if name in cls._objects:
@@ -70,10 +70,16 @@ class APIRegistry(metaclass=APIRegistryMeta):
         APIRegistry._objects.clear()
 
     @staticmethod
-    def register(name: str, func: Any):
+    def register(name: str, func: Optional[Any] = None):
         """Register object in API."""
-        if name in APIRegistry._objects:
-            raise APIError(f"Object '{name}' already registered")
+        f = func if func else lambda *args, **kwargs: None
+        APIRegistry._objects[name] = f
+
+    @staticmethod
+    def override(name: str, func: Any):
+        """Override object in API."""
+        if name not in APIRegistry._objects:
+            raise APIError(f"Object '{name}' is not registered")
         APIRegistry._objects[name] = func
 
     @staticmethod
@@ -82,21 +88,6 @@ class APIRegistry(metaclass=APIRegistryMeta):
         if name not in APIRegistry._objects:
             raise APIError(f"Object '{name}' is not registered")
         del APIRegistry._objects[name]
-
-    @staticmethod
-    def registerStub(name: str):
-        """Register stub for optional objects. Stub will be used until real function is registered."""
-        if name in APIRegistry._objects:
-            raise APIError(f"Cannot register stub: '{name}' already exists")
-        APIRegistry._objects[name] = lambda *args, **kwargs: None
-
-    @staticmethod
-    def override(name: str, func: Any):
-        """Override existing object (e.g. replace stub with real implementation)."""
-        if name in APIRegistry._objects:
-            APIRegistry._objects[name] = func
-        else:
-            raise APIError(f"Cannot find {name} in API registry")
 
     @staticmethod
     def api() -> Dict[str, Any]:
@@ -991,10 +982,26 @@ def exitModule():
     """Exit current module execution."""
     raise ExitModuleException()
 
-APIRegistry.registerStub("module") # overridden in module.run
-APIRegistry.registerStub("ch")
-APIRegistry.registerStub("chdata")
-APIRegistry.registerStub("chset")
+def beginProgress(text: str, count: int, updatePercent: float = 0.01):
+    """Start progress bar."""
+    pass
+
+def stepProgress(value: int, text: str = None):
+    """Update progress bar."""
+    pass
+
+def endProgress():
+    """End progress bar."""
+    pass
+
+# overridden in module.run
+
+APIRegistry.register("module", Module()) 
+APIRegistry.register("ch", Module().ch)
+APIRegistry.register("chdata", Module().chdata)
+APIRegistry.register("chset", Module().chset)
+
+# core functions
 
 APIRegistry.register("Module", Module)
 APIRegistry.register("copyJson", copyJson)
@@ -1006,6 +1013,8 @@ APIRegistry.register("clamp", clamp)
 APIRegistry.register("smartConversion", smartConversion)
 APIRegistry.register("fromSmartConversion", fromSmartConversion)
 
+# widgets functions
+
 APIRegistry.register("curve_evaluate", widgets_core.curve_evaluate) # data based
 APIRegistry.register("curve_evaluateFromX", widgets_core.curve_evaluateFromX)
 APIRegistry.register("listBox_selected", widgets_core.listBox_selected)
@@ -1015,17 +1024,21 @@ APIRegistry.register("comboBox_setItems", widgets_core.comboBox_setItems)
 
 APIRegistry.register("runButtonCommand", widgets_core.runButtonCommand)
 
-APIRegistry.registerStub("beginProgress") # UI functions placeholders
-APIRegistry.registerStub("stepProgress")
-APIRegistry.registerStub("endProgress")
+# UI functions
 
-APIRegistry.registerStub("getSelectedNodes")  # DCC selection, overridden in dcc module
-APIRegistry.registerStub("selectNodes")
-APIRegistry.registerStub("getDccName")
-APIRegistry.registerStub("getParentWindow")
-APIRegistry.registerStub("currentSceneFile")
-APIRegistry.registerStub("openUndoChunk")
-APIRegistry.registerStub("closeUndoChunk")
+APIRegistry.register("beginProgress", beginProgress)
+APIRegistry.register("stepProgress", stepProgress)
+APIRegistry.register("endProgress", endProgress)
+
+ # DCC functions, overridden in dcc module
+
+APIRegistry.register("getSelectedNodes")
+APIRegistry.register("selectNodes")
+APIRegistry.register("getDccName")
+APIRegistry.register("getParentWindow")
+APIRegistry.register("currentSceneFile")
+APIRegistry.register("openUndoChunk")
+APIRegistry.register("closeUndoChunk")
 
 from . import dcc
 dcc.register()

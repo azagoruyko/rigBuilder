@@ -1229,8 +1229,8 @@ class TestAPIRegistry:
         assert api["Module"] is Module
 
     def testRegisterStub(self, cleanAPIRegistry):
-        """Test registering stub functions."""
-        APIRegistry.registerStub("placeholder")
+        """Test registering stub functions (register with no func)."""
+        APIRegistry.register("placeholder")
 
         api = APIRegistry.api()
         assert "placeholder" in api
@@ -1242,7 +1242,7 @@ class TestAPIRegistry:
     def testOverride(self, cleanAPIRegistry):
         """Test overriding existing functions."""
         # Register stub
-        APIRegistry.registerStub("func")
+        APIRegistry.register("func")
         api = APIRegistry.api()
         assert api["func"]() is None
 
@@ -1253,7 +1253,7 @@ class TestAPIRegistry:
 
     def testOverrideNonexistent(self, cleanAPIRegistry):
         """Test overriding nonexistent function raises error."""
-        with pytest.raises(APIError, match="Cannot find nonexistent in API registry"):
+        with pytest.raises(APIError, match="is not registered"):
             APIRegistry.override("nonexistent", lambda: 42)
 
     def testApiReturnsCopy(self, cleanAPIRegistry):
@@ -1285,7 +1285,7 @@ class TestAPIRegistry:
         assert "warning" in api
         assert "clamp" in api
 
-        # Check stubs are registered
+        # Check module context keys are registered
         assert "module" in api
         assert "ch" in api
         assert "chdata" in api
@@ -1601,7 +1601,7 @@ class TestPathAndSettings:
         resolved = resolveModuleSpec(spec)
         assert os.path.normpath(resolved) == os.path.normpath(filePath)
 
-class TestAPIRegistry:
+class TestAPIRegistryMetaclass:
     """Additional tests for APIRegistry metaclass behaviour."""
 
     def testAttributeAccessAndMissingAttribute(self, cleanAPIRegistry):
