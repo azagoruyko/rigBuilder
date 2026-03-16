@@ -501,11 +501,14 @@ value = path or value'''}
 
     def buttonClicked(self):
         if self.buttonEnabled and self.buttonCommand:
-            ctx = {"value": smartConversion(self.textWidget.text().strip())}
+            oldValue = smartConversion(self.textWidget.text().strip())
+            ctx = {"value": oldValue}
             outCtx = self.executor(self.buttonCommand, ctx)
             self.value = outCtx["value"]
-            self.textWidget.setText(fromSmartConversion(self.value))
-            self.somethingChanged.emit()
+            if self.value != oldValue:
+                self.textWidget.setText(fromSmartConversion(self.value))
+                self.colorizeValue()
+                self.somethingChanged.emit()
 
     def setButtonEnabled(self, enabled):
         newState = bool(enabled)
