@@ -5,7 +5,7 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson, clamp, smartConversion, fromSmartConversion
+from .utils import copyJson, clamp, smartConversion, fromSmartConversion, Dict
 from .widgets import core as widgets_core
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ class APIRegistry(metaclass=APIRegistryMeta):
     @staticmethod
     def api() -> Dict[str, Any]:
         """Get all registered objects as dictionary for exec()."""
-        return dict(APIRegistry._objects)
+        return Dict(APIRegistry._objects)
 
 
 def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit        
@@ -354,16 +354,6 @@ class Attribute(object):
         attr._expression = attr._data.pop("_expression", "")
         legacy_convertLineEditTemplate(attr)
         return attr
-    
-class Dict(dict):
-    def __init__(self):
-        pass
-
-    def __getattr__(self, name: str) -> Any:
-        return self.get(name)
-
-    def __setattr__(self, name: str, value: Any):
-        self[name] = value
 
 class AttrsWrapper(object): # attributes getter/setter
     def __init__(self, module: 'Module'):

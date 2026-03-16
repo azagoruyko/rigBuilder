@@ -4,7 +4,17 @@ import re
 import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Any
+
+class Dict(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return self.get(name)
+
+    def __setattr__(self, name: str, value: Any):
+        self[name] = value
 
 def clamp(val: float, low: float, high: float) -> float:
     """Clamp value between low and high bounds."""
