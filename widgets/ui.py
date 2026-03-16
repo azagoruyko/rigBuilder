@@ -655,7 +655,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         for i in range(self.listWidget.count()):
             height += self.listWidget.sizeHintForRow(i)
         height += 2*self.listWidget.frameWidth() + 50
-        self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 500))
+        self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 300))
 
     def selectInDCC(self, allItems=True):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count()) if allItems or self.listWidget.item(i).isSelected()]
