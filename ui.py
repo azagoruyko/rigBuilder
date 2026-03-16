@@ -160,7 +160,7 @@ class AttributesWidget(QWidget):
 
             with captureOutput(self.mainWindow.logWidget):
                 try:
-                    exec(cmd, ctx)
+                    exec(replaceAttrPrefix(cmd), ctx)
                 except Exception as e:
                     self.mainWindow.logger.error(str(e))
                     self.mainWindow.showLog()

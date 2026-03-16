@@ -2,7 +2,7 @@ from ..qt import *
 
 import os
 from .core import *
-from ..core import APIRegistry
+from ..core import APIRegistry, replaceAttrPrefix
 from ..utils import *
 from ..ui_utils import *
 from ..editor import *
@@ -20,7 +20,7 @@ class TemplateWidget(QFrame):
     def _defaultExecutor(self, cmd, context=None):
         ctx = APIRegistry.api()
         ctx.update(context or {})
-        exec(cmd, ctx)
+        exec(replaceAttrPrefix(cmd), ctx)
         return ctx
 
     def getDefaultData(self):

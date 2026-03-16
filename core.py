@@ -15,6 +15,11 @@ RigBuilderPath = os.path.dirname(__file__)
 RigBuilderLocalPath = os.path.join(os.path.expanduser("~"), "rigBuilder")
 MODULE_EXT = ".xml"
 
+ATTR_PREFIX = "attr_"
+
+def replaceAttrPrefix(code: str) -> str:
+    return re.sub(r'@(\w+)', ATTR_PREFIX + r'\1', code)
+
 def getUidFromFile(path: str) -> Optional[str]:
     """Extract UID from XML file."""
     if path.endswith(MODULE_EXT):
@@ -838,21 +843,20 @@ class Module(object):
             "chdata": self.chdata, 
             "chset": self.chset})
 
+        for attr in self._attributes:
+            ctx[ATTR_PREFIX + attr._name] = attr.get()
+            ctx[ATTR_PREFIX + "set_" + attr._name] = attr.set
+            ctx[ATTR_PREFIX + attr._name + "_data"] = DataAccessor(attr)            
+
         return ctx
 
     def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
         """Execute module code and child modules."""
-        ctx = self.context()
-        attrPrefix = "attr_"
-        for attr in self._attributes:
-            ctx[attrPrefix + attr._name] = attr.get()
-            ctx[attrPrefix + "set_" + attr._name] = attr.set
-            ctx[attrPrefix + attr._name + "_data"] = DataAccessor(attr)
-
         if callable(callback):
             callback(self)
 
-        runCode = re.sub(r'@(\w+)', attrPrefix + r'\1', self._runCode)
+        ctx = self.context()
+        runCode = replaceAttrPrefix(self._runCode)
         
         try:
             exec(runCode, ctx)
