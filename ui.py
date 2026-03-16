@@ -3,13 +3,11 @@ import json
 import re
 import os
 import subprocess
-from pathlib import Path, PurePosixPath
 import inspect
 import sys
 import shutil
 import logging
 import fnmatch
-from xml.sax.saxutils import escape
 
 from .qt import *
 
@@ -165,9 +163,9 @@ class AttributesWidget(QWidget):
                     self.mainWindow.logger.error(str(e))
                     self.mainWindow.showLog()
                 else:
-                    if cmd: # in case command is specified, no command can be used for obtaining completions
-                        self.updateWidgets()
-                        self.updateWidgetStyles()
+                    self.updateWidgets()
+                    self.updateWidgetStyles()
+
             return ctx
 
         for idx, a in enumerate(attributes):
@@ -259,9 +257,8 @@ class AttributesWidget(QWidget):
                     self.mainWindow.logger.error(f"{self.moduleItem.module.name()}.{attr.name()}: {str(e)}")
 
                     if type(e) == AttributeResolverError:
-                        widget.blockSignals(True)
-                        widget.setJsonData(attr.localData())
-                        widget.blockSignals(False)
+                        with blockedWidgetContext(widget) as w:
+                            w.setJsonData(attr.localData())
 
                     self.mainWindow.showLog()
 
