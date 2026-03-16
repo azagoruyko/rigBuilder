@@ -844,7 +844,7 @@ class Module(object):
             "chset": self.chset})
 
         for attr in self._attributes:
-            ctx[ATTR_PREFIX + attr._name] = attr.get()
+            ctx[ATTR_PREFIX + attr._name] = attr._defaultValue()
             ctx[ATTR_PREFIX + "set_" + attr._name] = attr.set
             ctx[ATTR_PREFIX + attr._name + "_data"] = DataAccessor(attr)            
 
@@ -854,6 +854,9 @@ class Module(object):
         """Execute module code and child modules."""
         if callable(callback):
             callback(self)
+
+        for attr in self._attributes:
+            attr.pull()
 
         ctx = self.context()
         runCode = replaceAttrPrefix(self._runCode)
