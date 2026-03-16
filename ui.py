@@ -2421,6 +2421,19 @@ class RigBuilderWindow(QFrame):
 
     def runModule(self, moduleItem=None):
         """Run module with full UI support (progress, undo, logging)."""
+
+        def uiCallback(module):
+            self.logger.info(f"{module.path()} is running...")
+            self.progressBarWidget.stepProgress(self.progressCounter, module.path())
+            self.progressCounter += 1
+
+        def getChildrenCount(item):
+            count = 0
+            for i in range(item.childCount()):
+                count += 1
+                count += getChildrenCount(item.child(i))
+            return count
+
         self.aboutToRunModule.emit()
 
         # Determine which module to run
@@ -2434,18 +2447,6 @@ class RigBuilderWindow(QFrame):
             currentItem = selectedItems[0]
 
         self.logger.info(f"Running module: {currentItem.module.name()}")
-
-        def uiCallback(module):
-            self.logger.info(f"{module.path()} is running...")
-            self.progressBarWidget.stepProgress(self.progressCounter, module.path())
-            self.progressCounter += 1
-
-        def getChildrenCount(item):
-            count = 0
-            for i in range(item.childCount()):
-                count += 1
-                count += getChildrenCount(item.child(i))
-            return count
 
         self.setFocus()
 
