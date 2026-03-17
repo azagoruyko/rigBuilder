@@ -8,6 +8,7 @@ import sys
 import shutil
 import logging
 import fnmatch
+from typing import Callable, Optional, List, Dict, Union
 
 from .qt import *
 
@@ -33,16 +34,16 @@ class RigBuilderLogHandler(logging.Handler):
         super().__init__()
         self.logWidget = None
         
-    def setLogWidget(self, logWidget):
+    def setLogWidget(self, logWidget: "LogWidget"):
         """Connect handler to specific logWidget."""
         self.logWidget = logWidget
         
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord):
         if self.logWidget:
             msg = self.format(record)
             self.logWidget.write(msg + '\n')
 
-def sendToServer(module):
+def sendToServer(module: 'Module') -> bool:
     '''
     Send module to server with SVN, Git, Perforce or other VCS.
     '''
@@ -52,7 +53,7 @@ def sendToServer(module):
 class TrackFileChangesThread(QThread):
     somethingChanged = Signal()
 
-    def __init__(self, filePath):
+    def __init__(self, filePath: str):
         super().__init__()
         self.filePath = filePath
 
@@ -69,7 +70,7 @@ class DirectoryWatcher(QObject):
     """Watch directories recursively and emit debounced change events."""
     somethingChanged = Signal()
 
-    def __init__(self, roots, *, debounceMs=700, filePatterns=None, recursive=True, parent=None):
+    def __init__(self, roots: List[str], *, debounceMs: int = 700, filePatterns: Optional[List[str]] = None, recursive: bool = True, parent: Optional[QObject] = None):
         super().__init__(parent=parent)
         self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
         self.debounceMs = debounceMs
@@ -109,7 +110,7 @@ class DirectoryWatcher(QObject):
         if toAdd:
             self.watcher.addPaths(toAdd)
 
-    def onFilesystemChanged(self, _path):
+    def onFilesystemChanged(self, _path: str):
         self.debounceTimer.start(self.debounceMs)
 
     def emitChange(self):
@@ -130,7 +131,7 @@ def updateFilesFromServer():
         updateFilesThread.start()
 
 class MyThread(QThread):
-    def __init__(self, runFunction):
+    def __init__(self, runFunction: Callable[[], None]):
         super().__init__()
         self.runFunction = runFunction
 
@@ -138,7 +139,7 @@ class MyThread(QThread):
         self.runFunction()
 
 class AttributesWidget(QWidget):
-    def __init__(self, moduleItem, attributes, *, mainWindow=None, **kwargs):
+    def __init__(self, moduleItem: 'ModuleItem', attributes: List['Attribute'], *, mainWindow: Optional['MainWindow'] = None, **kwargs):
         super().__init__(**kwargs)
 
         self.mainWindow = mainWindow
@@ -151,8 +152,8 @@ class AttributesWidget(QWidget):
         layout.setColumnStretch(1, 1)
         self.setLayout(layout)
 
-        def executor(cmd, context=None):
-            ctx = {}
+        def executor(cmd: str, context: Optional[Dict[str, object]] = None) -> Dict[str, object]:
+            ctx: Dict[str, object] = {}
             ctx.update(self.moduleItem.module.context())
             if context:
                 ctx.update(context)
@@ -190,7 +191,7 @@ class AttributesWidget(QWidget):
         layout.addWidget(QLabel())
         layout.setRowStretch(layout.rowCount(), 1)
 
-    def connectionMenu(self, menu, module, attrWidgetIndex, path="/"):
+    def connectionMenu(self, menu: QMenu, module: 'Module', attrWidgetIndex: int, path: str = "/"):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         subMenu = QMenu(module.name(), self)
@@ -205,7 +206,7 @@ class AttributesWidget(QWidget):
         if subMenu.actions():
             menu.addMenu(subMenu)
 
-    def nameContextMenuEvent(self, event, attrWidgetIndex):
+    def nameContextMenuEvent(self, event: QContextMenuEvent, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         menu = QMenu(self)
@@ -247,8 +248,8 @@ class AttributesWidget(QWidget):
 
         menu.popup(event.globalPos())
 
-    def _wrapper(f):
-        def inner(self, attrWidgetIndex, *args, **kwargs):
+    def _wrapper(f: Callable[..., object]):
+        def inner(self, attrWidgetIndex: int, *args, **kwargs):
             attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
             with captureOutput(self.mainWindow.logWidget):
                 try:
@@ -266,7 +267,7 @@ class AttributesWidget(QWidget):
         return inner
     
     @_wrapper
-    def widgetOnChange(self, attrWidgetIndex):
+    def widgetOnChange(self, attrWidgetIndex: int):
         attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
 
         widgetData = widget.getJsonData()
@@ -289,7 +290,7 @@ class AttributesWidget(QWidget):
             self.updateWidgetStyle(attrWidgetIndex)       
 
     @_wrapper
-    def updateWidget(self, attrWidgetIndex):
+    def updateWidget(self, attrWidgetIndex: int):
         attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
         with blockedWidgetContext(widget) as w:
             w.setJsonData(attr.data()) # pull data
@@ -298,7 +299,7 @@ class AttributesWidget(QWidget):
         for i in range(len(self._attributeAndWidgets)):
             self.updateWidget(i)
 
-    def updateWidgetStyle(self, attrWidgetIndex):
+    def updateWidgetStyle(self, attrWidgetIndex: int):
         attr, nameWidget, widget = self._attributeAndWidgets[attrWidgetIndex]
 
         style = ""
@@ -326,7 +327,7 @@ class AttributesWidget(QWidget):
         for i in range(len(self._attributeAndWidgets)):
             self.updateWidgetStyle(i)
 
-    def exposeAttr(self, attrWidgetIndex):
+    def exposeAttr(self, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         if not self.moduleItem.module.parent():
@@ -345,10 +346,10 @@ class AttributesWidget(QWidget):
         self.connectAttr("/"+expAttr.name(), attrWidgetIndex)
 
     @_wrapper
-    def editData(self, attrWidgetIndex):
+    def editData(self, attrWidgetIndex: int):
         def save(data):
             @AttributesWidget._wrapper
-            def _save(_, attrWidgetIndex):
+            def _save(_, attrWidgetIndex: int):
                 attr.setData(data[0]) # use [0] because data is a list
                 self.updateWidget(attrWidgetIndex)
                 self.updateWidgetStyle(attrWidgetIndex)
@@ -359,8 +360,8 @@ class AttributesWidget(QWidget):
         w.saved.connect(save)
         w.show()
 
-    def editExpression(self, attrWidgetIndex):
-        def save(text):
+    def editExpression(self, attrWidgetIndex: int):
+        def save(text: str):
             attr.setExpression(text)
             self.updateWidgets()
             self.updateWidgetStyle(attrWidgetIndex)
@@ -373,12 +374,12 @@ class AttributesWidget(QWidget):
         w.saved.connect(save)
         w.show()
 
-    def clearExpression(self, attrWidgetIndex):
+    def clearExpression(self, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
         attr.setExpression("")
         self.updateWidgetStyle(attrWidgetIndex)
 
-    def resetAttr(self, attrWidgetIndex):
+    def resetAttr(self, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         tmp = TemplateWidgets[attr.template()]()
@@ -387,19 +388,19 @@ class AttributesWidget(QWidget):
         self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 
-    def disconnectAttr(self, attrWidgetIndex):
+    def disconnectAttr(self, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
         attr.setConnect("")
         self.updateWidgetStyle(attrWidgetIndex)
 
-    def connectAttr(self, connect, attrWidgetIndex):
+    def connectAttr(self, connect: str, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
         attr.setConnect(connect)
         self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 
 class AttributesTabWidget(QTabWidget):
-    def __init__(self, moduleItem, *, mainWindow=None, **kwargs):
+    def __init__(self, moduleItem: 'ModuleItem', *, mainWindow: Optional['MainWindow'] = None, **kwargs):
         super().__init__(**kwargs)
 
         self.mainWindow = mainWindow
@@ -413,7 +414,7 @@ class AttributesTabWidget(QTabWidget):
         self.currentChanged.connect(self.tabChanged)
         self.updateTabs()
 
-    def contextMenuEvent(self, event):
+    def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
 
         if self.moduleItem:
@@ -430,8 +431,8 @@ class AttributesTabWidget(QTabWidget):
         self.mainWindow.codeEditorWidget.updateState()
         self.updateTabs()
 
-    def onReplace(self, old, new, opts):
-        def replaceStringInData(data, old, new):
+    def onReplace(self, old: str, new: str, opts: Dict[str, bool]):
+        def replaceStringInData(data: object, old: str, new: str) -> object:
             try:
                 return json.loads(json.dumps(data).replace(old,new))
             except ValueError:
@@ -450,7 +451,7 @@ class AttributesTabWidget(QTabWidget):
 
         self.updateTabs()
 
-    def tabChanged(self, idx):
+    def tabChanged(self, idx: int):
         if self.count() == 0:
             return
 
@@ -523,7 +524,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         self.setDefaultDropAction(Qt.CopyAction)
         self.setMinimumHeight(100)
 
-    def _collectDraggedModulePaths(self):
+    def _collectDraggedModulePaths(self) -> list[str]:
         modulePaths = []
         for item in self.selectedItems():
             filePath = getattr(item, "filePath", "")
@@ -543,11 +544,11 @@ class ModuleBrowserTreeWidget(QTreeWidget):
         drag.setMimeData(mimeData)
         execFunc(drag, Qt.CopyAction)
 
-    def startDrag(self, supportedActions):
+    def startDrag(self, supportedActions: Qt.DropActions):
         del supportedActions
         self._startModuleDrag()
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MiddleButton:
             self.middlePressPos = event.pos()
             item = self.itemAt(event.pos())
@@ -560,7 +561,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
             return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: QMouseEvent):
         if event.buttons() & Qt.MiddleButton:
             if (event.pos() - self.middlePressPos).manhattanLength() >= QApplication.startDragDistance():
                 self._startModuleDrag()
@@ -569,7 +570,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
                 return
         super().mouseMoveEvent(event)
 
-    def contextMenuEvent(self, event):
+    def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
         menu.addAction("Open server folder", self.openServerModulesFolder)
@@ -687,12 +688,12 @@ class ModuleSelectorWidget(QWidget):
         Module.updateUidsCache()
         self.maskChanged()
 
-    def getModulesRootDirectory(self):
+    def getModulesRootDirectory(self) -> str:
         modulesFrom = self.modulesFromButtonGroup.checkedId()
         return getServerModulesPath() if modulesFrom == 0 else getLocalModulesPath()
 
     def maskChanged(self):
-        def findChildByText(text, parent, column=0):
+        def findChildByText(text: str, parent: QTreeWidgetItem, column: int = 0):
             for i in range(parent.childCount()):
                 ch = parent.child(i)
                 if text == ch.text(column):
@@ -750,19 +751,19 @@ class ModuleSelectorWidget(QWidget):
 
 
 class ModuleItem(QTreeWidgetItem):
-    def __init__(self, module, **kwargs):
+    def __init__(self, module: 'Module', **kwargs):
         super().__init__(**kwargs)
         self.module = module
 
         self.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
 
-    def clone(self):
+    def clone(self) -> "ModuleItem":
         item = ModuleItem(self.module.copy())
         for i in range(self.childCount()):
             item.addChild(self.child(i).clone())
         return item
 
-    def data(self, column, role):
+    def data(self, column: int, role: int):
         if column == 0: # name
             if role == Qt.EditRole:
                 return self.module.name()
@@ -844,7 +845,7 @@ class ModuleItem(QTreeWidgetItem):
         else:
             return super().data(column, role)
 
-    def setData(self, column, role, value):
+    def setData(self, column: int, role: int, value: object):
         if column == 0:
             if role == Qt.EditRole:
                 newName = replaceSpecialChars(value).strip()
@@ -859,7 +860,7 @@ class ModuleItem(QTreeWidgetItem):
         else:
             return super().setData(column, role, value)
 
-    def _saveConnections(self, currentModule):
+    def _saveConnections(self, currentModule: "Module"):
         connections = []
         for a in currentModule.attributes():
             connections.append({"attr":a, "module": currentModule, "connections":a.listConnections()})
@@ -868,7 +869,7 @@ class ModuleItem(QTreeWidgetItem):
             connections += self._saveConnections(ch)
         return connections
 
-    def _updateConnections(self, connections):
+    def _updateConnections(self, connections: list[dict[str, object]]):
         for data in connections:
             srcAttr = data["attr"]
             module = data["module"]
@@ -884,7 +885,7 @@ class ModuleItem(QTreeWidgetItem):
         if treeWidget and treeWidget.mainWindow:
             return treeWidget.mainWindow.logger        
     
-    def addAttribute(self, name, template, category="General", **kwargs):
+    def addAttribute(self, name: str, template: str, category: str = "General", **kwargs):
         """Add attribute to this module. Returns Attribute instance."""
         attribute = Attribute()
         attribute.setName(name)
@@ -909,7 +910,7 @@ class ModuleItem(QTreeWidgetItem):
         self.emitDataChanged()
         return attribute
     
-    def removeAttribute(self, attrName):
+    def removeAttribute(self, attrName: str):
         """Remove attribute by name."""
         attribute = self.module.findAttribute(attrName)
         if attribute:
@@ -918,7 +919,7 @@ class ModuleItem(QTreeWidgetItem):
         else:
             self.getLogger().warning(f"Module '{self.module.name()}': Attribute '{attrName}' not found")
     
-    def findAttribute(self, attrName):
+    def findAttribute(self, attrName: str):
         """Find attribute by name."""
         return self.module.findAttribute(attrName)
     
@@ -969,7 +970,7 @@ class ModuleItem(QTreeWidgetItem):
         
         return not hasErrors
     
-    def saveModule(self, filePath=None):
+    def saveModule(self, filePath: Optional[str] = None):
         """Save this module to file."""
         outputPath = filePath or self.module.getSavePath()
         if not outputPath:
@@ -983,7 +984,7 @@ class ModuleItem(QTreeWidgetItem):
         self.module.saveToFile(outputPath)
         self.emitDataChanged()  # Update path display
     
-    def addModule(self, childModule):
+    def addModule(self, childModule: Union[str, "Module"]):
         """Add child module. Returns ModuleItem for the child."""
         if isinstance(childModule, str):
             # Create new module with given name
@@ -999,7 +1000,7 @@ class ModuleItem(QTreeWidgetItem):
         self.emitDataChanged()
         return childItem
     
-    def removeModule(self, childItem):
+    def removeModule(self, childItem: "ModuleItem"):
         """Remove child module."""
         if childItem in [self.child(i) for i in range(self.childCount())]:
             self.removeChild(childItem)
@@ -1009,7 +1010,7 @@ class ModuleItem(QTreeWidgetItem):
             self.getLogger().warning(f"Module '{self.module.name()}': Child module not found")
 
 class TreeWidget(QTreeWidget):
-    def __init__(self, *, mainWindow=None, **kwargs):
+    def __init__(self, *, mainWindow: Optional['MainWindow'] = None, **kwargs):
         super().__init__(**kwargs)
 
         self.mainWindow = mainWindow
@@ -1028,7 +1029,7 @@ class TreeWidget(QTreeWidget):
 
         self.setIndentation(16)
 
-    def drawRow(self, painter, option, index):
+    def drawRow(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
         if self.selectionModel().isSelected(index):
             fullRowRect = QRect(0, option.rect.y(), self.viewport().width(), option.rect.height())
             painter.fillRect(fullRowRect, self.palette().highlight())
@@ -1037,7 +1038,7 @@ class TreeWidget(QTreeWidget):
             option.palette.setBrush(QPalette.Highlight, self.palette().highlight())
         super().drawRow(painter, option, index)
 
-    def dragEnterEvent(self, event):
+    def dragEnterEvent(self, event: QDragEnterEvent):
         super().dragEnterEvent(event)
 
         if event.mimeData().hasUrls():
@@ -1047,13 +1048,13 @@ class TreeWidget(QTreeWidget):
         else:
             event.ignore()
 
-    def dragMoveEvent(self, event):
+    def dragMoveEvent(self, event: QDragMoveEvent):
         super().dragMoveEvent(event)
 
         if event.mimeData().hasUrls():
             event.setDropAction(Qt.CopyAction)
 
-    def dropEvent(self, event):
+    def dropEvent(self, event: QDropEvent):
         super().dropEvent(event)
 
         if event.mimeData().hasUrls():
@@ -1086,7 +1087,7 @@ class TreeWidget(QTreeWidget):
 
             self.dragItems = []
 
-    def makeItemFromModule(self, module):
+    def makeItemFromModule(self, module: 'Module') -> ModuleItem:
         item = ModuleItem(module)
 
         for ch in module.children():
@@ -1094,7 +1095,7 @@ class TreeWidget(QTreeWidget):
 
         return item
 
-    def replaceModule(self, item, newModule):
+    def replaceModule(self, item: ModuleItem, newModule: 'Module') -> ModuleItem:
         """Replace a tree item with a new one built from newModule, preserving position and expanded state."""
         newItem = self.makeItemFromModule(newModule)
         expanded = item.isExpanded()
@@ -1118,7 +1119,7 @@ class TreeWidget(QTreeWidget):
         newItem.setSelected(True)
         return newItem
 
-    def contextMenuEvent(self, event):
+    def contextMenuEvent(self, event: QContextMenuEvent):
         self.mainWindow.menu().popup(event.globalPos())
 
     def sendModuleToServer(self):
@@ -1391,7 +1392,7 @@ class TreeWidget(QTreeWidget):
             
         self.mainWindow.logger.info(f"Pasted {len(pastedItems)} module(s)")
 
-    def removeModule(self, *, askConfirmation=True):
+    def removeModule(self, *, askConfirmation: bool = True):
         selectedItems = self.selectedItems()
         if not selectedItems:
             return
@@ -1410,9 +1411,8 @@ class TreeWidget(QTreeWidget):
             else:
                 self.invisibleRootItem().removeChild(item)
 
-    def addModule(self, module):
-        self.addTopLevelItem(self.makeItemFromModule(module))
-        return module
+    def addModule(self, module: "Module"):
+        return self.addTopLevelItem(self.makeItemFromModule(module))
 
 class TemplateSelectorDialog(QDialog):
     selectedTemplate = Signal(str)
@@ -1447,7 +1447,7 @@ class TemplateSelectorDialog(QDialog):
         self.updateTemplates()
         centerWindow(self)
 
-    def selectTemplate(self, t):
+    def selectTemplate(self, t: str):
         self.selectedTemplate.emit(t)
         self.done(0)
 
@@ -1471,7 +1471,7 @@ class EditTemplateWidget(QWidget):
     Clipboard = []
     nameChanged = Signal(str, str)
 
-    def __init__(self, name, template, **kwargs):
+    def __init__(self, name: str, template: str, **kwargs):
         super().__init__(**kwargs)
 
         self.template = template
@@ -1514,7 +1514,7 @@ class EditTemplateWidget(QWidget):
         layout.addWidget(self.templateWidget)
         layout.addLayout(buttonsLayout)
 
-    def nameContextMenuEvent(self, event):
+    def nameContextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         titleAction = menu.addAction(self.nameWidget.text())
         titleAction.setEnabled(False)
@@ -1537,7 +1537,7 @@ class EditTemplateWidget(QWidget):
 
         EditTemplateWidget.Clipboard = [module]
 
-    def nameMouseDoubleClickEvent(self, event):
+    def nameMouseDoubleClickEvent(self, event: QMouseEvent):
         oldName = self.nameWidget.text()
         newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
         if ok:
@@ -1577,7 +1577,7 @@ class EditTemplateWidget(QWidget):
 class EditAttributesWidget(QWidget):
     nameChanged = Signal(str, str)
 
-    def __init__(self, moduleItem, category, **kwargs):
+    def __init__(self, moduleItem: "ModuleItem", category: str, **kwargs):
         super().__init__(**kwargs)
 
         self.moduleItem = moduleItem
@@ -1600,7 +1600,7 @@ class EditAttributesWidget(QWidget):
         layout.addLayout(self.attributesLayout)
         layout.addStretch()
 
-    def contextMenuEvent(self, event):
+    def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
 
         menu.addAction("Add", self.addTemplateAttribute)
@@ -1632,7 +1632,7 @@ class EditAttributesWidget(QWidget):
         selector.selectedTemplate.connect(lambda t: self.insertCustomWidget(t))
         selector.exec()
 
-    def insertCustomWidget(self, template, row=None):
+    def insertCustomWidget(self, template: str, row: Optional[int] = None) -> Optional[EditTemplateWidget]:
         if not TemplateWidgets.get(template):
             return
 
@@ -1651,7 +1651,7 @@ class EditAttributesWidget(QWidget):
             w.nameWidget.setFixedWidth(maxWidth)
 
 class EditAttributesTabWidget(QTabWidget):
-    def __init__(self, moduleItem, currentIndex=0, **kwargs):
+    def __init__(self, moduleItem: ModuleItem, currentIndex: int = 0, **kwargs):
         super().__init__(**kwargs)
 
         self.moduleItem = moduleItem
@@ -1676,7 +1676,7 @@ class EditAttributesTabWidget(QTabWidget):
 
         self.setCurrentIndex(currentIndex)
 
-    def addTabCategory(self, category):
+    def addTabCategory(self, category: str):
         w = EditAttributesWidget(self.moduleItem, category)
         w.nameChanged.connect(self.nameChangedCallback)
 
@@ -1686,7 +1686,7 @@ class EditAttributesTabWidget(QTabWidget):
         self.addTab(scrollArea, category)
         self.setCurrentIndex(self.count()-1)
 
-    def nameChangedCallback(self, oldName, newName):
+    def nameChangedCallback(self, oldName: str, newName: str):
         sameAttrs = []
         for i in range(self.count()): # find other attributes with the same name, if any, then don't rename in code and connections
             attrsLayout = self.widget(i).widget().attributesLayout # tab/scrollArea/EditAttributesWidget
@@ -1711,7 +1711,7 @@ class EditAttributesTabWidget(QTabWidget):
                     c = self.moduleItem.module.path().replace(attr.module().path(inclusive=False), "") + "/" + newName # update connection path
                     a.setConnect(c)
 
-    def tabBarMouseDoubleClickEvent(self, event):
+    def tabBarMouseDoubleClickEvent(self, event: QMouseEvent):
         super().mouseDoubleClickEvent(event)
 
         idx = self.currentIndex()
@@ -1719,17 +1719,17 @@ class EditAttributesTabWidget(QTabWidget):
         if ok:
             self.setTabText(idx, newName)
 
-    def tabCloseRequest(self, i):
+    def tabCloseRequest(self, i: int):
         if QMessageBox.question(self, "Rig Builder", "Remove '{}' tab?".format(self.tabText(i)), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.setCurrentIndex(i-1)
             self.clearTab(i)
 
-    def contextMenuEvent(self, event):
+    def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         menu.addAction("New tab", Callback(self.addTabCategory, "Untitled"))
         menu.popup(event.globalPos())
 
-    def clearTab(self, i):
+    def clearTab(self, i: int):
         self.widget(i).deleteLater()
         self.removeTab(i)
 
@@ -1739,7 +1739,7 @@ class EditAttributesTabWidget(QTabWidget):
         self.clear()
 
 class EditAttributesDialog(QDialog):
-    def __init__(self, moduleItem, currentIndex=0, **kwargs):
+    def __init__(self, moduleItem: ModuleItem, currentIndex: int = 0, **kwargs):
         super().__init__(**kwargs)
 
         self.moduleItem = moduleItem
@@ -1769,7 +1769,7 @@ class EditAttributesDialog(QDialog):
     def saveAttributes(self):
         module = self.moduleItem.module
 
-        def attrMetaEqual(a, b):
+        def attrMetaEqual(a: Attribute, b: Attribute) -> bool:
             return (a.name() == b.name()
                     and a.category() == b.category()
                     and a.template() == b.template()
@@ -1807,7 +1807,7 @@ class EditAttributesDialog(QDialog):
         self.moduleItem.emitDataChanged()
         self.accept()
 
-    def buildAttributesFromTabs(self):
+    def buildAttributesFromTabs(self) -> List[Attribute]:
         attrs = []
         for i in range(self.tabWidget.count()):
             attrsLayout = self.tabWidget.widget(i).widget().attributesLayout
@@ -1828,7 +1828,7 @@ class EditAttributesDialog(QDialog):
         return attrs
 
 class CodeEditorWidget(CodeEditorWithNumbersWidget):
-    def __init__(self, moduleItem=None, *, mainWindow=None, **kwargs):
+    def __init__(self, moduleItem: Optional[ModuleItem] = None, *, mainWindow: Optional["MainWindow"] = None, **kwargs):
         super().__init__(**kwargs)
 
         self.mainWindow = mainWindow
@@ -1876,7 +1876,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.editorWidget.words = words
 
 class LogHighligher(QSyntaxHighlighter):
-    def __init__(self, parent):
+    def __init__(self, parent: QTextDocument):
         super().__init__(parent)
 
         self.highlightingRules = []
@@ -1889,7 +1889,7 @@ class LogHighligher(QSyntaxHighlighter):
         errorFormat.setForeground(QColor(250, 90, 90))
         self.highlightingRules.append(("(?i)\\b\\w*error\\b", errorFormat))
 
-    def highlightBlock(self, text):
+    def highlightBlock(self, text: str):
         for pattern, format in self.highlightingRules:
             if not pattern:
                 continue
@@ -1909,7 +1909,7 @@ class LogWidget(QTextEdit):
         self.syntax = LogHighligher(self.document())
         self.setPlaceholderText("Output and errors or warnings...")
 
-    def write(self, txt):
+    def write(self, txt: str):
         self.insertPlainText(txt)
         self.ensureCursorVisible()
         QApplication.processEvents()
@@ -1921,7 +1921,7 @@ class LogWidget(QTextEdit):
 class DiffHighlighter(QSyntaxHighlighter):
     """Git-style coloring for unified diff: removed red, added green, hunk header blue."""
 
-    def __init__(self, parent):
+    def __init__(self, parent: QTextDocument):
         super().__init__(parent)
 
         self.defaultFormat = QTextCharFormat()
@@ -1937,7 +1937,7 @@ class DiffHighlighter(QSyntaxHighlighter):
         self.hunkFormat.setForeground(QColor(130, 130, 220))
         self.hunkFormat.setFontWeight(QFont.Bold)
 
-    def highlightBlock(self, text):
+    def highlightBlock(self, text: str):
         if not text:
             return
         
@@ -1954,7 +1954,7 @@ class DiffHighlighter(QSyntaxHighlighter):
 class DiffViewDialog(QDialog):
     """Modal dialog showing inline unified diff with git-style coloring."""
 
-    def __init__(self, diffText, fromDesc, toDesc, parent=None):
+    def __init__(self, diffText: str, fromDesc: str, toDesc: str, parent: Optional[QWidget] = None):
         super().__init__(parent)
 
         self.setWindowTitle("Diff: {} vs {}".format(fromDesc, toDesc))
@@ -1977,10 +1977,10 @@ class DiffViewDialog(QDialog):
 
 
 class WideSplitterHandle(QSplitterHandle):
-    def __init__(self, orientation, parent, **kwargs):
+    def __init__(self, orientation: Qt.Orientation, parent: QWidget, **kwargs):
         super().__init__(orientation, parent, **kwargs)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent):
         painter = QPainter()
         if painter.begin(self):
             try:
@@ -1992,11 +1992,11 @@ class WideSplitterHandle(QSplitterHandle):
                 painter.end()
 
 class WideSplitter(QSplitter):
-    def __init__(self, orientation, **kwargs):
+    def __init__(self, orientation: Qt.Orientation, width: int = 16, **kwargs):
         super().__init__(orientation, **kwargs)
-        self.setHandleWidth(16)
+        self.setHandleWidth(width)
 
-    def createHandle(self):
+    def createHandle(self) -> QSplitterHandle:
         return WideSplitterHandle(self.orientation(), self)
 
 class MyProgressBar(QWidget):
@@ -2018,19 +2018,19 @@ class MyProgressBar(QWidget):
     def initialize(self):
         self.queue = []
 
-    def updateWithState(self, state):
+    def updateWithState(self, state: Dict[str, object]):
         trimText = lambda text, size: "..." + text[-size+3:]  if len(text) > size else " "*(size-len(text)) + text
         self.labelWidget.setText(trimText(state["text"], self.labelSize))
         self.progressBarWidget.setValue(state["value"])
         self.progressBarWidget.setMaximum(state["max"])
 
-    def beginProgress(self, text, count, updatePercent=0.01):
+    def beginProgress(self, text: str, count: int, updatePercent: float = 0.01):
         q = {"text": text, "max": count, "value": 0, "updatePercent":updatePercent}
         self.queue.append(q)
         self.updateWithState(q)
         self.show()
 
-    def stepProgress(self, value, text=None):
+    def stepProgress(self, value: int, text: Optional[str] = None):
         q = self.queue[-1]
         q["value"] = value
 
@@ -2241,7 +2241,7 @@ class RigBuilderWindow(QFrame):
         self.selectModule(item)
 
     def editInVSCode(self):
-        def getFunctionDefinition(f, *, name=None): # f(a,b,c=1) => 'def f(a,b,c=1):pass'
+        def getFunctionDefinition(f: Callable[..., object], *, name: Optional[str] = None) -> str: # f(a,b,c=1) => 'def f(a,b,c=1):pass'
             signature = inspect.signature(f)
             args = []
             for p in signature.parameters.values():
@@ -2251,7 +2251,7 @@ class RigBuilderWindow(QFrame):
                     args.append("{}={}".format(p.name, p.default))
             return "def {}({}):pass".format(name or f.__name__, ", ".join(args))
 
-        def getVariableValue(v):
+        def getVariableValue(v: object) -> Optional[object]:
             if type(v) == str:
                 return '"' + v + '"'
 
@@ -2262,7 +2262,7 @@ class RigBuilderWindow(QFrame):
 
             return v
         
-        def onFileChangeCallback(module, filePath):    
+        def onFileChangeCallback(module: Module, filePath: str):    
             with open(filePath, "r") as f:
                 lines = f.read().splitlines()
 
@@ -2327,7 +2327,7 @@ class RigBuilderWindow(QFrame):
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
-    def diffModule(self, *, reference=None):
+    def diffModule(self, *, reference: Optional[str] = None):
         import difflib
 
         selectedItems = self.treeWidget.selectedItems()
@@ -2418,19 +2418,19 @@ class RigBuilderWindow(QFrame):
             self.moduleSelected.emit(item)
             self.docBrowser.setHtml(item.module.doc())
 
-    def showDiffView(self, diffText, fromDesc, toDesc):
+    def showDiffView(self, diffText: str, fromDesc: str, toDesc: str):
         """Show diff in a modal dialog (used by history link handler)."""
         dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
         execFunc(dlg)
 
-    def moduleHistoryLinkClicked(self, url):
+    def moduleHistoryLinkClicked(self, url: QUrl):
         if url.scheme() in ("http", "https"):
             QDesktopServices.openUrl(url)
 
-    def isCodeEditorHidden(self):
+    def isCodeEditorHidden(self) -> bool:
         return self.workspaceSplitter.sizes()[1] == 0 # code section size
 
-    def codeSplitterMoved(self, sz, n):
+    def codeSplitterMoved(self, sz: int, n: int):
         selectedItems = self.treeWidget.selectedItems()
 
         if self.isCodeEditorHidden():
@@ -2448,15 +2448,15 @@ class RigBuilderWindow(QFrame):
             self.workspaceSplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
-    def runModule(self, moduleItem=None):
+    def runModule(self, moduleItem: Optional[ModuleItem] = None):
         """Run module with full UI support (progress, undo, logging)."""
 
-        def uiCallback(module):
+        def uiCallback(module: Module):
             self.logger.info(f"{module.path()} is running...")
             self.progressBarWidget.stepProgress(self.progressCounter, module.path())
             self.progressCounter += 1
 
-        def getChildrenCount(item):
+        def getChildrenCount(item: ModuleItem) -> int:
             count = 0
             for i in range(item.childCount()):
                 count += 1
@@ -2522,7 +2522,7 @@ class RigBuilderWindow(QFrame):
 
     # === API METHODS FOR MODULE MANAGEMENT ===
     
-    def addModule(self, moduleOrPath, parent=None):
+    def addModule(self, moduleOrPath: Union[str, Module], parent: Optional[ModuleItem] = None) -> Optional[ModuleItem]:
         """Add module to the tree. Returns ModuleItem or None if failed."""
         try:
             if isinstance(moduleOrPath, str):
@@ -2547,7 +2547,7 @@ class RigBuilderWindow(QFrame):
             self.logger.error(f"Adding module: {e}")
             return
     
-    def removeModule(self, moduleItem):
+    def removeModule(self, moduleItem: Optional[ModuleItem]):
         """Remove module from tree."""
         if not moduleItem:
             self.logger.warning("Cannot remove module: moduleItem is None")
@@ -2575,22 +2575,22 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryWidget.filterEdit.setText(filterStr)
         self.treeWidget.clearSelection()
 
-    def selectedModules(self):
+    def selectedModules(self) -> List[ModuleItem]:
         """Get list of currently selected ModuleItems."""
         return self.treeWidget.selectedItems()
 
-    def currentModule(self):
+    def currentModule(self) -> Optional[ModuleItem]:
         """Get currently selected module."""
         return self.treeWidget.currentItem()
     
-    def selectModule(self, moduleItem):
+    def selectModule(self, moduleItem: Optional[ModuleItem]):
         """Select specific module in tree."""
         if moduleItem:
             self.treeWidget.clearSelection()
             moduleItem.setSelected(True)
             self.treeWidget.setCurrentItem(moduleItem)
     
-    def findModule(self, nameOrPath):
+    def findModule(self, nameOrPath: str) -> Optional[ModuleItem]:
         """Find module by name or path in tree."""
         iterator = QTreeWidgetItemIterator(self.treeWidget)
         while iterator.value():
