@@ -1232,7 +1232,8 @@ class TreeWidget(QTreeWidget):
                     QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
                 else:
                     if shouldCommit:
-                        moduleHistoryBrowser.recordModuleSave(item.module, commitMessage)
+                        if not moduleHistoryBrowser.recordModuleSave(item.module, commitMessage):
+                            QMessageBox.critical(self, "Rig Builder", "Can't save history for '{}': {}".format(item.module.name(), str(e)))
 
                     item.emitDataChanged() # path changed
                     self.mainWindow.attributesTabWidget.updateWidgetStyles()

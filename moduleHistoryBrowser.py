@@ -1,9 +1,8 @@
-"""Module history: git-backed history, HTML browser, and UI (commit dialog, full file view, history widget)."""
+"""Module history: git-backed history, HTML browser, and UI (commit dialog, history widget)."""
 
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
@@ -14,9 +13,6 @@ from .gitrepo import GitRepo
 from .qt import (
     QCheckBox,
     QDialog,
-    QPlainTextEdit,
-    QPushButton,
-    QFont,
     QLineEdit,
     QLabel,
     QDialogButtonBox,
@@ -29,7 +25,6 @@ from .qt import (
     QTextBrowser,
     QTextCursor,
     Signal,
-    execFunc,
 )
 from .ui_utils import centerWindow
 
@@ -38,13 +33,12 @@ from .ui_utils import centerWindow
 
 GIT_INSTALL_URL = "https://git-scm.com/downloads"
 HISTORY_LINK_SCHEME = "history"
-DEFAULT_COMMIT_LIMIT = 30
-FILTERED_COMMIT_LIMIT = 100
+COMMITS_LIMIT = 25
 
 
 # --- Repo and module ---
 
-def _getHistoryRepo() -> Optional[GitRepo]:
+def getHistoryRepo() -> Optional[GitRepo]:
     """Return GitRepo for history directory, or None if git unavailable or init fails."""
     if not GitRepo.isAvailable():
         return None
@@ -55,31 +49,11 @@ def _getHistoryRepo() -> Optional[GitRepo]:
     return repo
 
 
-def getHistoryRepo() -> Optional[GitRepo]:
-    """Return GitRepo for history directory (for UI link handling)."""
-    return _getHistoryRepo()
-
-
-def getModuleNameForUid(uid: str) -> str:
-    """Display name for a module UID from its history file."""
-    path = os.path.join(getHistoryPath(), uid + MODULE_EXT)
-    if not os.path.isfile(path):
-        return uid or "unknown"
-    try:
-        root = ET.parse(path).getroot()
-        name = root.attrib.get("name", "")
-        if name:
-            return name
-    except Exception:
-        pass
-    return os.path.splitext(os.path.basename(path))[0] or "unknown"
-
-
 # --- Recording saves ---
 
 def recordModuleSave(module: Module, commitMessage: str) -> bool:
-    """Write module XML to history and commit. Commit message must be set by callee. Returns True on success."""
-    repo = _getHistoryRepo()
+    """Write module XML to history and commit. Message is 'moduleFile: <commitMessage>' or 'moduleFile: update'. Returns True on success."""
+    repo = getHistoryRepo()
     if not repo:
         return False
     uid = module.uid()
@@ -87,20 +61,11 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
         return False
 
     historyFile = os.path.join(getHistoryPath(), uid + MODULE_EXT)
-    try:
-        with open(historyFile, "w", encoding="utf-8") as f:
-            f.write(module.toXml(keepConnections=False))
-    except OSError:
-        return False
+    with open(historyFile, "w", encoding="utf-8") as f:
+        f.write(module.toXml(keepConnections=False))
 
-    message = (commitMessage or "").strip()
-    if not message:
-        base = module.getSavePath() or module.name() + MODULE_EXT
-        baseName = os.path.basename(base)
-        if not baseName.lower().endswith(MODULE_EXT):
-            baseName += MODULE_EXT
-
-        message = "update {}".format(baseName)
+    baseName = os.path.basename(module.getSavePath())
+    message = "{}: {}".format(baseName, commitMessage.strip() or "update")
 
     err, _ = repo.commit(message, [historyFile])
     return not err
@@ -113,7 +78,7 @@ def squashHistory(message: str = "Initial squashed") -> Tuple[bool, str]:
     Squash entire history into a single commit using an orphan branch. The repo
     will have one commit with the current tree. Returns (success, errorMessage).
     """
-    repo = _getHistoryRepo()
+    repo = getHistoryRepo()
     if not repo:
         return False, "History repo not available."
 
@@ -144,19 +109,16 @@ def squashHistory(message: str = "Initial squashed") -> Tuple[bool, str]:
 # --- Git log ---
 
 def getModuleHistoryEntries(
-    limit: int = DEFAULT_COMMIT_LIMIT,
-    filterUid: Optional[str] = None,
-    filterName: Optional[str] = None,
+    limit: int = COMMITS_LIMIT,
+    uid: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Return history entries from git log; optional filter by UID or module name."""
-    repo = _getHistoryRepo()
+    """Return history entries from git log; optional filter by UID."""
+    repo = getHistoryRepo()
+
     if not repo:
         return []
 
-    if filterUid or filterName:
-        limit = min(limit, FILTERED_COMMIT_LIMIT)
-
-    err, out = repo('log -n {} --pretty=format:"%h %ai %s" --name-only'.format(limit))
+    err, out = repo('log -n {} --pretty=format:"%h %ai %s" --name-only -- {}*'.format(limit, uid))
     if err or not out:
         return []
 
@@ -177,16 +139,7 @@ def getModuleHistoryEntries(
                 continue
 
             uid = line[:-len(MODULE_EXT)]
-            if filterUid and uid != filterUid:
-                continue
-
-            if filterName and filterName.lower() not in getModuleNameForUid(uid).lower():
-                continue
-
             files.append(uid)
-
-        if (filterUid or filterName) and not files:
-            continue
 
         entries.append({"rev": rev, "subject": subject, "date": dateStr, "files": files})
     
@@ -204,7 +157,7 @@ def buildHistoryHtml(filterText: str = "") -> str:
             "<p><a style='color: #55aaee' href='{}'>Install Git</a></p>"
         ).format(escape(reason), escape(GIT_INSTALL_URL))
 
-    repo = _getHistoryRepo()
+    repo = getHistoryRepo()
     if not repo:
         reason = "Could not initialize history (check git user.name and user.email)."
         return (
@@ -212,11 +165,7 @@ def buildHistoryHtml(filterText: str = "") -> str:
             "<p><a style='color: #55aaee' href='{}'>Install Git</a></p>"
         ).format(escape(reason), escape(GIT_INSTALL_URL))
 
-    s = filterText.strip()
-    filterUid = s if s and re.match(r"^[a-f0-9]{32}$", s) else None
-    filterName = None if filterUid else (s if s else None)
-    limit = FILTERED_COMMIT_LIMIT if (filterUid or filterName) else DEFAULT_COMMIT_LIMIT
-    entries = getModuleHistoryEntries(limit=limit, filterUid=filterUid, filterName=filterName)
+    entries = getModuleHistoryEntries(COMMITS_LIMIT, filterText.strip())
     parts = ["<h2>📜 Module history</h2>"]
 
     if not entries:
@@ -228,16 +177,11 @@ def buildHistoryHtml(filterText: str = "") -> str:
             datePart = dateTimeParts[0] if dateTimeParts else ""
             timePart = dateTimeParts[1] if len(dateTimeParts) > 1 else ""
             for uid in entry["files"]:
-                moduleFile = escape(getModuleNameForUid(uid) + MODULE_EXT)
                 diffUrl = "{}:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
-                fullUrl = "{}:full:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 recoverUrl = "{}:recover:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 diffLink = "<a style='color:#55aaee' href='{}' title='View diff for this commit'>diff</a>".format(diffUrl)
-                fullLink = " <a style='color:#55aaee' href='{}' title='View full file at this commit'>full</a>".format(fullUrl)
                 recoverLink = " <a style='color:#55aaee' href='{}' title='Add module from this revision to the tree'>recover</a>".format(recoverUrl)
-                line = "{}, {}, <b>{}</b>: {} {}{}{}".format(
-                    escape(datePart), escape(timePart), moduleFile, escape(subject), diffLink, fullLink, recoverLink
-                )
+                line = "{}, {}, {} {}{}".format(escape(datePart), escape(timePart), escape(subject), diffLink, recoverLink)
                 parts.append("<p>{}</p>".format(line))
     return "".join(parts)
 
@@ -261,26 +205,6 @@ def showCommitMessageDialog(parent) -> Tuple[bool, str]:
     return (accepted, lineEdit.text().strip() if accepted else "")
 
 
-class FullFileViewDialog(QDialog):
-    """Modal dialog showing full file content at a given revision."""
-
-    def __init__(self, content: str, rev: str, fileName: str, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("{} at {}".format(fileName, rev))
-        self.setMinimumSize(600, 400)
-        self.resize(800, 500)
-        layout = QVBoxLayout(self)
-        self.textEdit = QPlainTextEdit()
-        self.textEdit.setReadOnly(True)
-        self.textEdit.setFont(QFont("Consolas", 10))
-        self.textEdit.setPlainText(content)
-        layout.addWidget(self.textEdit)
-        closeBtn = QPushButton("Close")
-        closeBtn.clicked.connect(self.accept)
-        layout.addWidget(closeBtn)
-        centerWindow(self)
-
-
 class ModuleHistoryWidget(QWidget):
     """Widget with filter and text browser showing module history (git log). Emits linkClicked(url) for link handling."""
 
@@ -297,7 +221,7 @@ class ModuleHistoryWidget(QWidget):
         self.trackHistoryCheckbox.setToolTip("When unchecked, saves are not committed to git history")
         self.trackHistoryCheckbox.stateChanged.connect(self._onTrackHistoryToggled)
         self.filterEdit = QLineEdit()
-        self.filterEdit.setPlaceholderText("Filter by module name or UID")
+        self.filterEdit.setPlaceholderText("Filter by UID")
         self.filterEdit.setClearButtonEnabled(True)
         self.filterEdit.textChanged.connect(self.updateModuleHistory)
 
@@ -322,8 +246,8 @@ class ModuleHistoryWidget(QWidget):
 
     def handleHistoryLink(self, url) -> bool:
         """
-        Handle history links: history:rev:uid (diff), history:full:rev:uid (full),
-        history:recover:rev:uid (add to tree). Return True if handled.
+        Handle history links: history:rev:uid (diff), history:recover:rev:uid (add to tree).
+        Return True if handled.
         """
         urlStr = QUrl(url).toString()
         if not urlStr.startswith(HISTORY_LINK_SCHEME + ":"):
@@ -331,7 +255,7 @@ class ModuleHistoryWidget(QWidget):
 
         parts = urlStr[len(HISTORY_LINK_SCHEME) + 1 :].lstrip("/").split(":")
         action = parts[0] if len(parts) >= 3 else None
-        if action in ("full", "recover"):
+        if action == "recover":
             rev, uid = parts[1], parts[2]
         elif len(parts) >= 2:
             rev, uid = parts[0], parts[1]
@@ -344,13 +268,7 @@ class ModuleHistoryWidget(QWidget):
             return True
 
         fileName = uid + MODULE_EXT
-        if action == "full":
-            err, content = repo("show {}:{}".format(rev, fileName))
-            if not err and content:
-                dlg = FullFileViewDialog(content.strip(), rev, fileName, parent=self.mainWindow)
-                execFunc(dlg)
-
-        elif action == "recover":
+        if action == "recover":
             err, content = repo("show {}:{}".format(rev, fileName))
             if not err and content:
                 try:
