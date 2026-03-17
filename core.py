@@ -409,6 +409,7 @@ class Module(object):
 
         self._name = ""
         self._runCode = ""
+        self._doc = ""
 
         self._parent = None
         self._children = []
@@ -427,6 +428,7 @@ class Module(object):
         module._name = self._name
         module._uid = self._uid
         module._runCode = self._runCode
+        module._doc = self._doc
 
         for a in self._attributes:
             module.addAttribute(a.copy())            
@@ -484,6 +486,15 @@ class Module(object):
     def setRunCode(self, code: str):
         """Set module Python execution code."""
         self._runCode = code
+        self._modified = True
+
+    def doc(self) -> str:
+        """Get module documentation HTML."""
+        return self._doc
+    
+    def setDoc(self, doc: str):
+        """Set module documentation HTML."""
+        self._doc = doc
         self._modified = True
 
     def root(self) -> 'Module':
@@ -607,6 +618,11 @@ class Module(object):
                                  "<![CDATA[", self._runCode, "]]>",
                                  "</run>"]))
 
+        if self._doc:
+            template.append("".join(["<doc>",
+                                     "<![CDATA[", self._doc, "]]>",
+                                     "</doc>"]))
+
         template.append("<attributes>")
         template += [a.toXml(keepConnection=keepConnections) for a in self._attributes]
         template.append("</attributes>")
@@ -627,6 +643,7 @@ class Module(object):
         module._uid = root.attrib.get("uid", "")
         module._muted = int(root.attrib.get("muted", 0))
         module._runCode = root.findtext("run") or ""
+        module._doc = root.findtext("doc") or ""
 
         attrs_el = root.find("attributes")
         if attrs_el is not None:
@@ -729,6 +746,7 @@ class Module(object):
                 self.addChild(ch)
 
             self._runCode = origModule._runCode
+            self._doc = origModule._doc
             self._filePath = origModule._filePath
 
             self._modified = False
