@@ -16,6 +16,7 @@ from .core import *
 from .editor import *
 from . import moduleHistoryBrowser
 from .moduleHistoryBrowser import ModuleHistoryWidget
+from .htmlBrowser import HtmlBrowser
 from .workspace import saveWorkspace, loadWorkspace
 from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
 from .utils import *
@@ -2109,27 +2110,36 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryWidget = ModuleHistoryWidget(self)
         self.moduleHistoryWidget.linkClicked.connect(self.moduleHistoryLinkClicked)
 
-        attrsToolsWidget = QWidget()
-        attrsToolsWidget.setLayout(QVBoxLayout())
-        attrsToolsWidget.layout().addWidget(self.moduleHistoryWidget)
-        attrsToolsWidget.layout().addWidget(self.attributesTabWidget)
-        attrsToolsWidget.layout().addWidget(self.runBtn)
+        self.docBrowser = HtmlBrowser()
+        self.docBrowser.moduleLinkClicked.connect(self._onModuleDocLink)
+        self.docBrowser.htmlEdited.connect(self._onDocHtmlEdited)
+        self.docBrowser.hide()
+
+        self.attrsDocSplitter = WideSplitter(Qt.Vertical, 8)
+        self.attrsDocSplitter.addWidget(self.attributesTabWidget)
+        self.attrsDocSplitter.addWidget(self.docBrowser)
+        self.attrsDocSplitter.setSizes([400, 100])
+
+        self.rightSplitter = WideSplitter(Qt.Vertical, 8)
+        self.rightSplitter.addWidget(self.moduleHistoryWidget)
+        self.rightSplitter.addWidget(self.attrsDocSplitter)
+
+        rightWidget = QWidget()
+        rightWidget.setLayout(QVBoxLayout())
+        rightWidget.layout().setContentsMargins(0, 0, 0, 0)
+        rightWidget.layout().addWidget(self.rightSplitter)
+        rightWidget.layout().addWidget(self.runBtn)
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
 
-        self.moduleToolsWidget = QWidget()
-        self.moduleToolsWidget.setLayout(QVBoxLayout())
-        self.moduleToolsWidget.layout().setContentsMargins(0, 0, 0, 0)
-        self.moduleToolsWidget.layout().addWidget(self.moduleSelectorWidget)
-
-        self.leftSplitter = WideSplitter(Qt.Vertical)
+        self.leftSplitter = WideSplitter(Qt.Vertical, 8)
         self.leftSplitter.addWidget(self.treeWidget)
-        self.leftSplitter.addWidget(self.moduleToolsWidget)
+        self.leftSplitter.addWidget(self.moduleSelectorWidget)
         self.leftSplitter.setSizes([300, 200])
 
         self.mainContentSplitter = WideSplitter(Qt.Horizontal)
         self.mainContentSplitter.addWidget(self.leftSplitter)
-        self.mainContentSplitter.addWidget(attrsToolsWidget)
+        self.mainContentSplitter.addWidget(rightWidget)
         self.mainContentSplitter.setSizes([400, 600])
 
         self.workspaceSplitter = WideSplitter(Qt.Vertical)
@@ -2210,6 +2220,25 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Function Browser", self.openFunctionBrowser)
 
         return menu
+
+    def _onDocHtmlEdited(self, text: str):
+        selectedItems = self.treeWidget.selectedItems()
+        if not selectedItems:
+            return
+
+        item = selectedItems[0]
+        module = item.module
+        module.setDoc(text or "")
+
+    def _onModuleDocLink(self, spec: str):
+        try:
+            module = Module.loadModule(spec)
+        except ModuleNotFoundError:
+            self.logger.warning(f"Module doc link not found: {spec}")
+            return
+
+        item = self.treeWidget.addModule(module)
+        self.selectModule(item)
 
     def editInVSCode(self):
         def getFunctionDefinition(f, *, name=None): # f(a,b,c=1) => 'def f(a,b,c=1):pass'
@@ -2367,6 +2396,7 @@ class RigBuilderWindow(QFrame):
         self.attributesTabWidget.setVisible(en)
         self.runBtn.setVisible(en)
         self.moduleHistoryWidget.setVisible(not en)
+        self.docBrowser.setVisible(en)
         self.codeWidget.setEnabled(en and not self.isCodeEditorHidden())
 
         if selectedItems:
@@ -2386,6 +2416,7 @@ class RigBuilderWindow(QFrame):
             
             # Emit API signal
             self.moduleSelected.emit(item)
+            self.docBrowser.setHtml(item.module.doc())
 
     def showDiffView(self, diffText, fromDesc, toDesc):
         """Show diff in a modal dialog (used by history link handler)."""

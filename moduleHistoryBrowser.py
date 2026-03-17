@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 from .core import getHistoryPath, Module, MODULE_EXT, Settings
+from .htmlBrowser import HtmlBrowser
 from .gitrepo import GitRepo
 from .qt import (
     QCheckBox,
@@ -22,7 +23,6 @@ from .qt import (
     QUrl,
     QVBoxLayout,
     QWidget,
-    QTextBrowser,
     QTextCursor,
     Signal,
 )
@@ -34,9 +34,6 @@ from .ui_utils import centerWindow
 GIT_INSTALL_URL = "https://git-scm.com/downloads"
 HISTORY_LINK_SCHEME = "history"
 COMMITS_LIMIT = 25
-
-
-# --- Repo and module ---
 
 def getHistoryRepo() -> Optional[GitRepo]:
     """Return GitRepo for history directory, or None if git unavailable or init fails."""
@@ -179,8 +176,8 @@ def buildHistoryHtml(filterText: str = "") -> str:
             for uid in entry["files"]:
                 diffUrl = "{}:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 recoverUrl = "{}:recover:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
-                diffLink = "<a style='color:#55aaee' href='{}' title='View diff for this commit'>diff</a>".format(diffUrl)
-                recoverLink = " <a style='color:#55aaee' href='{}' title='Add module from this revision to the tree'>recover</a>".format(recoverUrl)
+                diffLink = "<a href='{}' title='View diff for this commit'>diff</a>".format(diffUrl)
+                recoverLink = " <a href='{}' title='Add module from this revision to the tree'>recover</a>".format(recoverUrl)
                 line = "{}, {}, {} {}{}".format(escape(datePart), escape(timePart), escape(subject), diffLink, recoverLink)
                 parts.append("<p>{}</p>".format(line))
     return "".join(parts)
@@ -225,11 +222,10 @@ class ModuleHistoryWidget(QWidget):
         self.filterEdit.setClearButtonEnabled(True)
         self.filterEdit.textChanged.connect(self.updateModuleHistory)
 
-        self.textBrowser = QTextBrowser()
-        self.textBrowser.setOpenLinks(False)
+        self.textBrowser = HtmlBrowser()
         self.textBrowser.setContextMenuPolicy(Qt.CustomContextMenu)
         self.textBrowser.customContextMenuRequested.connect(self._onTextBrowserContextMenu)
-        self.textBrowser.anchorClicked.connect(self._onAnchorClicked)
+        self.textBrowser.linkClicked.connect(self._onLinkClicked)
 
         layout.addWidget(self.filterEdit)
         layout.addWidget(self.textBrowser)
@@ -286,7 +282,7 @@ class ModuleHistoryWidget(QWidget):
 
         return True
 
-    def _onAnchorClicked(self, url):
+    def _onLinkClicked(self, url):
         if self.handleHistoryLink(url):
             return
         self.linkClicked.emit(url)
