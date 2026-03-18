@@ -9,10 +9,10 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 from .core import getHistoryPath, Module, MODULE_EXT, Settings
-from .htmlBrowser import HtmlBrowser
 from .gitrepo import GitRepo
 from .qt import (
     QCheckBox,
+    QDesktopServices,
     QDialog,
     QLineEdit,
     QLabel,
@@ -20,6 +20,7 @@ from .qt import (
     QMessageBox,
     QMenu,
     Qt,
+    QTextBrowser,
     QUrl,
     QVBoxLayout,
     QWidget,
@@ -222,10 +223,12 @@ class ModuleHistoryWidget(QWidget):
         self.filterEdit.setClearButtonEnabled(True)
         self.filterEdit.textChanged.connect(self.updateModuleHistory)
 
-        self.textBrowser = HtmlBrowser()
+        self.textBrowser = QTextBrowser()
+        self.textBrowser.setOpenLinks(False)
+        self.textBrowser.document().setDefaultStyleSheet("a { color: #55aaee; }")
         self.textBrowser.setContextMenuPolicy(Qt.CustomContextMenu)
         self.textBrowser.customContextMenuRequested.connect(self._onTextBrowserContextMenu)
-        self.textBrowser.linkClicked.connect(self._onLinkClicked)
+        self.textBrowser.anchorClicked.connect(self._onAnchorClicked)
 
         layout.addWidget(self.filterEdit)
         layout.addWidget(self.textBrowser)
@@ -282,7 +285,11 @@ class ModuleHistoryWidget(QWidget):
 
         return True
 
-    def _onLinkClicked(self, url):
+    def _onAnchorClicked(self, url):
+        scheme = QUrl(url).scheme()
+        if scheme in ("http", "https"):
+            QDesktopServices.openUrl(QUrl(url))
+            return
         if self.handleHistoryLink(url):
             return
         self.linkClicked.emit(url)
@@ -326,6 +333,6 @@ class ModuleHistoryWidget(QWidget):
         filterText = self.filterEdit.text().strip() if hasattr(self, "filterEdit") else ""
         html = buildHistoryHtml(filterText)
         self.textBrowser.clear()
-        self.textBrowser.insertHtml(html)
+        self.textBrowser.setHtml(html)
         self.textBrowser.moveCursor(QTextCursor.Start)
 
