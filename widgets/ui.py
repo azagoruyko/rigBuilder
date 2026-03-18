@@ -1,4 +1,6 @@
+"""Template widgets for Rig Builder."""
 from ..qt import *
+from functools import partial
 
 import os
 from .core import *
@@ -147,7 +149,7 @@ class ButtonTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.buttonWidget = QPushButton("Press me")
-        self.buttonWidget.clicked.connect(self.buttonClicked)
+        self.buttonWidget.clicked.connect(self._onButtonClicked)
         self.buttonWidget.contextMenuEvent = self.buttonContextMenuEvent
 
         layout.addWidget(self.buttonWidget)
@@ -177,7 +179,7 @@ class ButtonTemplateWidget(TemplateWidget):
         editText.saved.connect(save)
         editText.show()
 
-    def buttonClicked(self):
+    def _onButtonClicked(self):
         if self.buttonCommand:
             self.executor(self.buttonCommand)
 
@@ -308,7 +310,7 @@ class LineEditOptionsDialog(QDialog):
         formLayout = QFormLayout()
         self.validatorWidget = QComboBox()
         self.validatorWidget.addItems(["Default", "Int", "Double"])
-        self.validatorWidget.currentIndexChanged.connect(self.validatorIndexChanged)
+        self.validatorWidget.currentIndexChanged.connect(self._onValidatorIndexChanged)
 
         self.minWidget = QLineEdit()
         self.minWidget.setEnabled(False)
@@ -328,7 +330,7 @@ class LineEditOptionsDialog(QDialog):
         layout.addLayout(formLayout)
         layout.addWidget(okBtn)
 
-    def validatorIndexChanged(self, idx):
+    def _onValidatorIndexChanged(self, idx):
         self.minWidget.setEnabled(idx != 0)
         self.maxWidget.setEnabled(idx != 0)
 
@@ -371,16 +373,16 @@ value = path or value'''}
         layout.setContentsMargins(QMargins())
 
         self.textWidget = QLineEdit()
-        self.textWidget.editingFinished.connect(self.textChanged)
+        self.textWidget.editingFinished.connect(self._onTextChanged)
         self.textWidget.contextMenuEvent = self.textContextMenuEvent
 
         self.sliderWidget = QSlider(Qt.Horizontal)
         self.sliderWidget.setTracking(True)
-        self.sliderWidget.valueChanged.connect(self.sliderValueChanged)
+        self.sliderWidget.valueChanged.connect(self._onSliderValueChanged)
         self.sliderWidget.hide()
 
         self.buttonWidget = QPushButton("Button")
-        self.buttonWidget.clicked.connect(self.buttonClicked)
+        self.buttonWidget.clicked.connect(self._onButtonClicked)
         self.buttonWidget.contextMenuEvent = self.buttonContextMenuEvent
 
         layout.addWidget(self.textWidget)
@@ -391,7 +393,7 @@ value = path or value'''}
         color = jsonColor(self.value)
         self.textWidget.setStyleSheet("QLineEdit {{ color: {} }}".format(color.name()))
 
-    def textChanged(self):
+    def _onTextChanged(self):
         text = self.textWidget.text().strip()
         if self.validator:
             try:
@@ -407,7 +409,7 @@ value = path or value'''}
         if valueChanged:
             self.somethingChanged.emit()
 
-    def sliderValueChanged(self, value):
+    def _onSliderValueChanged(self, value):
         value /= 100.0
         if self.validator == 1: # int
             value = round(value)
@@ -425,10 +427,10 @@ value = path or value'''}
         enableButtonAction.setCheckable(True)
         enableButtonAction.setChecked(self.buttonEnabled)
         enableButtonAction.triggered.connect(lambda checked: self.setButtonEnabled(checked))
-        menu.addAction("Options...", self.optionsClicked)
+        menu.addAction("Options...", self._onOptionsClicked)
         menu.popup(event.globalPos())
 
-    def optionsClicked(self):
+    def _onOptionsClicked(self):
         oldState = (self.minValue, self.maxValue, self.validator)
         self.optionsDialog.minWidget.setText(str(self.minValue))
         self.optionsDialog.maxWidget.setText(str(self.maxValue))
@@ -499,7 +501,7 @@ value = path or value'''}
         editText.saved.connect(save)
         editText.show()
 
-    def buttonClicked(self):
+    def _onButtonClicked(self):
         if self.buttonEnabled and self.buttonCommand:
             oldValue = smartConversion(self.textWidget.text().strip())
             ctx = {"value": oldValue}
@@ -604,7 +606,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.listWidget = QListWidget()
         self.listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.listWidget.itemSelectionChanged.connect(self.somethingChanged.emit)
-        self.listWidget.itemChanged.connect(self.itemChanged)
+        self.listWidget.itemChanged.connect(self._onItemChanged)
         self.listWidget.contextMenuEvent = self.listContextMenuEvent
 
         layout.addWidget(self.listWidget, alignment=Qt.AlignLeft|Qt.AlignTop)
@@ -624,9 +626,9 @@ class ListBoxTemplateWidget(TemplateWidget):
         menu.addSeparator()
 
         dccLabel = APIRegistry.getDccName() or "DCC"
-        menu.addAction("Get selected from " + dccLabel, Callback(self.getFromDCC, False))
-        menu.addAction("Add selected from " + dccLabel, Callback(self.getFromDCC, True))
-        menu.addAction("Select in " + dccLabel, Callback(self.selectInDCC, False))
+        menu.addAction("Get selected from " + dccLabel, partial(self.getFromDCC, False))
+        menu.addAction("Add selected from " + dccLabel, partial(self.getFromDCC, True))
+        menu.addAction("Select in " + dccLabel, partial(self.selectInDCC, False))
         menu.addAction("Select all in " + dccLabel, self.selectInDCC)
 
         menu.addSeparator()
@@ -634,7 +636,7 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         menu.popup(event.globalPos())
 
-    def itemChanged(self, item):
+    def _onItemChanged(self, item):
         self.listWidget.closePersistentEditor(item)
         self.somethingChanged.emit()
         self.resizeWidget()
@@ -741,18 +743,18 @@ class RadioButtonTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.buttonsGroupWidget = QButtonGroup()
-        self.buttonsGroupWidget.buttonClicked.connect(self.buttonClicked)
+        self.buttonsGroupWidget.buttonClicked.connect(self._onButtonClicked)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        menu.addAction("Edit", self.editClicked)
+        menu.addAction("Edit", self._onEditClicked)
 
         menu.addSeparator()
 
         columnsMenu = QMenu("Columns", self)
         for n in RadioButtonTemplateWidget.Columns:
-            action = columnsMenu.addAction(str(n) + " columns", Callback(self.setColumns, n))
+            action = columnsMenu.addAction(str(n) + " columns", partial(self.setColumns, n))
             if n == self.numColumns:
                 action.setCheckable(True)
                 action.setChecked(True)
@@ -772,7 +774,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
             font.setBold(b.isChecked())
             b.setFont(font)
 
-    def buttonClicked(self, b):
+    def _onButtonClicked(self, b):
         self.colorizeButtons()
         self.somethingChanged.emit()
 
@@ -782,7 +784,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
         for b in self.buttonsGroupWidget.buttons():
             self.buttonsGroupWidget.removeButton(b)
 
-    def editClicked(self):
+    def _onEditClicked(self):
         items = ";".join([b.text() for b in self.buttonsGroupWidget.buttons()])
         newItems, ok = QInputDialog.getText(self, "Rig Builder", "Items separated with ';'", QLineEdit.Normal, items)
         if ok and newItems:
@@ -833,12 +835,12 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.tableWidget.verticalHeader().setSectionsMovable(True)
-        self.tableWidget.verticalHeader().sectionMoved.connect(self.sectionMoved)
+        self.tableWidget.verticalHeader().sectionMoved.connect(self._onSectionMoved)
         self.tableWidget.horizontalHeader().setSectionsMovable(True)
-        self.tableWidget.horizontalHeader().sectionMoved.connect(self.sectionMoved)
+        self.tableWidget.horizontalHeader().sectionMoved.connect(self._onSectionMoved)
 
         self.tableWidget.contextMenuEvent = self.tableContextMenuEvent
-        self.tableWidget.itemChanged.connect(self.tableItemChanged)
+        self.tableWidget.itemChanged.connect(self._onTableItemChanged)
 
         header = self.tableWidget.horizontalHeader()
         if "setResizeMode" in dir(header):
@@ -846,18 +848,18 @@ class TableTemplateWidget(TemplateWidget):
         elif "setSectionResizeMode" in dir(header):
             header.setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        self.tableWidget.horizontalHeader().sectionDoubleClicked.connect(self.sectionDoubleClicked)
+        self.tableWidget.horizontalHeader().sectionDoubleClicked.connect(self._onSectionDoubleClicked)
 
         layout.addWidget(self.tableWidget)
 
-    def sectionMoved(self, idx, oldIndex, newIndex):
+    def _onSectionMoved(self, idx, oldIndex, newIndex):
         self.somethingChanged.emit()
 
-    def tableItemChanged(self, item):
+    def _onTableItemChanged(self, item):
         item.setForeground(jsonColor(smartConversion(item.text())))
         self.somethingChanged.emit()
 
-    def sectionDoubleClicked(self, column):
+    def _onSectionDoubleClicked(self, column):
         newName, ok = QInputDialog.getText(self, "Rename", "New name", QLineEdit.Normal, self.tableWidget.horizontalHeaderItem(column).text())
         if ok:
             self.tableWidget.horizontalHeaderItem(column).setText(newName)
@@ -871,8 +873,8 @@ class TableTemplateWidget(TemplateWidget):
         menu.addSeparator()
 
         rowMenu = QMenu("Row", self)
-        rowMenu.addAction("Insert", Callback(self.insertRow, self.tableWidget.currentRow()))
-        rowMenu.addAction("Append", Callback(self.insertRow, self.tableWidget.currentRow()+1))
+        rowMenu.addAction("Insert", partial(self.insertRow, self.tableWidget.currentRow()))
+        rowMenu.addAction("Append", partial(self.insertRow, self.tableWidget.currentRow()+1))
 
         rowMenu.addSeparator()
 
@@ -886,8 +888,8 @@ class TableTemplateWidget(TemplateWidget):
         menu.addMenu(rowMenu)
 
         columnMenu = QMenu("Column", self)
-        columnMenu.addAction("Insert", Callback(self.insertColumn, self.tableWidget.currentColumn()))
-        columnMenu.addAction("Append", Callback(self.insertColumn, self.tableWidget.currentColumn()+1))
+        columnMenu.addAction("Insert", partial(self.insertColumn, self.tableWidget.currentColumn()))
+        columnMenu.addAction("Append", partial(self.insertColumn, self.tableWidget.currentColumn()+1))
 
         columnMenu.addSeparator()
 
@@ -994,14 +996,14 @@ class TextTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.textWidget = QTextEdit()
-        self.textWidget.textChanged.connect(lambda _=None: self.somethingChanged.emit())
+        self.textWidget.textChanged.connect(self._onTextContentChanged)
 
         incSizeBtn = QPushButton("+")
         incSizeBtn.setFixedSize(25, 25)
-        incSizeBtn.clicked.connect(self.incSize)
+        incSizeBtn.clicked.connect(self._onIncSizeClicked)
         decSizeBtn = QPushButton("-")
         decSizeBtn.setFixedSize(25, 25)
-        decSizeBtn.clicked.connect(self.decSize)
+        decSizeBtn.clicked.connect(self._onDecSizeClicked)
 
         hlayout = QHBoxLayout()
         hlayout.addWidget(decSizeBtn)
@@ -1012,11 +1014,14 @@ class TextTemplateWidget(TemplateWidget):
         layout.addWidget(self.textWidget)
         layout.addStretch()
 
-    def incSize(self):
+    def _onTextContentChanged(self):
+        self.somethingChanged.emit()
+
+    def _onIncSizeClicked(self):
         self.textWidget.setFixedHeight(self.textWidget.height() + 50)
         self.somethingChanged.emit()
 
-    def decSize(self):
+    def _onDecSizeClicked(self):
         self.textWidget.setFixedHeight(self.textWidget.height() - 50)
         self.somethingChanged.emit()
 
@@ -1053,21 +1058,21 @@ class VectorTemplateWidget(TemplateWidget):
 
         vectorDimMenu = menu.addMenu("Dimension")
         for size in range(2, 17):
-            action = vectorDimMenu.addAction(str(size)+"D", Callback(self.setSizes, size, self.numColumns))
+            action = vectorDimMenu.addAction(str(size)+"D", partial(self.setSizes, size, self.numColumns))
             if size == self.vectorDim:
                 action.setCheckable(True)
                 action.setChecked(True)
 
         numColumnsMenu = menu.addMenu("Columns")        
         for size in range(2, 8):
-            action = numColumnsMenu.addAction(str(size), Callback(self.setSizes, self.vectorDim, size))
+            action = numColumnsMenu.addAction(str(size), partial(self.setSizes, self.vectorDim, size))
             if size == self.numColumns:
                 action.setCheckable(True)
                 action.setChecked(True)
 
         precisionMenu = menu.addMenu("Precision")        
         for n in range(0, 8):
-            action = precisionMenu.addAction(str(n), Callback(self.setPrecision, n))
+            action = precisionMenu.addAction(str(n), partial(self.setPrecision, n))
             if n == self.precision:
                 action.setCheckable(True)
                 action.setChecked(True)
@@ -1429,22 +1434,22 @@ class JsonTemplateWidget(TemplateWidget):
         layout.setContentsMargins(QMargins())
 
         self.jsonWidget = JsonWidget()
-        self.jsonWidget.itemChanged.connect(lambda _,__:self.somethingChanged.emit())
-        self.jsonWidget.itemMoved.connect(lambda _:self.somethingChanged.emit())
-        self.jsonWidget.itemAdded.connect(lambda _:self.somethingChanged.emit())
-        self.jsonWidget.itemRemoved.connect(lambda _:self.somethingChanged.emit())
+        self.jsonWidget.itemChanged.connect(self._onJsonDataChanged)
+        self.jsonWidget.itemMoved.connect(self._onJsonDataChanged)
+        self.jsonWidget.itemAdded.connect(self._onJsonDataChanged)
+        self.jsonWidget.itemRemoved.connect(self._onJsonDataChanged)
         self.jsonWidget.dataLoaded.connect(self.somethingChanged.emit)
         self.jsonWidget.cleared.connect(self.somethingChanged.emit)
-        self.jsonWidget.readOnlyChanged.connect(lambda _: self.somethingChanged.emit())
-        self.jsonWidget.rootChanged.connect(lambda _: self.updateInfoLabel())
-        self.jsonWidget.itemClicked.connect(lambda _: self.updateInfoLabel())
+        self.jsonWidget.readOnlyChanged.connect(self._onJsonDataChanged)
+        self.jsonWidget.rootChanged.connect(self._onJsonSelectionChanged)
+        self.jsonWidget.itemClicked.connect(self._onJsonSelectionChanged)
 
         incSizeBtn = QPushButton("+")
         incSizeBtn.setFixedSize(25, 25)
-        incSizeBtn.clicked.connect(self.incSize)
+        incSizeBtn.clicked.connect(self._onIncSizeClicked)
         decSizeBtn = QPushButton("-")
         decSizeBtn.setFixedSize(25, 25)
-        decSizeBtn.clicked.connect(self.decSize)
+        decSizeBtn.clicked.connect(self._onDecSizeClicked)
 
         self.infoLabel = QLabel()
 
@@ -1458,6 +1463,12 @@ class JsonTemplateWidget(TemplateWidget):
         layout.addWidget(self.jsonWidget)
         layout.addStretch()
 
+    def _onJsonDataChanged(self, *_):
+        self.somethingChanged.emit()
+
+    def _onJsonSelectionChanged(self, *_):
+        self.updateInfoLabel()
+
     def updateInfoLabel(self):
         rootIndex = self.jsonWidget.rootIndex()
         root = self.jsonWidget.itemFromIndex(rootIndex).getPath() if rootIndex != QModelIndex() else ""
@@ -1466,11 +1477,11 @@ class JsonTemplateWidget(TemplateWidget):
         path = item.getPath() if item else ""
         self.infoLabel.setText("Root:{} Path:{}".format(root, path.replace(root,"")))
 
-    def incSize(self):
+    def _onIncSizeClicked(self):
         self.jsonWidget.setFixedHeight(self.jsonWidget.height() + 50)
         self.somethingChanged.emit()
 
-    def decSize(self):
+    def _onDecSizeClicked(self):
         self.jsonWidget.setFixedHeight(self.jsonWidget.height() - 50)
         self.somethingChanged.emit()
 
@@ -1530,7 +1541,7 @@ class EditCompountWidgetsDialog(QDialog):
             w = TemplateWidgets[template]()
             w.setJsonData(w.getDefaultData())
             w.template = template
-            addMenu.addAction(template, Callback(self.listWidget.addItem, self.itemFromWidget(w)))
+            addMenu.addAction(template, partial(self.listWidget.addItem, self.itemFromWidget(w)))
 
         menu.addAction("Remove", lambda: self.listWidget.takeItem(self.listWidget.currentRow()))
         menu.addAction("Clear", self.listWidget.clear)    

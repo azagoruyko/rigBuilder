@@ -55,9 +55,6 @@ def jsonColor(value) -> QColor:
     elif isinstance(value, dict):
         return JsonColors["dict"]
 
-def Callback(f, *args, **kwargs):
-    """Create lambda callback for Qt signals."""
-    return lambda: f(*args, **kwargs)
 
 @contextmanager
 def blockedWidgetContext(widget):

@@ -1,4 +1,5 @@
 from ..qt import *
+from functools import partial
 import json
 import re
 import os
@@ -8,7 +9,12 @@ from ..ui_utils import getActions, centerWindow, setActionsLocalShortcut, Search
 
 RootDirectory = os.path.dirname(__file__)
 
-FloatType = 6 # QMetaType.Double
+FloatType = 6  # QMetaType.Double
+
+
+def _moveItemSortKey(direction, root, x):
+    """Sort key for moveItem: order by index, direction controls sign."""
+    return -direction * (x.parent() or root).indexOfChild(x)
 
 class EditJsonTextWindow(QDialog):
     saved = Signal(object)
@@ -207,7 +213,7 @@ class JsonWidget(QTreeWidget):
         self._undoSystem = SimpleUndo()
 
         self._searchReplaceDialog = SearchReplaceDialog(["Keys"])
-        self._searchReplaceDialog.onReplace.connect(self.onSearchReplace)
+        self._searchReplaceDialog.onReplace.connect(self._onSearchReplace)
 
         self.header().hide()
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -228,7 +234,7 @@ class JsonWidget(QTreeWidget):
 
         fileMenu = menu.addMenu("File")
         fileMenu.addAction("Save all", self.saveToFile)
-        fileMenu.addAction("Export selected", lambda: self.saveToFile(item=self.selectedItem()))
+        fileMenu.addAction("Export selected", self._onExportSelected)
 
         if not self._readOnly:
             fileMenu.addAction("Load", self.loadFromFile)
@@ -253,7 +259,7 @@ class JsonWidget(QTreeWidget):
                 action.setData(d)
                 action.setShortcut(key)
 
-            addGroup.triggered.connect(lambda action :self.addItem(action.data(), self.selectedItem()))
+            addGroup.triggered.connect(self._onAddGroupTriggered)
             addMenu.addActions(addGroup.actions())
 
             menu.addAction("Remove", self.removeItem, "Delete")
@@ -268,10 +274,10 @@ class JsonWidget(QTreeWidget):
             menu.addSeparator()            
 
             moveMenu = menu.addMenu("Move")
-            moveMenu.addAction("Top", lambda:self.moveItem(-9999999), "Ctrl+Shift+Up")
-            moveMenu.addAction("Up", lambda:self.moveItem(-1), "Shift+Up")
-            moveMenu.addAction("Down", lambda:self.moveItem(1), "Shift+Down")
-            moveMenu.addAction("Bottom", lambda:self.moveItem(9999999), "Ctrl+Shift+Down")
+            moveMenu.addAction("Top", partial(self.moveItem, -9999999), "Ctrl+Shift+Up")
+            moveMenu.addAction("Up", partial(self.moveItem, -1), "Shift+Up")
+            moveMenu.addAction("Down", partial(self.moveItem, 1), "Shift+Down")
+            moveMenu.addAction("Bottom", partial(self.moveItem, 9999999), "Ctrl+Shift+Down")
 
             menu.addAction("Sort", self.sortItemsChildren)
             menu.addSeparator()
@@ -289,10 +295,10 @@ class JsonWidget(QTreeWidget):
 
         menu.addSeparator()
         expandMenu = menu.addMenu("Expand")
-        expandMenu.addAction("Toggle", lambda:self.expandItem(self.selectedItem(), recursive=False), "Space")
-        expandMenu.addAction("All", lambda:self.expandItem(self.selectedItem(), True))
-        expandMenu.addAction("Collapse all", lambda:self.expandItem(self.selectedItem(), False))
-        expandMenu.addAction("Toggle all", lambda:self.expandItem(self.selectedItem()), "Shift+Space")
+        expandMenu.addAction("Toggle", partial(self._onExpandSelected, recursive=False), "Space")
+        expandMenu.addAction("All", partial(self._onExpandSelected, value=True))
+        expandMenu.addAction("Collapse all", partial(self._onExpandSelected, value=False))
+        expandMenu.addAction("Toggle all", self._onExpandSelected, "Shift+Space")
 
         menu.addAction("Reveal", self.revealSelected, "F")
         menu.addAction("Set as root", lambda: self.setRootItem(self.selectedItem()), "Ctrl+Space")
@@ -328,7 +334,7 @@ class JsonWidget(QTreeWidget):
         if item:
             QApplication.clipboard().setText(item.getPath())
 
-    def onSearchReplace(self, old, new, opts):
+    def _onSearchReplace(self, old, new, opts):
         doReplaceKeys = opts.get("Keys")
 
         items = self.findItemsByType([], self.selectedItem())
@@ -392,6 +398,17 @@ class JsonWidget(QTreeWidget):
     def selectedItem(self):
         selectedItems = self.selectedItems()
         return selectedItems[-1] if selectedItems else None
+
+    def _onExportSelected(self):
+        self.saveToFile(item=self.selectedItem())
+
+    def _onAddGroupTriggered(self, action):
+        self.addItem(action.data(), self.selectedItem())
+
+    def _onExpandSelected(self, value=None, recursive=True):
+        item = self.selectedItem()
+        if item:
+            self.expandItem(item, value, recursive=recursive)
 
     def saveToFile(self, *, path=None, item=None):
         if not path:
@@ -493,12 +510,12 @@ class JsonWidget(QTreeWidget):
         data = self.itemToJson(item) if item else self.toJsonList()
 
         dlg = EditJsonTextWindow(data, readOnly=self._readOnly)
-        dlg.saved.connect(lambda data: saveCallback(item, data))
+        dlg.saved.connect(partial(saveCallback, item))
         dlg.exec_()
 
     def moveItem(self, direction):
         selectedItems = self.selectedItems()
-        sortedItems = sorted(selectedItems, key=lambda x: -direction*(x.parent() or self.invisibleRootItem()).indexOfChild(x)) # the lowest first
+        sortedItems = sorted(selectedItems, key=partial(_moveItemSortKey, direction, self.invisibleRootItem()))
 
         # undo
         _items = [((item.parent() or self.invisibleRootItem()).indexOfChild(item), item) for item in sortedItems] # save indices
@@ -537,8 +554,10 @@ class JsonWidget(QTreeWidget):
                     item.insertChild(i, child)
             undo_functions.append(f)
 
-        f = lambda: [f() for f in undo_functions]
-        self._undoSystem.push("Sort", f)
+        def runAll():
+            for fn in undo_functions:
+                fn()
+        self._undoSystem.push("Sort", runAll)
 
     def duplicateItem(self):
         selectedItems = self.selectedItems()
