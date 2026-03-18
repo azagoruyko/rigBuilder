@@ -27,6 +27,129 @@ parentWindow = APIRegistry.getParentWindow()
 updateFilesThread = None 
 trackFileChangesThreads = {} # by file path
 
+DOC_HELP_TEXT = """Documentation for this module (double-click to edit). Supports HTML or Markdown.
+
+HTML examples:
+- Paragraph: <p>Short description of what this module does.</p>
+- Section title: <h2>Usage</h2>
+- External link: <a href="https://your.wiki/rig">Rigging guide</a>
+- Open another module: <a href="module:character/rig/Arm_L">Arm_L module</a>
+
+Markdown examples:
+- **Bold**, *italic*, `code`
+- ## Heading, - list, [link](url)
+- Fenced code blocks, tables
+
+module:SPEC links work in both formats; SPEC is a UID, relative path, or full path for Module.loadModule()."""
+
+def convertMarkdownToHTML(text: str):
+    """Convert Markdown to HTML."""
+    try:
+        import markdown
+        return markdown.markdown(text, extensions=['fenced_code', 'codehilite', 'tables', 'extra', 'sane_lists'], output_format="html5")
+    except ImportError:
+        # simple html conversion
+        text = text.replace("\n", "<br>").replace(" ", "&nbsp;")
+        text = text.replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
+    return text
+
+class DocBrowser(QTextBrowser):
+    """HTML/Markdown browser for module documentation."""
+
+    def __init__(self, *, mainWindow: 'RigBuilderWindow', parent=None):
+        super().__init__(parent)
+        self.mainWindow = mainWindow
+
+        self.setOpenLinks(False)
+        self.anchorClicked.connect(self._onAnchorClicked)
+        self.setPlaceholderText(DOC_HELP_TEXT)
+        self.document().setDefaultStyleSheet("a { color: #55aaee; }")
+
+    def updateDoc(self):
+        item = self.mainWindow.currentModule()
+        if not item:
+            self.clear()
+            return
+
+        doc = item.module.doc()
+        if item.module.docFormat() == "markdown":
+            doc = convertMarkdownToHTML(doc)
+        self.setHtml(doc)
+
+    def _onAnchorClicked(self, url):
+        url = QUrl(url)
+        scheme = url.scheme()
+
+        if scheme in ("http", "https"):
+            QDesktopServices.openUrl(url)
+            return
+
+        if scheme == "module":
+            spec = url.toString()[len("module:"):].strip()
+            if spec:
+                self.openModuleBySpec(spec)
+            return
+
+    def openModuleBySpec(self, spec: str):
+        """Load and select module by spec (UID, relative or full path)."""
+        try:
+            module = Module.loadModule(spec)
+        except ModuleNotFoundError:
+            self.mainWindow.logger.warning("Module not found: {}".format(spec))
+            return
+
+        item = self.mainWindow.treeWidget.addModule(module)
+        self.mainWindow.selectModule(item)
+
+    def contextMenuEvent(self, event):
+        item = self.mainWindow.currentModule()
+        if not item:
+            return
+
+        def setDocFormat(format: str):
+            item.module.setDocFormat(format)
+            self.updateDoc()
+
+        module = item.module
+        menu = QMenu(self)
+        action = menu.addAction("Treat as HTML", partial(setDocFormat, "html"))
+        action.setCheckable(True)
+        action.setChecked(module.docFormat() == "html")
+
+        action = menu.addAction("Treat as Markdown", partial(setDocFormat, "markdown"))
+        action.setCheckable(True)
+        action.setChecked(module.docFormat() == "markdown")
+
+        menu.popup(event.globalPos())
+
+    def mouseDoubleClickEvent(self, event):
+        """Edit source text and save it to module."""
+
+        item = self.mainWindow.currentModule()
+        if not item:
+            return
+
+        module = item.module
+
+        def save(text):
+            module.setDoc(text)
+
+            html = text
+            if module.docFormat() == "markdown":
+                html = convertMarkdownToHTML(text)
+
+            self.setHtml(html)
+
+        w = EditTextDialog(
+            module.doc(),
+            title="Edit documentation",
+            placeholder=DOC_HELP_TEXT,
+            words=set(),
+            python=False)
+
+        w.saved.connect(save)
+        w.show()
+
 # === GLOBAL LOGGING SYSTEM ===
 class RigBuilderLogHandler(logging.Handler):
     """Custom log handler that redirects to logWidget."""
@@ -2110,9 +2233,7 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryWidget = ModuleHistoryWidget(self)
         self.moduleHistoryWidget.linkClicked.connect(self.moduleHistoryLinkClicked)
 
-        self.docBrowser = HtmlBrowser()
-        self.docBrowser.moduleLinkClicked.connect(self._onModuleDocLink)
-        self.docBrowser.htmlEdited.connect(self._onDocHtmlEdited)
+        self.docBrowser = DocBrowser(mainWindow=self)
         self.docBrowser.hide()
 
         self.attrsDocSplitter = WideSplitter(Qt.Vertical, 8)
@@ -2220,25 +2341,6 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Function Browser", self.openFunctionBrowser)
 
         return menu
-
-    def _onDocHtmlEdited(self, text: str):
-        selectedItems = self.treeWidget.selectedItems()
-        if not selectedItems:
-            return
-
-        item = selectedItems[0]
-        module = item.module
-        module.setDoc(text or "")
-
-    def _onModuleDocLink(self, spec: str):
-        try:
-            module = Module.loadModule(spec)
-        except ModuleNotFoundError:
-            self.logger.warning(f"Module doc link not found: {spec}")
-            return
-
-        item = self.treeWidget.addModule(module)
-        self.selectModule(item)
 
     def editInVSCode(self):
         def getFunctionDefinition(f: Callable[..., object], *, name: Optional[str] = None) -> str: # f(a,b,c=1) => 'def f(a,b,c=1):pass'
@@ -2416,7 +2518,8 @@ class RigBuilderWindow(QFrame):
             
             # Emit API signal
             self.moduleSelected.emit(item)
-            self.docBrowser.setHtml(item.module.doc())
+
+        self.docBrowser.updateDoc()
 
     def showDiffView(self, diffText: str, fromDesc: str, toDesc: str):
         """Show diff in a modal dialog (used by history link handler)."""
