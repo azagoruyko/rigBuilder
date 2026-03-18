@@ -52,7 +52,7 @@ def convertMarkdownToHTML(text: str):
             text = "<b>Markdown is not installed. Using simple HTML conversion.</b><br><br>" + text
             # simple html conversion
             text = text.replace("\n", "<br>").replace(" ", "&nbsp;")
-            text = text.replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
+            text = text.replace("\t", "&nbsp;"*4)
     return text
 
 class DocBrowser(QTextBrowser):
