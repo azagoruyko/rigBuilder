@@ -580,6 +580,7 @@ class AttributesTabWidget(QTabWidget):
 
     def selectTab(self, idx: int):
         """Switch to tab at index and build attributes widget."""
+
         if self.count() == 0:
             return
 
@@ -2218,7 +2219,6 @@ class RigBuilderWindow(QFrame):
         self.logger.addHandler(self.logHandler)
 
         self.attributesTabWidget = AttributesTabWidget(None, mainWindow=self)
-        self.attributesTabWidget.hide()
 
         self.treeWidget = TreeWidget(mainWindow=self)
         self.treeWidget.itemSelectionChanged.connect(self._onTreeItemSelectionChanged)
@@ -2242,22 +2242,20 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryWidget = ModuleHistoryWidget(self)
 
         self.docBrowser = DocBrowser(mainWindow=self)
-        self.docBrowser.hide()
 
-        self.attrsDocSplitter = WideSplitter(Qt.Vertical, 8)
-        self.attrsDocSplitter.addWidget(self.attributesTabWidget)
-        self.attrsDocSplitter.addWidget(self.docBrowser)
-        self.attrsDocSplitter.setSizes([400, 100])
-
-        self.rightSplitter = WideSplitter(Qt.Vertical, 8)
-        self.rightSplitter.addWidget(self.moduleHistoryWidget)
-        self.rightSplitter.addWidget(self.attrsDocSplitter)
+        self.rightSplitter = WideSplitter(Qt.Vertical, 4)
+        self.rightSplitter.addWidget(self.attributesTabWidget)
+        self.rightSplitter.addWidget(self.docBrowser)
+        self.rightSplitter.setSizes([400, 100])
+        self.rightSplitter.hide()
 
         rightWidget = QWidget()
         rightWidget.setLayout(QVBoxLayout())
-        rightWidget.layout().setContentsMargins(0, 0, 0, 0)
-        rightWidget.layout().addWidget(self.rightSplitter)
-        rightWidget.layout().addWidget(self.runBtn)
+        rightWidgetLayout = rightWidget.layout()
+        rightWidgetLayout.setContentsMargins(0, 0, 0, 0)
+        rightWidgetLayout.addWidget(self.moduleHistoryWidget)
+        rightWidgetLayout.addWidget(self.rightSplitter)
+        rightWidgetLayout.addWidget(self.runBtn)
 
         self.moduleSelectorWidget = ModuleSelectorWidget()
 
@@ -2504,7 +2502,7 @@ class RigBuilderWindow(QFrame):
     def _onTreeItemSelectionChanged(self):
         item = self.currentModule()
         en = item is not None
-        self.attributesTabWidget.setVisible(en)
+        self.rightSplitter.setVisible(en)
         self.runBtn.setVisible(en)
         self.moduleHistoryWidget.setVisible(not en)
         self.docBrowser.setVisible(en)
