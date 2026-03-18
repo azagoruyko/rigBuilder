@@ -48,9 +48,11 @@ def convertMarkdownToHTML(text: str):
         import markdown
         return markdown.markdown(text, extensions=['fenced_code', 'codehilite', 'tables', 'extra', 'sane_lists'], output_format="html5")
     except ImportError:
-        # simple html conversion
-        text = text.replace("\n", "<br>").replace(" ", "&nbsp;")
-        text = text.replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
+        if text:
+            text = "<b>Markdown is not installed. Using simple HTML conversion.</b><br><br>" + text
+            # simple html conversion
+            text = text.replace("\n", "<br>").replace(" ", "&nbsp;")
+            text = text.replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
     return text
 
 class DocBrowser(QTextBrowser):
