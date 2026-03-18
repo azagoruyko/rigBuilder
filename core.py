@@ -410,7 +410,7 @@ class Module(object):
         self._name = ""
         self._runCode = ""
         self._doc = ""
-        self._docFormat = "markdown"
+        self._docFormat = "html"
 
         self._parent = None
         self._children = []
