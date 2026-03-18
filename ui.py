@@ -587,6 +587,10 @@ class AttributesTabWidget(QTabWidget):
         idx = clamp(idx, 0, self.count()-1)
 
         title = self.tabText(idx)
+        if title not in self.tabsAttributes:
+            self._attributesWidget = None
+            return
+
         scrollArea = self.widget(idx)
         self._attributesWidget = AttributesWidget(self.moduleItem, self.tabsAttributes[title], mainWindow=self.mainWindow)
         scrollArea.setWidget(self._attributesWidget)
@@ -611,6 +615,15 @@ class AttributesTabWidget(QTabWidget):
                 tabTitlesInOrder.append(a.category())
 
             self.tabsAttributes[a.category()].append(a)
+
+        if not tabTitlesInOrder: # no attributes, show placeholder
+            label = QLabel("No attributes, right-click to add them.")
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("color: gray;")
+            scrollArea = QScrollArea()
+            scrollArea.setWidgetResizable(True)
+            scrollArea.setWidget(label)
+            self.addTab(scrollArea, "")
 
         for t in tabTitlesInOrder:
             scrollArea = QScrollArea() # empty, in tabChanged actual widget is set
@@ -1720,6 +1733,9 @@ class EditAttributesWidget(QWidget):
         self.setLayout(layout)
 
         self.attributesLayout = QVBoxLayout()
+        self.placeholderWidget = QLabel("Right-click to add attributes")
+        self.placeholderWidget.setAlignment(Qt.AlignCenter)
+        self.placeholderWidget.setStyleSheet("color: gray;")
 
         for a in self.moduleItem.module.attributes():
             if a.category() == self.category:
@@ -1730,6 +1746,7 @@ class EditAttributesWidget(QWidget):
                 w.attrExpression = a.expression()
                 w.attrModified = a.modified()
 
+        layout.addWidget(self.placeholderWidget)
         layout.addLayout(self.attributesLayout)
         layout.addStretch()
 
