@@ -26,8 +26,8 @@ def replaceAttrPrefixInverse(code: str) -> str:
 def getUidFromFile(path: str) -> Optional[str]:
     """Extract UID from XML file."""
     if path.endswith(MODULE_EXT):
-        with open(path, "r") as f:
-            l = f.readline() # read first line
+        with open(path, "r", encoding="utf-8") as f:
+            l = f.readline()  # read first line
         r = re.search("uid=\"(\\w*)\"", l)
         if r:
             return r.group(1)
@@ -797,8 +797,8 @@ class Module(object):
         if not self._uid or newUid:
             self._uid = uuid.uuid4().hex
         
-        with open(os.path.realpath(fileName), "w") as f: # resolve links
-            f.write(self.toXml(keepConnections=False)) # don't keep outer connections
+        with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
+            f.write(self.toXml(keepConnections=False))  # don't keep outer connections
 
         self._filePath = os.path.normpath(fileName)
         self._clearModificationFlag()
@@ -806,7 +806,8 @@ class Module(object):
     @staticmethod
     def loadFromFile(fileName: str) -> 'Module':
         """Load module from XML file."""
-        m = Module.fromXml(ET.parse(fileName).getroot())
+        with open(fileName, "r", encoding="utf-8") as f:
+            m = Module.fromXml(ET.parse(f).getroot())
         m._filePath = os.path.normpath(fileName)
         m._muted = False
         return m
