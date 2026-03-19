@@ -2113,7 +2113,6 @@ class DiffViewDialog(QDialog):
         layout = QVBoxLayout(self)
         self.textEdit = QPlainTextEdit()
         self.textEdit.setReadOnly(True)
-        self.textEdit.setFont(QFont("Consolas", 10))
         self.textEdit.setPlainText(diffText)
         DiffHighlighter(self.textEdit.document())
         layout.addWidget(self.textEdit)
