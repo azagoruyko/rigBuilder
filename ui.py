@@ -42,7 +42,7 @@ Markdown examples:
 
 module:SPEC links work in both formats; SPEC is a UID, relative path, or full path for Module.loadModule()."""
 
-def convertMarkdownToHTML(text: str):
+def convertMarkdownToHTML(text: str) -> str:
     """Convert Markdown to HTML."""
     try:
         import markdown
@@ -50,10 +50,12 @@ def convertMarkdownToHTML(text: str):
     except ImportError:
         if text:
             text = "<b>Markdown is not installed. Using simple HTML conversion.</b><br><br>" + text
-            # simple html conversion
-            text = text.replace("\n", "<br>").replace(" ", "&nbsp;")
-            text = text.replace("\t", "&nbsp;"*4)
+            text = convertTextToHTML(text)
     return text
+
+def convertTextToHTML(text: str) -> str:
+    """Convert text to HTML."""
+    return text.replace("\n", "<br>").replace("\t", "&nbsp;"*4)
 
 class DocBrowser(QTextBrowser):
     """HTML/Markdown browser for module documentation."""
@@ -73,10 +75,12 @@ class DocBrowser(QTextBrowser):
             self.clear()
             return
 
-        doc = item.module.doc()
         if item.module.docFormat() == "markdown":
-            doc = convertMarkdownToHTML(doc)
-        self.setHtml(doc)
+            html = convertMarkdownToHTML(item.module.doc())
+        else:
+            html = convertTextToHTML(item.module.doc())
+
+        self.setHtml(html)
 
     def _onAnchorClicked(self, url):
         url = QUrl(url)
@@ -135,12 +139,7 @@ class DocBrowser(QTextBrowser):
 
         def save(text):
             module.setDoc(text)
-
-            html = text
-            if module.docFormat() == "markdown":
-                html = convertMarkdownToHTML(text)
-
-            self.setHtml(html)
+            self.updateDoc()
 
         w = EditTextDialog(
             module.doc(),
