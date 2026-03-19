@@ -2709,9 +2709,10 @@ class RigBuilderWindow(QFrame):
             return
 
         module = item.module
-        uid = module.uid()
-        filterStr = uid if uid else module.name()
-        self.moduleHistoryWidget.filterEdit.setText(filterStr)
+        if not module.uid():
+            return
+            
+        self.moduleHistoryWidget.filterEdit.setText(module.uid())
         self.treeWidget.clearSelection()
 
     def selectedModules(self) -> List[ModuleItem]:
