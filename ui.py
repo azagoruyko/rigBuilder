@@ -2243,12 +2243,15 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
 
-        vscodeBtn = QPushButton("Edit in VSCode")
-        vscodeBtn.clicked.connect(self.editInVSCode)
+        self.vscodeBtn = QPushButton("Edit in VSCode")
+        self.vscodeBtn.clicked.connect(self.editInVSCode)
+        self.vscodeBtn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.vscodeBtn.customContextMenuRequested.connect(self.onVscodeBtnContextMenu)
+
         self.codeWidget = QWidget()
         self.codeWidget.setLayout(QVBoxLayout())
         self.codeWidget.layout().addWidget(self.codeEditorWidget)
-        self.codeWidget.layout().addWidget(vscodeBtn)
+        self.codeWidget.layout().addWidget(self.vscodeBtn)
 
         self.runBtn = QPushButton("Run!")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
@@ -2364,6 +2367,21 @@ class RigBuilderWindow(QFrame):
 
         return menu
 
+    def onVscodeBtnContextMenu(self, pos):
+        menu = QMenu(self)
+        menu.addAction("Set VSCode command", self.setVscodeCommand)
+        menu.exec_(self.vscodeBtn.mapToGlobal(pos))
+
+    def setVscodeCommand(self):
+        currentCommand = Settings.get("vscode", "vscode.exe")
+        message = "VSCode command."
+        command, ok = QInputDialog.getText(self, "Rig Builder", message, QLineEdit.Normal, currentCommand)
+        if not ok:
+            return
+
+        Settings["vscode"] = command.strip()
+        saveSettings()
+
     def editInVSCode(self):
         def getFunctionDefinition(f: Callable[..., object], *, name: Optional[str] = None) -> str: # f(a,b,c=1) => 'def f(a,b,c=1):pass'
             signature = inspect.signature(f)
@@ -2443,9 +2461,10 @@ class RigBuilderWindow(QFrame):
         trackFileChangesThreads[moduleFile] = th
         
         if not shutil.which(Settings["vscode"]):
-            QMessageBox.warning(self, "Editor Error", f"Editor executable not found: {Settings['vscode']}\n\nPlease install the editor or update the path in settings.json")
+            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(Settings["vscode"])
+            QMessageBox.warning(self,"Editor Error", msg)
             return
-            
+
         try:
             subprocess.Popen([Settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
