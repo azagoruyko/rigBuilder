@@ -20,6 +20,9 @@ ATTR_PREFIX = "attr_"
 def replaceAttrPrefix(code: str) -> str:
     return re.sub(r'@(\w+)', ATTR_PREFIX + r'\1', code)
 
+def replaceAttrPrefixInverse(code: str) -> str:
+    return re.sub(r'{}(\w+)'.format(ATTR_PREFIX), r'@\1', code)
+
 def getUidFromFile(path: str) -> Optional[str]:
     """Extract UID from XML file."""
     if path.endswith(MODULE_EXT):
