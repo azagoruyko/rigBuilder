@@ -2391,7 +2391,7 @@ class RigBuilderWindow(QFrame):
                 lines = f.read().splitlines()
 
             code = "\n".join(lines[1:]) # skip first line: import predefined things
-            code = re.sub(r"\battr_(\w+)\b", r'@\1', code)
+            code = re.sub(r"\b{}(\w+)\b".format(ATTR_PREFIX), r'@\1', code)
             module.setRunCode(code)
             self.codeEditorWidget.updateState()
 
@@ -2412,9 +2412,9 @@ class RigBuilderWindow(QFrame):
 
         # expose attributes
         for a in module.attributes():
-            predefinedCode.append("attr_{} = {}".format(a.name(), getVariableValue(a.get())))
-            predefinedCode.append(getFunctionDefinition(a.set, name="attr_set_"+a.name()))
-            predefinedCode.append("attr_{}_data = {}".format(a.name(), a.data()))
+            predefinedCode.append("{}{} = {}".format(ATTR_PREFIX, a.name(), getVariableValue(a.get())))
+            predefinedCode.append(getFunctionDefinition(a.set, name="{}set_{}".format(ATTR_PREFIX, a.name())))
+            predefinedCode.append("{}{}_data = {}".format(ATTR_PREFIX, a.name(), a.data()))
 
         # expose API
         env = module.context()
@@ -2430,7 +2430,7 @@ class RigBuilderWindow(QFrame):
 
         with open(moduleFile, "w") as f:
             predefinedModule = os.path.splitext(os.path.basename(predefinedFile))[0]
-            code = re.sub(r'@(\w+)', r'attr_\1', module.runCode())
+            code = replaceAttrPrefix(module.runCode())
             importLine = "from .{} import * # must be the first line".format(predefinedModule)
             f.write("\n".join([importLine, code]))
         
