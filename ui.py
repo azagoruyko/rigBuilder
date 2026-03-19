@@ -118,11 +118,11 @@ class DocBrowser(QTextBrowser):
 
         module = item.module
         menu = QMenu(self)
-        action = menu.addAction("Treat as HTML", partial(setDocFormat, "html"))
+        action = menu.addAction("Show as HTML", partial(setDocFormat, "html"))
         action.setCheckable(True)
         action.setChecked(module.docFormat() == "html")
 
-        action = menu.addAction("Treat as Markdown", partial(setDocFormat, "markdown"))
+        action = menu.addAction("Show as Markdown", partial(setDocFormat, "markdown"))
         action.setCheckable(True)
         action.setChecked(module.docFormat() == "markdown")
 
