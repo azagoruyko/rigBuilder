@@ -2402,15 +2402,49 @@ class RigBuilderWindow(QFrame):
                 return None
 
             return v
-        
-        def onFileChangeCallback(module: Module, filePath: str):    
+
+        def onRunCodeFileChanged(filePath: str):
+            nonlocal item
+            if not item:
+                return
+
             with open(filePath, "r") as f:
                 lines = f.read().splitlines()
 
             code = "\n".join(lines[1:]) # skip first line: import predefined things
-            code = re.sub(r"\b{}(\w+)\b".format(ATTR_PREFIX), r'@\1', code)
-            module.setRunCode(code)
+            code = replaceAttrPrefixInverse(code)
+            item.module.setRunCode(code)
             self.codeEditorWidget.updateState()
+
+        def onModuleFileChanged(filePath: str):
+            nonlocal item
+            if not item:
+                return
+
+            try:
+                editedModule = Module.loadFromFile(filePath)
+            except Exception:
+                return
+
+            childItems = item.takeChildren()
+            item.module.removeChildren()
+            editedModule.removeChildren()
+            newItem = self.treeWidget.replaceModule(item, editedModule)
+
+            for childItem in childItems:
+                newItem.addChild(childItem)
+                newItem.module.addChild(childItem.module)
+
+            item = newItem
+
+        def startTrackedFileThread(filePath: str, callback: Callable[..., None]):
+            if filePath in trackFileChangesThreads:
+                trackFileChangesThreads[filePath].terminate()
+
+            th = TrackFileChangesThread(filePath)
+            th.somethingChanged.connect(callback)
+            th.start()
+            trackFileChangesThreads[filePath] = th
 
         item = self.currentModule()
         if not item:
@@ -2422,10 +2456,16 @@ class RigBuilderWindow(QFrame):
 
         # generate predefined things
         fileName = module.path().replace("/", "__")
-        predefinedFile = "{}/vscode/{}_predef.py".format(RigBuilderLocalPath, fileName)
-        moduleFile = "{}/vscode/{}.py".format(RigBuilderLocalPath, fileName)
+        predefinedFile = os.path.join(RigBuilderLocalPath, "vscode", "{}_predef.py".format(fileName))
+        runCodeFilePath = os.path.join(RigBuilderLocalPath, "vscode", "{}.py".format(fileName))
 
-        predefinedCode = []
+        moduleFilePath = runCodeFilePath.replace(".py", MODULE_EXT)
+        tmpModule = module.copy()
+        tmpModule.setRunCode("") # run code is editable in VSCode with its own file
+        tmpModule.removeChildren() # remove children to avoid editing them, module must be self-contained
+        tmpModule.saveToFile(moduleFilePath)
+
+        predefinedCode = ["# Use AI_context.md for technical specification."]
 
         # expose attributes
         for a in module.attributes():
@@ -2445,27 +2485,31 @@ class RigBuilderWindow(QFrame):
         with open(predefinedFile, "w") as f:
             f.write("\n".join(predefinedCode))
 
-        with open(moduleFile, "w") as f:
+        with open(runCodeFilePath, "w") as f:
             predefinedModule = os.path.splitext(os.path.basename(predefinedFile))[0]
             code = replaceAttrPrefix(module.runCode())
             importLine = "from .{} import * # must be the first line".format(predefinedModule)
             f.write("\n".join([importLine, code]))
-        
-        if moduleFile in trackFileChangesThreads:
-            trackFileChangesThreads[moduleFile].terminate()
-        
-        th = TrackFileChangesThread(moduleFile)
-        th.somethingChanged.connect(partial(onFileChangeCallback, module, moduleFile))
-        th.start()
-        trackFileChangesThreads[moduleFile] = th
-        
+
+        contextFilePath = os.path.join(RigBuilderLocalPath, "vscode", "AI_context.md")
+        shutil.copyfile("AI_context.md", contextFilePath)
+
+        startTrackedFileThread(
+            runCodeFilePath,
+            partial(onRunCodeFileChanged, runCodeFilePath),
+        )
+        startTrackedFileThread(
+            moduleFilePath,
+            partial(onModuleFileChanged, moduleFilePath),
+        )
+
         if not shutil.which(Settings["vscode"]):
             msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(Settings["vscode"])
             QMessageBox.warning(self,"Editor Error", msg)
             return
 
         try:
-            subprocess.Popen([Settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", moduleFile], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([Settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -2829,7 +2873,7 @@ def cleanupVscode():
         return
     
     for f in os.listdir(vscodeFolder):
-        if f.endswith(".py"): # remove python files
+        if f.endswith(".py") or f.endswith(MODULE_EXT): # remove module files
             os.remove(os.path.join(vscodeFolder, f))
 
 def aboutToQuit():
