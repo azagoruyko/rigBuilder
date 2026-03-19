@@ -35,7 +35,7 @@ The graph defines the execution order. When you run the pipeline, modules execut
 
    **📂 Local and server modules** — Use local modules for testing and server paths (via module selector) for shared team libraries.
 
-   **🤖 AI-Assisted Editing** — Use the **"Edit in VS Code"** context menu option to export modules for external editing. This workflow is optimized for AI assistance, providing a dedicated `AI_context.md` for prompts and a sidecar `_predef.py` file for autocomplete and type hinting.
+   **🤖 AI-Assisted Editing** — Use the **"Edit in VS Code"** button to export modules for external editing inside your favourite vscode based editor. This workflow is optimized for AI assistance, providing a dedicated `AI_context.md` for prompts and a sidecar `_predef.py` file for autocomplete and type hinting.
 
 ---
 
