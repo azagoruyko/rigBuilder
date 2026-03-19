@@ -2424,6 +2424,7 @@ class RigBuilderWindow(QFrame):
             try:
                 editedModule = Module.loadFromFile(filePath)
             except Exception:
+                QMessageBox.warning(self, "Rig Builder", "Failed to load module file")
                 return
 
             childItems = item.takeChildren()
