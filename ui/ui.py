@@ -1713,6 +1713,7 @@ class EditTemplateWidget(QWidget):
 
 class EditAttributesWidget(QWidget):
     nameChanged = Signal(str, str)
+    RecentTemplates = []
 
     def __init__(self, moduleItem: "ModuleItem", category: str, **kwargs):
         super().__init__(**kwargs)
@@ -1750,6 +1751,16 @@ class EditAttributesWidget(QWidget):
         if EditTemplateWidget.Clipboard:
             menu.addAction("Paste", self.pasteAttribute)
 
+        if EditAttributesWidget.RecentTemplates:
+            menu.addSeparator()
+            titleAction = menu.addAction("Recent")
+            titleAction.setEnabled(False)
+            font = titleAction.font()
+            font.setBold(True)
+            titleAction.setFont(font)
+            for t in EditAttributesWidget.RecentTemplates:
+                menu.addAction("  " + t, partial(self._onTemplateSelected, t))
+
         menu.popup(event.globalPos())
 
     def copyVisibleAttributes(self):
@@ -1768,9 +1779,16 @@ class EditAttributesWidget(QWidget):
             w.templateWidget.setJsonData(module["data"])
             w.nameWidget.setText(module["name"])
 
+    def _onTemplateSelected(self, template: str):
+        if template in EditAttributesWidget.RecentTemplates:
+            EditAttributesWidget.RecentTemplates.remove(template)
+        EditAttributesWidget.RecentTemplates.insert(0, template)
+        EditAttributesWidget.RecentTemplates = EditAttributesWidget.RecentTemplates[:5]
+        self.insertCustomWidget(template)
+
     def addTemplateAttribute(self):
         selector = TemplateSelectorDialog(parent=mainWindow)
-        selector.selectedTemplate.connect(self.insertCustomWidget)
+        selector.selectedTemplate.connect(self._onTemplateSelected)
         selector.exec()
 
     def insertCustomWidget(self, template: str, row: Optional[int] = None) -> Optional[EditTemplateWidget]:
