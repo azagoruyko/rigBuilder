@@ -6,7 +6,6 @@ import inspect
 
 from ..core import APIRegistry
 from ..qt import *
-from . import ui as rigBuilderUi
 
 TABLE_COLUMNS = ["Name", "Type"]
 DEFAULT_WINDOW_SIZE = (400, 700)
@@ -123,7 +122,7 @@ class ApiBrowserWindow(QWidget):
         super().closeEvent(event)
 
 
-def showApiBrowser():
+def showApiBrowser(parent=None):
     """Show singleton API browser window."""
     existing = ApiBrowserWindow.windowInstance
     if existing and existing.isVisible():
@@ -131,7 +130,7 @@ def showApiBrowser():
         existing.activateWindow()
         return existing
 
-    window = ApiBrowserWindow(parent=rigBuilderUi.mainWindow)
+    window = ApiBrowserWindow(parent=parent)
     ApiBrowserWindow.windowInstance = window
     window.show()
     return window

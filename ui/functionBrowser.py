@@ -20,8 +20,7 @@ import typing
 from ..core import Attribute
 from ..core import Module
 from ..qt import *
-from .ui import AttributesWidget
-from . import ui as rigBuilderUi
+from . import AttributesWidget
 
 
 def parseFunctionsFromFile(filePath, *, includePrivate=False):
@@ -877,7 +876,7 @@ class FunctionBrowserWindow(QWidget):
             self._writeLog("\nERROR: {}\n".format(str(exc)))
 
 
-def showFunctionBrowser():
+def showFunctionBrowser(parent=None):
     """Show singleton function-browser window."""
     existing = FunctionBrowserWindow.windowInstance
     if existing and existing.isVisible():
@@ -885,7 +884,7 @@ def showFunctionBrowser():
         existing.activateWindow()
         return existing
 
-    window = FunctionBrowserWindow(parent=rigBuilderUi.mainWindow)
+    window = FunctionBrowserWindow(parent=parent)
     FunctionBrowserWindow.windowInstance = window
     window.show()
     return window
