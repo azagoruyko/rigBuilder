@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import inspect
 
-from .core import APIRegistry
-from .qt import *
+from ..core import APIRegistry
+from ..qt import *
 from . import ui as rigBuilderUi
 
 TABLE_COLUMNS = ["Name", "Type"]

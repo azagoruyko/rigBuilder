@@ -11,17 +11,17 @@ import fnmatch
 from functools import partial
 from typing import Callable, Optional, List, Dict, Union
 
-from .qt import *
+from ..qt import *
 
-from . import __version__
-from .core import *
+from .. import __version__
+from ..core import *
 from .editor import *
 from . import moduleHistoryBrowser
 from .moduleHistoryBrowser import ModuleHistoryWidget
-from .workspace import saveWorkspace, loadWorkspace
-from .widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
+from ..workspace import saveWorkspace, loadWorkspace
+from ..widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
+from ..utils import *
 from .utils import *
-from .ui_utils import *
 
 parentWindow = APIRegistry.getParentWindow()
 updateFilesThread = None

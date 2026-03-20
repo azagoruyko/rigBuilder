@@ -5,7 +5,7 @@ import re
 import os
 
 from ..utils import clamp, findUniqueName, SimpleUndo
-from ..ui_utils import getActions, centerWindow, setActionsLocalShortcut, SearchReplaceDialog, JsonColors
+from ..ui.utils import getActions, centerWindow, setActionsLocalShortcut, SearchReplaceDialog, JsonColors
 
 RootDirectory = os.path.dirname(__file__)
 

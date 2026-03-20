@@ -6,8 +6,8 @@ import os
 from .core import *
 from ..core import APIRegistry, replaceAttrPrefix
 from ..utils import *
-from ..ui_utils import *
-from ..editor import *
+from ..ui.utils import *
+from ..ui.editor import *
 from .jsonWidget import JsonWidget
 
 RootPath = os.path.dirname(__file__) # Rig Builder root folder

@@ -1,9 +1,9 @@
-from .qt import *
+from ..qt import *
 
 
 import re
-from .utils import clamp, findBracketSpans
-from .ui_utils import getActions, setActionsLocalShortcut, wordAtCursor, fontSize, setFontSize, getFontWidth
+from ..utils import clamp, findBracketSpans
+from .utils import getActions, setActionsLocalShortcut, wordAtCursor, fontSize, setFontSize, getFontWidth
 
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):

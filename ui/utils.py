@@ -3,7 +3,7 @@ import sys
 import re
 from contextlib import contextmanager
 
-from .qt import *
+from ..qt import *
 
 RootDirectory = os.path.dirname(__file__)
 
@@ -14,7 +14,7 @@ def applyStylesheet(widget):
     if os.path.isfile(stylesheetPath):
         with open(stylesheetPath, "r", encoding="utf-8") as f:
             content = f.read()
-        rootPath = os.path.abspath(RootDirectory).replace("\\", "/")
+        rootPath = os.path.abspath(os.path.join(RootDirectory, '..')).replace("\\", "/")
         content = content.replace("{ROOT}", rootPath)
         widget.setStyleSheet(content)
 

@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from .core import getHistoryPath, Module, MODULE_EXT, Settings
-from .gitrepo import GitRepo
-from .qt import (
+from ..core import getHistoryPath, Module, MODULE_EXT, Settings
+from ..gitrepo import GitRepo
+from ..qt import (
     QCheckBox,
     QDesktopServices,
     QDialog,
@@ -27,7 +27,7 @@ from .qt import (
     QTextCursor,
     Signal,
 )
-from .ui_utils import centerWindow
+from .utils import centerWindow
 
 
 # --- Constants ---

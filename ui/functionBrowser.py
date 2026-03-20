@@ -17,9 +17,9 @@ import os
 import sys
 import typing
 
-from .core import Attribute
-from .core import Module
-from .qt import *
+from ..core import Attribute
+from ..core import Module
+from ..qt import *
 from .ui import AttributesWidget
 from . import ui as rigBuilderUi
 
