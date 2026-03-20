@@ -1570,9 +1570,6 @@ class TemplateSelectorDialog(QDialog):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        self.filterWidget = QLineEdit()
-        self.filterWidget.textChanged.connect(self.refreshTemplates)
-
         scrollWidget = QWidget()
         scrollArea = QScrollArea()
         scrollArea.setWidget(scrollWidget)
@@ -1584,9 +1581,7 @@ class TemplateSelectorDialog(QDialog):
         self.gridLayout.setDefaultPositioning(3, Qt.Horizontal)
         self.gridLayout.setColumnStretch(1, 1)
 
-        layout.addWidget(self.filterWidget)
         layout.addWidget(scrollArea)
-        self.filterWidget.setFocus()
 
         self.refreshTemplates()
         centerWindow(self)
@@ -1596,21 +1591,18 @@ class TemplateSelectorDialog(QDialog):
         self.done(0)
 
     def refreshTemplates(self):
-        """Rebuild template grid from filter text."""
+        """Rebuild template grid."""
         clearLayout(self.gridLayout)
 
-        filterText = self.filterWidget.text()
-
         for t in sorted(TemplateWidgets.keys()):
-            if not filterText or re.search(filterText, t, re.IGNORECASE):
-                self.gridLayout.addWidget(QLabel(t))
-                w  = TemplateWidgets[t]()
-                w.setJsonData(w.getDefaultData())
-                self.gridLayout.addWidget(w)
+            self.gridLayout.addWidget(QLabel(t))
+            w  = TemplateWidgets[t]()
+            w.setJsonData(w.getDefaultData())
+            self.gridLayout.addWidget(w)
 
-                selectBtn = QPushButton("Select")
-                selectBtn.clicked.connect(partial(self.selectTemplate, t))
-                self.gridLayout.addWidget(selectBtn)
+            selectBtn = QPushButton("Select")
+            selectBtn.clicked.connect(partial(self.selectTemplate, t))
+            self.gridLayout.addWidget(selectBtn)
 
 class EditTemplateWidget(QWidget):
     Clipboard = []
