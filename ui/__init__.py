@@ -1030,52 +1030,6 @@ class ModuleItem(QTreeWidgetItem):
         if treeWidget and treeWidget.mainWindow:
             return treeWidget.mainWindow.logger        
     
-    def addAttribute(self, name: str, template: str, category: str = "General", **kwargs):
-        """Add attribute to this module. Returns Attribute instance."""
-        attribute = Attribute()
-        attribute.setName(name)
-        attribute.setTemplate(template)
-        attribute.setCategory(category)
-        
-        # Set additional properties from kwargs
-        if 'connect' in kwargs:
-            attribute.setConnect(kwargs['connect'])
-        if 'expression' in kwargs:
-            attribute.setExpression(kwargs['expression'])
-        if 'data' in kwargs:
-            attribute.setData(kwargs['data'])
-        elif 'defaultValue' in kwargs:
-            # Helper to set default value directly
-            defaultData = TemplateWidgets[template]().getDefaultData()
-            if 'default' in defaultData:
-                defaultData[defaultData['default']] = kwargs['defaultValue']
-            attribute.setData(defaultData)
-        
-        self.module.addAttribute(attribute)
-        self.emitDataChanged()
-        return attribute
-    
-    def removeAttribute(self, attrName: str):
-        """Remove attribute by name."""
-        attribute = self.module.findAttribute(attrName)
-        if attribute:
-            self.module.removeAttribute(attribute)
-            self.emitDataChanged()
-        else:
-            self.getLogger().warning(f"Module '{self.module.name()}': Attribute '{attrName}' not found")
-    
-    def findAttribute(self, attrName: str):
-        """Find attribute by name."""
-        return self.module.findAttribute(attrName)
-    
-    def attributes(self):
-        """Get all attributes for this module."""
-        return self.module.attributes()
-    
-    def run(self):
-        """Run this module programmatically."""
-        self.module.run()
-    
     def validateModule(self):
         """Validate this module and log any errors found. Returns True if valid."""
         hasErrors = False
@@ -1114,45 +1068,7 @@ class ModuleItem(QTreeWidgetItem):
                     hasErrors = True
         
         return not hasErrors
-    
-    def saveModule(self, filePath: Optional[str] = None):
-        """Save this module to file."""
-        outputPath = filePath or self.module.getSavePath()
-        if not outputPath:
-            self.getLogger().error(f"Module '{self.module.name()}': No file path specified for saving")
-            return
-            
-        dirname = os.path.dirname(outputPath)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-            
-        self.module.saveToFile(outputPath)
-        self.emitDataChanged()  # Update path display
-    
-    def addModule(self, childModule: Union[str, "Module"]):
-        """Add child module. Returns ModuleItem for the child."""
-        if isinstance(childModule, str):
-            # Create new module with given name
-            module = Module()
-            module.setName(childModule)
-        else:
-            # Assume it's already a Module instance
-            module = childModule
-        
-        childItem = ModuleItem(module)
-        self.addChild(childItem)
-        self.module.addChild(module)
-        self.emitDataChanged()
-        return childItem
-    
-    def removeModule(self, childItem: "ModuleItem"):
-        """Remove child module."""
-        if childItem in [self.child(i) for i in range(self.childCount())]:
-            self.removeChild(childItem)
-            self.module.removeChild(childItem.module)
-            self.emitDataChanged()
-        else:
-            self.getLogger().warning(f"Module '{self.module.name()}': Child module not found")
+
 
 class TreeWidget(QTreeWidget):
     def __init__(self, *, mainWindow: 'RigBuilderWindow', **kwargs):
@@ -2799,15 +2715,7 @@ class RigBuilderWindow(QFrame):
                     return item
             iterator += 1
     
-    def createEmptyModule(self, name="module", parent=None):
-        """Create new empty module and add to tree."""
-        module = Module()
-        module.setName(name)
-        return self.addModule(module, parent)
-    
-    def loadModuleFromFile(self, filePath):
-        """Load module from XML file and add to tree."""
-        return self.addModule(filePath)
+
 
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing
