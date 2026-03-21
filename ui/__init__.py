@@ -1100,15 +1100,17 @@ class TreeWidget(QTreeWidget):
             option.palette.setBrush(QPalette.Highlight, self.palette().highlight())
         super().drawRow(painter, option, index)
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        super().dragEnterEvent(event)
+    def startDrag(self, supportedActions: Qt.DropActions):
+        if not (QApplication.mouseButtons() & Qt.MiddleButton):
+            return  # internal rearrangement only on middle button
+        self.dragItems = self.selectedItems()
+        super().startDrag(supportedActions)
 
+    def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
-            event.accept()            
-        elif event.mouseButtons() == Qt.MiddleButton:
-            self.dragItems = self.selectedItems()
+            event.accept()
         else:
-            event.ignore()
+            super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event: QDragMoveEvent):
         super().dragMoveEvent(event)
