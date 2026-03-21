@@ -410,7 +410,8 @@ class AttributesWidget(QWidget):
                     w.setJsonData(otherAttr.localData())
                 self.updateWidgetStyle(idx)
 
-        if id(attr) not in modifiedAttrs: # update the modification style anyway
+        # style not updated by the loop above (attr's data didn't change after pull), refresh it here
+        if attr not in modifiedAttrs: 
             self.updateWidgetStyle(attrWidgetIndex)       
 
     @_wrapper
