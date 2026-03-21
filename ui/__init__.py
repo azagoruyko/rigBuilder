@@ -1555,8 +1555,10 @@ class TreeWidget(QTreeWidget):
             else:
                 self.invisibleRootItem().removeChild(item)
 
-    def addModule(self, module: "Module"):
-        return self.addTopLevelItem(self.makeItemFromModule(module))
+    def addModule(self, module: "Module") -> "ModuleItem":
+        item = self.makeItemFromModule(module)
+        self.addTopLevelItem(item)
+        return item
 
 class TemplateSelectorDialog(QDialog):
     selectedTemplate = Signal(str)
