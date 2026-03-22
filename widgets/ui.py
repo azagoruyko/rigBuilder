@@ -1425,6 +1425,104 @@ class CurveTemplateWidget(TemplateWidget):
                 if i == 0 or i == len(value["cvs"]) - 1:
                     item.fixedX = item.pos().x()
 
+class FileSelectorTemplateWidget(TemplateWidget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.value = ""
+        self.mode = "openFile" # directory, openFile, saveFile
+        self.filter = "All Files (*.*)"
+        self.title = "Select File"
+
+        layout = QHBoxLayout()
+        self.setLayout(layout)
+        layout.setContentsMargins(QMargins())
+
+        self.textWidget = QLineEdit()
+        self.textWidget.editingFinished.connect(self._onTextChanged)
+
+        self.buttonWidget = QPushButton("...")
+        self.buttonWidget.clicked.connect(self._onButtonClicked)
+        self.buttonWidget.contextMenuEvent = self.buttonContextMenuEvent
+
+        layout.addWidget(self.textWidget)
+        layout.addWidget(self.buttonWidget)
+
+    def colorizeValue(self):
+        self.textWidget.setStyleSheet("QLineEdit { color: #AAAAAA }")
+
+    def buttonContextMenuEvent(self, event):
+        menu = QMenu(self)
+        
+        modeMenu = menu.addMenu("Mode")
+        for m in ["openFile", "saveFile", "directory"]:
+            action = modeMenu.addAction(m, partial(self.setMode, m))
+            action.setCheckable(True)
+            action.setChecked(self.mode == m)
+            
+        menu.addAction("Edit filter", self.editFilter)
+        menu.addAction("Edit title", self.editTitle)
+        
+        menu.popup(event.globalPos())
+
+    def setMode(self, mode):
+        if self.mode == mode:
+            return
+        self.mode = mode
+        self.somethingChanged.emit()
+
+    def editFilter(self):
+        newFilter, ok = QInputDialog.getText(self, "Filter", "File filter:", QLineEdit.Normal, self.filter)
+        if ok and newFilter != self.filter:
+            self.filter = newFilter
+            self.somethingChanged.emit()
+
+    def editTitle(self):
+        newTitle, ok = QInputDialog.getText(self, "Title", "Dialog title:", QLineEdit.Normal, self.title)
+        if ok and newTitle != self.title:
+            self.title = newTitle
+            self.somethingChanged.emit()
+
+    def _onTextChanged(self):
+        newValue = self.textWidget.text().strip()
+        if newValue != self.value:
+            self.value = newValue
+            self.colorizeValue()
+            self.somethingChanged.emit()
+
+    def _onButtonClicked(self):
+        startPath = os.path.expandvars(self.value) if self.value else ""
+        
+        if self.mode == "directory":
+            path = QFileDialog.getExistingDirectory(self, self.title, startPath)
+        elif self.mode == "saveFile":
+            path, _ = QFileDialog.getSaveFileName(self, self.title, startPath, self.filter)
+        else: # openFile
+            path, _ = QFileDialog.getOpenFileName(self, self.title, startPath, self.filter)
+            
+        if path:
+            self.value = path
+            self.textWidget.setText(self.value)
+            self.colorizeValue()
+            self.somethingChanged.emit()
+
+    def getDefaultData(self):
+        return {"value": "", "mode": "openFile", "filter": "All Files (*.*)", "title": "Select File", "default": "value"}
+
+    def getJsonData(self):
+        return {"value": self.value, "mode": self.mode, "filter": self.filter, "title": self.title, "default": "value"}
+
+    def setJsonData(self, data):
+        self.value = data.get("value", "")
+        self.mode = data.get("mode", "openFile")
+        self.filter = data.get("filter", "All Files (*.*)")
+        self.title = data.get("title", "Select File")
+        
+        with blockedWidgetContext(self.textWidget) as w:
+            w.setText(self.value)
+        
+        self.colorizeValue()
+
 class JsonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1648,6 +1746,7 @@ TemplateWidgets = {
     "comboBox": ComboBoxTemplateWidget,
     "curve": CurveTemplateWidget,
     "compound": CompoundTemplateWidget,
+    "fileSelector": FileSelectorTemplateWidget,
     "json": JsonTemplateWidget,
     "label": LabelTemplateWidget,
     "lineEditAndButton": LineEditAndButtonTemplateWidget,
