@@ -345,21 +345,6 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         self.templates = {}
         self.templates["Get selected"] = {"label": "<", "command": "nodes = getSelectedNodes()\nvalue = nodes[0] if nodes else ''"}
         
-        self.templates["Get open file"] = {"label": "...", "command":'''import os
-from rigBuilder.qt import QFileDialog
-path,_ = QFileDialog.getOpenFileName(None, "Open file", os.path.expandvars(value))
-value = path or value'''}
-
-        self.templates["Get save file"] = {"label": "...", "command":'''import os
-from rigBuilder.qt import QFileDialog
-path,_ = QFileDialog.getSaveFileName(None, "Save file", os.path.expandvars(value))
-value = path or value'''}
-
-        self.templates["Get existing directory"] = {"label": "...", "command":'''import os
-from rigBuilder.qt import QFileDialog
-path = QFileDialog.getExistingDirectory(None, "Select directory", os.path.expandvars(value))
-value = path or value'''}
-
         self.buttonCommand = 'print("Hello, world!")'
         self.buttonEnabled = True
         self.value = ""
