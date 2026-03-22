@@ -77,6 +77,20 @@ QAbstractSpinBox {
 	selection-color: #ffffff;
 }
 
+QComboBox QAbstractItemView {
+	background-color: #222831;
+	color: #e8eaed;
+	border: 1px solid #313a47;
+	selection-background-color: #3e7bd6;
+	selection-color: #ffffff;
+	outline: none;
+}
+
+QComboBox::item:selected {
+	background-color: #3e7bd6;
+	color: #ffffff;
+}
+
 QLineEdit:focus,
 QTextEdit:focus,
 QPlainTextEdit:focus,
@@ -202,7 +216,8 @@ QTableWidget,
 QTableView,
 QTreeWidget,
 QTreeView,
-QListWidget {
+QListWidget,
+QListView {
 	background-color: #222831;
 	border: none;
 	alternate-background-color: #252c36;
@@ -244,7 +259,8 @@ QTreeView::item:selected,
 QTreeView::item:selected:hover,
 QTreeWidget::item:selected,
 QTreeWidget::item:selected:hover,
-QListWidget::item:selected {
+QListWidget::item:selected,
+QListView::item:selected {
 	background-color: #3e7bd6;
 	color: #ffffff;
 	outline: none;
