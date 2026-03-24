@@ -9,7 +9,7 @@ RootDirectory = os.path.dirname(__file__)
 
 
 def applyStylesheet(widget):
-    """Load and apply stylesheet.css to the given widget (main window when inside DCC)."""
+    """Load and apply stylesheet.css to the given widget (main window when inside a host application)."""
     stylesheetPath = os.path.join(RootDirectory, "stylesheet.css")
     if os.path.isfile(stylesheetPath):
         with open(stylesheetPath, "r", encoding="utf-8") as f:
