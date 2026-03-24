@@ -3,7 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from typing import List, Protocol
 
-from .core import Module, RigBuilderLocalPath
+from .core import Module, RigBuilderPrivatePath
 
 workspaceFilename = "workspace.xml"
 
@@ -12,19 +12,14 @@ class WorkspaceMainWindow(Protocol):
     """Protocol for the main window passed to save/load workspace. Avoids depending on ui (circular import)."""
     treeWidget: object
     logger: object
-
-
-def flattenTreeItems(item) -> List:
-    """Return the item and all descendants in depth-first order."""
-    result = [item]
-    for i in range(item.childCount()):
-        result.extend(flattenTreeItems(item.child(i)))
-    return result
+    hostCombo: object
+    connectionManager: object
 
 
 def flattenModules(roots: List[Module]) -> List[Module]:
     """Return all modules in depth-first order (roots and every descendant)."""
     flat = []
+    # Avoid recursion just in case, but usually depth is fine.
     stack = list(reversed(roots))
     while stack:
         m = stack.pop()
@@ -34,51 +29,29 @@ def flattenModules(roots: List[Module]) -> List[Module]:
 
 
 def saveWorkspace(mainWindow: WorkspaceMainWindow) -> None:
-    """Save top-level modules to workspace.xml. Modules stored as-is (toXml); meta holds per-module patch by index."""
-    path = os.path.join(RigBuilderLocalPath, workspaceFilename)
+    """Save top-level modules to workspace.xml."""
+    path = os.path.join(RigBuilderPrivatePath, workspaceFilename)
     treeWidget = mainWindow.treeWidget
-    rootItems = [
-        treeWidget.topLevelItem(i)
-        for i in range(treeWidget.topLevelItemCount())
-    ]
-    allItems = []
-    for root in rootItems:
-        allItems.extend(flattenTreeItems(root))
+    rootModules = treeWidget.moduleModel.rootModule().children()
+    flattenedModules = flattenModules(rootModules)
 
     lines = [
         '<workspace version="1">',
         "<modules>",
     ]
-    for item in rootItems:
-        lines.append(item.module.toXml(keepConnections=True).strip())
+    for module in rootModules:
+        lines.append(module.toXml(keepConnections=True).strip())
 
     lines.append("</modules>")
-    lines.append("<meta>")
 
-    for index, item in enumerate(allItems):
-        module = item.module
-        if not module.filePath():
-            continue
-
-        filePath = html.escape(module.filePath(), quote=True)
-        modified = str(int(module.modified()))
-
-        modifiedAttrs = [(i, a) for i, a in enumerate(module.attributes()) if a.modified()]
-        if not modifiedAttrs:
-            lines.append('<module index="{}" filePath="{}" modified="{}"/>'.format(index, filePath, modified))
-
-        else:
-            lines.append('<module index="{}" filePath="{}" modified="{}">'.format(index, filePath, modified))
-            for i, _ in modifiedAttrs:
-                lines.append('<attr index="{}" modified="1"/>'.format(i))
-
-            lines.append("</module>")
-
-    lines.append("</meta>")
-
-    if allItems:
-        value = ",".join(str(int(item.isExpanded())) for item in allItems)
+    if flattenedModules:
+        value = ",".join(str(int(treeWidget.isExpanded(treeWidget.moduleModel.indexForModule(item)))) for item in flattenedModules)
         lines.append('<expanded value="{}"/>'.format(value))
+
+    # Store latest host
+    hostName = mainWindow.hostCombo.currentData()
+    if hostName:
+        lines.append('<host name="{}"/>'.format(html.escape(hostName, quote=True)))
 
     lines.append("</workspace>")
 
@@ -88,12 +61,12 @@ def saveWorkspace(mainWindow: WorkspaceMainWindow) -> None:
 
 
 def loadWorkspace(mainWindow: WorkspaceMainWindow) -> None:
-    """Load module tree from workspace.xml and apply meta patch per module (by depth-first index)."""
-    path = os.path.join(RigBuilderLocalPath, workspaceFilename)
+    """Load module tree from workspace.xml."""
+    path = os.path.join(RigBuilderPrivatePath, workspaceFilename)
     if not os.path.exists(path):
         return
 
-    if mainWindow.treeWidget.topLevelItemCount() > 0:
+    if mainWindow.treeWidget.moduleModel.rowCount() > 0:
         return
 
     try:
@@ -115,49 +88,27 @@ def loadWorkspace(mainWindow: WorkspaceMainWindow) -> None:
             except Exception as e:
                 mainWindow.logger.warning("Failed to load module: {}".format(e))
 
-    flat = flattenModules(roots)
-    metaEl = root.find("meta")
-    if metaEl is not None:
-        metaByIndex = {}
-        for item in metaEl.findall("module"):
-            idx = item.attrib.get("index")
-            if idx is not None:
-                try:
-                    metaByIndex[int(idx)] = item
-                except ValueError:
-                    pass
-
-        for index, module in enumerate(flat):
-            item = metaByIndex.get(index)
-            if item is None:
-                continue
-
-            path = item.attrib.get("filePath", "")
-            if path and os.path.exists(path):
-                module._filePath = path
-            module._modified = bool(int(item.attrib.get("modified", 0)))
-
-            attrsList = module.attributes()
-            for attrEl in item.findall("attr"):
-                try:
-                    i = int(attrEl.attrib.get("index", -1))
-                except ValueError:
-                    continue
-                if 0 <= i < len(attrsList):
-                    attrsList[i]._modified = bool(int(attrEl.attrib.get("modified", 0)))
-
     for module in roots:
-        mainWindow.treeWidget.addTopLevelItem(
-            mainWindow.treeWidget.makeItemFromModule(module)
-        )
+        mainWindow.treeWidget.moduleModel.addModuleAt(module)
 
     expandedEl = root.find("expanded")
     if expandedEl is not None:
         expanded = [x == "1" for x in expandedEl.attrib.get("value", "").split(",")]
         
-        allItems = []
-        for i in range(mainWindow.treeWidget.topLevelItemCount()):
-            allItems.extend(flattenTreeItems(mainWindow.treeWidget.topLevelItem(i)))
+        rootModules = mainWindow.treeWidget.moduleModel.rootModule().children()
+        allModules = flattenModules(rootModules)
 
-        for item, isExpanded in zip(allItems, expanded):
-            item.setExpanded(isExpanded)
+        for m, isExpanded in zip(allModules, expanded):
+            if isExpanded:
+                idx = mainWindow.treeWidget.moduleModel.indexForModule(m)
+                if idx.isValid():
+                    mainWindow.treeWidget.setExpanded(idx, True)
+
+    # Load latest host
+    hostEl = root.find("host")
+    if hostEl is not None:
+        hostName = hostEl.attrib.get("name")
+        if hostName:
+            idx = mainWindow.hostCombo.findData(hostName)
+            if idx >= 0:
+                mainWindow.hostCombo.setCurrentIndex(idx)

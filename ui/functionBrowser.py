@@ -156,19 +156,17 @@ class _MainWindowProxy:
         return
 
 
-class _ModuleItemProxy:
-    """Minimal module-item wrapper required by AttributesWidget."""
+class _ModuleProxy:
+    """Minimal module wrapper required by AttributesWidget."""
 
     def __init__(self, module):
         self.module = module
-
-    def parent(self):
-        return None
 
 
 class FunctionBrowserWindow(QWidget):
     """Browse loaded modules/functions and execute with Rig Builder controls."""
 
+    moduleAdditionRequested = Signal(object) # Module
     windowInstance = None
     attrMapping = {
         bool: "checkBox",
@@ -206,7 +204,7 @@ class FunctionBrowserWindow(QWidget):
 
         self.folderEdit = QLineEdit(self.scanRootPath)
         self.folderEdit.setPlaceholderText("Folder to scan for python functions...")
-        self.browseFolderButton = QPushButton("Browse...")
+        self.browseFolderButton = QPushButton("📁 Browse...")
 
         folderLayout.addWidget(QLabel("Folder:"))
         folderLayout.addWidget(self.folderEdit, 1)
@@ -218,7 +216,7 @@ class FunctionBrowserWindow(QWidget):
         self.filterEdit = QLineEdit()
         self.filterEdit.setPlaceholderText("Filter modules/functions...")
 
-        self.refreshButton = QPushButton("Refresh")
+        self.refreshButton = QPushButton("🔄 Refresh")
 
         toolLayout.addWidget(QLabel("Search:"))
         toolLayout.addWidget(self.filterEdit, 1)
@@ -264,7 +262,7 @@ class FunctionBrowserWindow(QWidget):
         self.attrsScrollArea.setWidgetResizable(True)
         attrsLayout.addWidget(self.attrsScrollArea, 1)
 
-        self.runButton = QPushButton("Run function")
+        self.runButton = QPushButton("🚀 Run function")
         attrsLayout.addWidget(self.runButton)
         rightSplitter.addWidget(attrsPane)
 
@@ -284,7 +282,7 @@ class FunctionBrowserWindow(QWidget):
         self.browseFolderButton.clicked.connect(self._browseFolder)
         self.refreshButton.clicked.connect(self.refreshTree)
         self.filterEdit.textChanged.connect(self.refreshTree)
-        self.treeWidget.itemSelectionChanged.connect(self._onTreeSelectionChanged)
+        self.treeWidget.itemSelectionChanged.connect(self.updateSelectionUI)
         self.treeWidget.customContextMenuRequested.connect(self._showTreeContextMenu)
         self.runButton.clicked.connect(self.runSelectedFunction)
 
@@ -469,7 +467,7 @@ class FunctionBrowserWindow(QWidget):
             return
 
         menu = QMenu(self.treeWidget)
-        menu.addAction("Add function module to Rig Builder", lambda key=functionKey: self._addFunctionModuleToRigBuilder(key))
+        menu.addAction("Add function module to Rig Builder", partial(self._addFunctionModuleToRigBuilder, functionKey))
         menu.exec_(self.treeWidget.viewport().mapToGlobal(pos))
 
     def _buildRunCodeForFunction(self, functionObj, signature, functionSpec):
@@ -516,14 +514,7 @@ class FunctionBrowserWindow(QWidget):
 
             newModule = moduleObj.copy()
             newModule.setRunCode(self._buildRunCodeForFunction(functionObj, signature, functionSpec))
-            rigModuleItem = rigBuilderUi.mainWindow.addModule(newModule)
-
-            rigBuilderUi.mainWindow.show()
-            rigBuilderUi.mainWindow.raise_()
-            rigBuilderUi.mainWindow.activateWindow()
-
-            if rigModuleItem:
-                rigBuilderUi.mainWindow.selectModule(rigModuleItem)
+            self.moduleAdditionRequested.emit(newModule)
             self._writeLog("Added '{}' to Rig Builder.\n".format(newModule.name()))
 
         except Exception as exc:
@@ -544,7 +535,8 @@ class FunctionBrowserWindow(QWidget):
             raise AttributeError("Cannot find callable '{}' in module '{}'".format(functionSpec["functionName"], moduleImportName))
         return functionObj
 
-    def _onTreeSelectionChanged(self):
+    def updateSelectionUI(self):
+        """Update the right pane based on the current selection in the tree."""
         selectedItems = self.treeWidget.selectedItems()
         if not selectedItems:
             return
@@ -582,14 +574,31 @@ class FunctionBrowserWindow(QWidget):
         runtimeDocString = inspect.getdoc(functionObj) or functionSpec.get("docString", "")
         self._setFunctionInfoLabel(functionSpec, qualName=qualName, docString=runtimeDocString)
 
-        moduleItem = _ModuleItemProxy(moduleObj)
+        categories = [attr.category() for attr in moduleObj.attributes() if attr.category()]
+        category = categories[0] if categories else "General"
         attrsWidget = AttributesWidget(
-            moduleItem,
-            moduleObj.attributes(),
-            mainWindow=self.mainWindowProxy,
+            moduleObj,
+            category,
         )
+        attrsWidget.executionRequested.connect(self._onModuleExecutionRequested)
+        
         self.currentAttributesWidget = attrsWidget
         self.attrsScrollArea.setWidget(attrsWidget)
+
+    def _onModuleExecutionRequested(self, code: str):
+        if not self.currentFunctionKey:
+            return
+
+        moduleObj = self.modulesByFunctionKey.get(self.currentFunctionKey)
+        if not moduleObj:
+            return
+
+        newModule = hostExecutor.executeModuleCode(moduleObj, code)
+        if newModule is None:
+            return
+
+        self.modulesByFunctionKey[self.currentFunctionKey] = newModule
+        self.updateSelectionUI() # Refresh UI
 
     def _buildModuleFromFunction(self, functionObj, functionSpec):
         moduleObj = Module()

@@ -196,6 +196,8 @@ def showCommitMessageDialog(parent) -> Tuple[bool, str]:
     lineEdit.setPlaceholderText("e.g. update myModule.xml")
     layout.addWidget(lineEdit)
     bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
+    bbox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
     bbox.accepted.connect(dlg.accept)
     bbox.rejected.connect(dlg.reject)
     layout.addWidget(bbox)

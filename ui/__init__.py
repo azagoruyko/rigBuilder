@@ -8,39 +8,38 @@ import sys
 import shutil
 import logging
 import fnmatch
+import xml.etree.ElementTree as ET
 from functools import partial
-from typing import Callable, Optional, List, Dict, Union
+from typing import Callable, Optional, List, Tuple
 
 from ..qt import *
-
 from .. import __version__
 from ..core import *
-from .editor import *
-from . import moduleHistoryBrowser
+from .editor import CodeEditorWithNumbersWidget
 from .moduleHistoryBrowser import ModuleHistoryWidget
-from ..workspace import saveWorkspace, loadWorkspace
-from ..widgets.ui import TemplateWidgets, EditJsonDialog, EditTextDialog
+from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
 from ..utils import *
 from .utils import *
+from ..client.connectionManager import connectionManager
+from ..client.hostExecutor import hostExecutor
+from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 
-parentWindow = APIRegistry.getParentWindow()
 updateFilesThread = None
 trackFileChangesThreads = {} # by file path
 
-DOC_HELP_TEXT = """Documentation for this module (double-click to edit). Supports HTML or Markdown.
+def getCurrentModule() -> Optional[Module]:
+    """Return the currently selected module from the global UI window."""
+    global mainWindow
+    if not mainWindow:
+        return None
+    return mainWindow.treeWidget.currentModule()
 
-HTML examples:
-- Paragraph: <p>Short description of what this module does.</p>
-- Section title: <h2>Usage</h2>
-- External link: <a href="https://your.wiki/rig">Rigging guide</a>
-- Open another module: <a href="module:character/rig/Arm_L">Arm_L module</a>
-
-Markdown examples:
-- **Bold**, *italic*, `code`
-- ## Heading, - list, [link](url)
-- Fenced code blocks, tables
-
-module:SPEC links work in both formats; SPEC is a UID, relative path, or full path for Module.loadModule()."""
+def getSelectedModules() -> List[Module]:
+    """Return currently selected modules from the global UI window."""
+    global mainWindow
+    if not mainWindow:
+        return []
+    return mainWindow.treeWidget.selectedModules()
 
 def convertMarkdownToHTML(text: str) -> str:
     """Convert Markdown to HTML."""
@@ -57,28 +56,28 @@ def convertTextToHTML(text: str) -> str:
     """Convert text to HTML."""
     return text.replace("\n", "<br>").replace("\t", "&nbsp;"*4)
 
+
 class DocBrowser(QTextBrowser):
     """HTML/Markdown browser for module documentation."""
 
-    def __init__(self, *, mainWindow: 'RigBuilderWindow', parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.mainWindow = mainWindow
 
         self.setOpenLinks(False)
         self.anchorClicked.connect(self._onAnchorClicked)
-        self.setPlaceholderText(DOC_HELP_TEXT)
+        self.setPlaceholderText("Double-click to edit. HTML or Markdown supported.")
         self.document().setDefaultStyleSheet("a { color: #55aaee; }")
 
     def updateDoc(self):
-        item = self.mainWindow.currentModule()
-        if not item:
+        module = getCurrentModule()
+        if not module:
             self.clear()
             return
 
-        if item.module.docFormat() == "markdown":
-            html = convertMarkdownToHTML(item.module.doc())
+        if module.docFormat() == "markdown":
+            html = convertMarkdownToHTML(module.doc())
         else:
-            html = convertTextToHTML(item.module.doc())
+            html = convertTextToHTML(module.doc())
 
         self.setHtml(html)
 
@@ -101,22 +100,21 @@ class DocBrowser(QTextBrowser):
         try:
             module = Module.loadModule(spec)
         except ModuleNotFoundError:
-            self.mainWindow.logger.warning("Module not found: {}".format(spec))
+            logger.warning("Module not found: {}".format(spec))
             return
 
-        item = self.mainWindow.treeWidget.addModule(module)
-        self.mainWindow.selectModule(item)
+        mainWindow.treeWidget.addModule(module)
+        mainWindow.treeWidget.selectModule(module)
 
     def contextMenuEvent(self, event):
-        item = self.mainWindow.currentModule()
-        if not item:
+        module = getCurrentModule()
+        if not module:
             return
 
         def setDocFormat(format: str):
-            item.module.setDocFormat(format)
+            module.setDocFormat(format)
             self.updateDoc()
 
-        module = item.module
         menu = QMenu(self)
         action = menu.addAction("Show as HTML", partial(setDocFormat, "html"))
         action.setCheckable(True)
@@ -131,11 +129,9 @@ class DocBrowser(QTextBrowser):
     def mouseDoubleClickEvent(self, event):
         """Edit source text and save it to module."""
 
-        item = self.mainWindow.currentModule()
-        if not item:
+        module = getCurrentModule()
+        if not module:
             return
-
-        module = item.module
 
         def save(text):
             module.setDoc(text)
@@ -144,9 +140,10 @@ class DocBrowser(QTextBrowser):
         w = EditTextDialog(
             module.doc(),
             title="Edit documentation",
-            placeholder=DOC_HELP_TEXT,
+            placeholder="Enter documentation here...",
             words=set(),
-            python=False)
+            python=False,
+            parent=self)
 
         w.saved.connect(save)
         w.show()
@@ -167,11 +164,11 @@ class RigBuilderLogHandler(logging.Handler):
             msg = self.format(record)
             self.logWidget.write(msg + '\n')
 
-def sendToServer(module: 'Module') -> bool:
+def publishModule(module: Module) -> bool:
     '''
-    Send module to server with SVN, Git, Perforce or other VCS.
+    Send module to public path (publish) with SVN, Git, Perforce or other VCS.
     '''
-    module.sendToServer() # copy file to server and add to VCS
+    module.publish() # copy file to public and add to VCS
     return True
 
 class TrackFileChangesThread(QThread):
@@ -180,14 +177,30 @@ class TrackFileChangesThread(QThread):
     def __init__(self, filePath: str):
         super().__init__()
         self.filePath = filePath
+        self._running = True
+
+    def stop(self):
+        self._running = False
 
     def run(self):
-        lastModified = os.path.getmtime(self.filePath)
-        while True:
-            currentModified = os.path.getmtime(self.filePath)
-            if currentModified != lastModified:
-                self.somethingChanged.emit()
-                lastModified = currentModified
+        try:
+            lastModified = os.path.getmtime(self.filePath)
+        except Exception:
+            lastModified = 0
+
+        while self._running:
+            try:
+                if not os.path.exists(self.filePath):
+                    time.sleep(1)
+                    continue
+
+                currentModified = os.path.getmtime(self.filePath)
+                if currentModified != lastModified:
+                    self.somethingChanged.emit()
+                    lastModified = currentModified
+            except Exception:
+                pass # ignore temporary file access errors
+            
             time.sleep(1)
 
 class DirectoryWatcher(QObject):
@@ -262,40 +275,36 @@ class MyThread(QThread):
     def run(self):
         self.runFunction()
 
+
 class AttributesWidget(QWidget):
-    def __init__(self, moduleItem: 'ModuleItem', attributes: List['Attribute'], *, mainWindow: 'RigBuilderWindow', **kwargs):
+    moduleChanged = Signal(object) # Module
+    executionRequested = Signal(str)
+
+    def __init__(self, module: Module, category: str, **kwargs):
         super().__init__(**kwargs)
 
-        self.mainWindow = mainWindow
-        self.moduleItem = moduleItem
+        self.module = module
+        self.category = category
 
+        self.attributes = []
         self._attributeAndWidgets = [] # [attribute, nameWidget, templateWidget]
+
+        self.updateAttributes()
+
+    def updateAttributes(self):
+        if not self.module:
+            return
 
         layout = QGridLayout()
         layout.setDefaultPositioning(2, Qt.Horizontal)
         layout.setColumnStretch(1, 1)
         self.setLayout(layout)
 
-        def executor(cmd: str, context: Optional[Dict[str, object]] = None) -> Dict[str, object]:
-            ctx: Dict[str, object] = {}
-            ctx.update(self.moduleItem.module.context())
-            if context:
-                ctx.update(context)
+        self._attributeAndWidgets = []
+        self.attributes = [a for a in self.module.attributes() if a.category() == self.category]
 
-            with captureOutput(self.mainWindow.logWidget):
-                try:
-                    exec(replaceAttrPrefix(cmd), ctx)
-                except Exception as e:
-                    self.mainWindow.logger.error(str(e))
-                    self.mainWindow.showLog()
-                else:
-                    self.updateWidgets()
-                    self.updateWidgetStyles()
-
-            return ctx
-
-        for idx, a in enumerate(attributes):
-            templateWidget = TemplateWidgets[a.template()](executor=executor)
+        for idx, a in enumerate(self.attributes):
+            templateWidget = TemplateWidgets[a.template()]()
             nameWidget = QLabel(a.name())
 
             self._attributeAndWidgets.append((a, nameWidget, templateWidget))
@@ -304,6 +313,7 @@ class AttributesWidget(QWidget):
             self.updateWidgetStyle(idx)
 
             templateWidget.somethingChanged.connect(partial(self._onWidgetChange, idx))
+            templateWidget.moduleCodeExecutionRequested.connect(self._onModuleCodeExecutionRequested)
 
             nameWidget.setAlignment(Qt.AlignRight)
             nameWidget.setCursor(Qt.PointingHandCursor)
@@ -315,7 +325,13 @@ class AttributesWidget(QWidget):
         layout.addWidget(QLabel())
         layout.setRowStretch(layout.rowCount(), 1)
 
-    def connectionMenu(self, menu: QMenu, module: 'Module', attrWidgetIndex: int, path: str = "/"):
+    def _onModuleCodeExecutionRequested(self, code: str):
+        if not code:
+            return
+
+        self.executionRequested.emit(code)
+
+    def connectionMenu(self, menu: QMenu, module: Module, attrWidgetIndex: int, path: str = "/"):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         subMenu = QMenu(module.name(), self)
@@ -341,15 +357,15 @@ class AttributesWidget(QWidget):
         titleAction.setFont(font)
         menu.addSeparator()
 
-        if self.moduleItem and self.moduleItem.parent():
+        if self.module and self.module.parent():
             makeConnectionMenu = menu.addMenu("Make connection")
 
-            for a in self.moduleItem.module.parent().attributes():
+            for a in self.module.parent().attributes():
                 if a.template() == attr.template() and a.name(): # skip empty names as well
                     makeConnectionMenu.addAction(a.name(), partial(self.connectAttr, "/"+a.name(), attrWidgetIndex))
 
-            for ch in self.moduleItem.module.parent().children():
-                if ch is not self.moduleItem.module:
+            for ch in self.module.parent().children():
+                if ch is not self.module:
                     self.connectionMenu(makeConnectionMenu, ch, attrWidgetIndex)
 
         if attr.connect():
@@ -375,18 +391,16 @@ class AttributesWidget(QWidget):
     def _wrapper(f: Callable[..., object]):
         def inner(self, attrWidgetIndex: int, *args, **kwargs):
             attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
-            with captureOutput(self.mainWindow.logWidget):
-                try:
-                    return f(self, attrWidgetIndex, *args, **kwargs)
-                
-                except Exception as e:
-                    self.mainWindow.logger.error(f"{self.moduleItem.module.name()}.{attr.name()}: {str(e)}")
+            try:
+                return f(self, attrWidgetIndex, *args, **kwargs)
+            
+            except Exception as e:
+                moduleName = self.module.name() if self.module else "unknown"
+                logger.error(f"{moduleName}.{attr.name()}: {str(e)}")
 
-                    if type(e) == AttributeResolverError:
-                        with blockedWidgetContext(widget) as w:
-                            w.setJsonData(attr.localData())
-
-                    self.mainWindow.showLog()
+                if type(e) == AttributeResolverError:
+                    with blockedWidgetContext(widget) as w:
+                        w.setJsonData(attr.localData())
 
         return inner
     
@@ -397,12 +411,18 @@ class AttributesWidget(QWidget):
         widgetData = widget.getJsonData()
         attr.setData(widgetData) # implicitly push
 
-        previousData = {id(a):a.localData() for a in self.moduleItem.module.attributes()}
+        if not self.module:
+            return
+
+        previousData = {id(a):a.localData() for a in self.module.attributes()}
         modifiedAttrs = []
-        for otherAttr in self.moduleItem.module.attributes():
+        for otherAttr in self.module.attributes():
             otherAttr.pull()
             if otherAttr.localData() != previousData[id(otherAttr)]:
                 modifiedAttrs.append(otherAttr)
+        
+        if modifiedAttrs:
+            self.moduleChanged.emit(self.module)
 
         for idx, (otherAttr, _, otherWidget) in enumerate(self._attributeAndWidgets): # update attributes' widgets
             if otherAttr in modifiedAttrs:
@@ -455,20 +475,21 @@ class AttributesWidget(QWidget):
     def exposeAttr(self, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        if not self.moduleItem.module.parent():
+        if not self.module or not self.module.parent():
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: no parent module")
             return
 
-        if self.moduleItem.module.parent().findAttribute(attr.name()):
+        if self.module.parent().findAttribute(attr.name()):
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: attribute already exists")
             return
 
         doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        prefix = self.moduleItem.module.name() + "_" if doUsePrefix else ""
+        prefix = self.module.name() + "_" if doUsePrefix else ""
         expAttr = attr.copy()
         expAttr.setName(prefix + expAttr.name())
-        self.moduleItem.module.parent().addAttribute(expAttr)
+        self.module.parent().addAttribute(expAttr)
         self.connectAttr("/"+expAttr.name(), attrWidgetIndex)
+        self.moduleChanged.emit(self.module.parent())
 
     @_wrapper
     def editData(self, attrWidgetIndex: int):
@@ -481,7 +502,7 @@ class AttributesWidget(QWidget):
             _save(self, attrWidgetIndex)
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        w = EditJsonDialog(attr.localData(), title="Edit data")
+        w = EditJsonDialog(attr.localData(), title="Edit data", parent=self)
         w.saved.connect(save)
         w.show()
 
@@ -493,9 +514,17 @@ class AttributesWidget(QWidget):
 
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        words = set(self.moduleItem.module.context().keys())
-        placeholder = '# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]'
-        w = EditTextDialog(attr.expression(), title="Edit expression for '{}'".format(attr.name()), placeholder=placeholder, words=words, python=True)
+        if not self.module:
+            return
+
+        w = EditTextDialog(
+            attr.expression(), 
+            title="Edit expression for '{}'".format(attr.name()), 
+            placeholder='# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]', 
+            words=set(self.module.context().keys()), 
+            python=True,
+            parent=self)
+
         w.saved.connect(save)
         w.show()
 
@@ -525,15 +554,17 @@ class AttributesWidget(QWidget):
         self.updateWidgetStyle(attrWidgetIndex)
 
 class AttributesTabWidget(QTabWidget):
-    def __init__(self, moduleItem: 'ModuleItem', *, mainWindow: 'RigBuilderWindow', **kwargs):
+    moduleChanged = Signal(object) # Module
+    executionRequested = Signal(str)
+
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.mainWindow = mainWindow
-        self.moduleItem = moduleItem
+        self.module = None
         self.tabsAttributes = {}
         self._attributesWidget = None
 
-        self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"], parent=mainWindow)
+        self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"], parent=self)
         self.searchAndReplaceDialog.onReplace.connect(self._onReplace)
 
         self.currentChanged.connect(self._onTabChanged)
@@ -541,18 +572,18 @@ class AttributesTabWidget(QTabWidget):
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
 
-        if self.moduleItem:
+        if self.module:
             menu.addAction("Edit attributes", self.editAttributes)
             menu.addSeparator()
-            menu.addAction("Replace in values", self.searchAndReplaceDialog.exec_)
+            menu.addAction("Replace in values", self.searchAndReplaceDialog.exec)
 
         menu.popup(event.globalPos())
 
     def editAttributes(self):
-        dialog = EditAttributesDialog(self.moduleItem, self.currentIndex(), parent=mainWindow)
+        dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=self)
         dialog.exec()
 
-        self.mainWindow.codeEditorWidget.updateState()
+        mainWindow.codeEditorWidget.updateState()
         self.updateTabs()
 
     def _onReplace(self, old: str, new: str, opts: Dict[str, bool]):
@@ -592,24 +623,33 @@ class AttributesTabWidget(QTabWidget):
             return
 
         scrollArea = self.widget(idx)
-        self._attributesWidget = AttributesWidget(self.moduleItem, self.tabsAttributes[title], mainWindow=self.mainWindow)
+        self._attributesWidget = AttributesWidget(self.module, title)
+        
+        # Forward signals
+        self._attributesWidget.moduleChanged.connect(self.moduleChanged.emit)
+        self._attributesWidget.executionRequested.connect(self.executionRequested.emit)
+        
         scrollArea.setWidget(self._attributesWidget)
         self.setCurrentIndex(idx)
 
-    def updateTabs(self):
+    def updateTabs(self, module: Optional[Module] = None):
+        if module is not None:
+            self.module = module
+
         oldIndex = self.currentIndex()
         oldCount = self.count()
 
         self._attributesWidget = None
         self.tabsAttributes.clear()
 
-        if not self.moduleItem:
+        module = self.module
+        if not module:
             return
 
         self.blockSignals(True)
 
         tabTitlesInOrder = []
-        for a in self.moduleItem.module.attributes():
+        for a in module.attributes():
             if a.category() not in self.tabsAttributes:
                 self.tabsAttributes[a.category()] = []
                 tabTitlesInOrder.append(a.category())
@@ -684,7 +724,7 @@ class ModuleBrowserTreeWidget(QTreeWidget):
 
         drag = QDrag(self)
         drag.setMimeData(mimeData)
-        execFunc(drag, Qt.CopyAction)
+        drag.exec(Qt.CopyAction)
 
     def startDrag(self, supportedActions: Qt.DropActions):
         del supportedActions
@@ -715,11 +755,11 @@ class ModuleBrowserTreeWidget(QTreeWidget):
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
-        menu.addAction("Open server folder", self.openServerModulesFolder)
-        menu.addAction("Open local folder", self.openLocalModulesFolder)
+        menu.addAction("Open public folder", self.openPublicModulesFolder)
+        menu.addAction("Open private folder", self.openPrivateModulesFolder)
         menu.addSeparator()
-        menu.addAction("Set server modules folder...", self.parent().browseServerModulesPath)
-        menu.addAction("Clear server modules folder", self.parent().clearServerModulesPath)
+        menu.addAction("Set public modules folder...", self.parent().browsePublicModulesPath)
+        menu.addAction("Reset public modules folder", self.parent().resetPublicModulesPath)
         menu.addSeparator()
         menu.addAction("Refresh", self.parent().refreshModules)
         menu.popup(event.globalPos())
@@ -729,12 +769,12 @@ class ModuleBrowserTreeWidget(QTreeWidget):
             if item.childCount() == 0:
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
-    def openServerModulesFolder(self):
-        folderPath = getServerModulesPath()
+    def openPublicModulesFolder(self):
+        folderPath = getPublicModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
 
-    def openLocalModulesFolder(self):
-        folderPath = getLocalModulesPath()
+    def openPrivateModulesFolder(self):
+        folderPath = getPrivateModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
 
 class ModuleSelectorWidget(QWidget):
@@ -749,23 +789,23 @@ class ModuleSelectorWidget(QWidget):
         self.setLayout(layout)
 
         self.updateSourceWidget = QComboBox()
-        self.updateSourceWidget.addItems(["All", "Server", "Local", "None"])
-        self.updateSourceWidget.setCurrentIndex({"all": 0, "server": 1, "local": 2, "": 3}[Module.UpdateSource])
-        self.updateSourceWidget.currentIndexChanged.connect(lambda _=None: self.updateSource())
+        self.updateSourceWidget.addItems(["All", "Public", "Private", "None"])
+        self.updateSourceWidget.setCurrentIndex({"all": 0, "public": 1, "private": 2, "": 3}[Module.UpdateSource])
+        self.updateSourceWidget.currentIndexChanged.connect(partial(self.updateSource))
 
         self.modulesFromButtonGroup = QButtonGroup(self)
-        self.modulesFromServerRadio = QRadioButton("Server")
-        self.modulesFromLocalRadio = QRadioButton("Local")
-        self.modulesFromButtonGroup.addButton(self.modulesFromServerRadio, 0)
-        self.modulesFromButtonGroup.addButton(self.modulesFromLocalRadio, 1)
-        self.modulesFromServerRadio.setChecked(True)
+        self.modulesFromPublicRadio = QRadioButton("Public")
+        self.modulesFromPrivateRadio = QRadioButton("Private")
+        self.modulesFromButtonGroup.addButton(self.modulesFromPublicRadio, 0)
+        self.modulesFromButtonGroup.addButton(self.modulesFromPrivateRadio, 1)
+        self.modulesFromPublicRadio.setChecked(True)
         self.modulesFromButtonGroup.buttonClicked.connect(self.applyMask)
 
         self.maskWidget = QLineEdit()
         self.maskWidget.setPlaceholderText("Filter modules...")
         self.maskWidget.textChanged.connect(self.applyMask)
 
-        self.clearFilterButton = QPushButton("Clear")
+        self.clearFilterButton = QPushButton("🧹 Clear")
         self.clearFilterButton.clicked.connect(self.maskWidget.clear)
         self.clearFilterButton.hide()
         self.maskWidget.textChanged.connect(self._onMaskTextChanged)
@@ -778,13 +818,13 @@ class ModuleSelectorWidget(QWidget):
 
         self.treeWidget = ModuleBrowserTreeWidget()
 
-        self.loadingLabel = QLabel("Pulling modules from server...")
+        self.loadingLabel = QLabel("Pulling modules from public path...")
         self.loadingLabel.hide()
 
         controlsLayout = QHBoxLayout()
         controlsLayout.addWidget(QLabel("Modules from"))
-        controlsLayout.addWidget(self.modulesFromServerRadio)
-        controlsLayout.addWidget(self.modulesFromLocalRadio)
+        controlsLayout.addWidget(self.modulesFromPublicRadio)
+        controlsLayout.addWidget(self.modulesFromPrivateRadio)
         controlsLayout.addStretch()
         controlsLayout.addWidget(QLabel("Update source"))
         controlsLayout.addWidget(self.updateSourceWidget)
@@ -804,7 +844,6 @@ class ModuleSelectorWidget(QWidget):
             Module.updateUidsCache()
             self.loadingLabel.hide()
             self.applyMask()
-            self.modulesReloaded.emit()
 
         global updateFilesThread
         if updateFilesThread and updateFilesThread.isRunning():
@@ -814,25 +853,25 @@ class ModuleSelectorWidget(QWidget):
 
     def updateSource(self):
         updateSource = self.updateSourceWidget.currentIndex()
-        UpdateSourceFromInt = {0: "all", 1: "server", 2: "local", 3: ""}
+        UpdateSourceFromInt = {0: "all", 1: "public", 2: "private", 3: ""}
         Module.UpdateSource = UpdateSourceFromInt[updateSource]
 
-    def browseServerModulesPath(self):
-        current = getServerModulesPath()
-        folder = QFileDialog.getExistingDirectory(self, "Server modules folder", current)
+    def browsePublicModulesPath(self):
+        current = getPublicModulesPath()
+        folder = QFileDialog.getExistingDirectory(self, "Public modules folder", current)
         if folder:
-            Settings["serverModulesPath"] = folder
+            Settings["publicModulesPath"] = folder
             Module.updateUidsCache()
             self.applyMask()
 
-    def clearServerModulesPath(self):
-        Settings["serverModulesPath"] = ""
+    def resetPublicModulesPath(self):
+        Settings["publicModulesPath"] = ""
         Module.updateUidsCache()
         self.applyMask()
 
     def getModulesRootDirectory(self) -> str:
         modulesFrom = self.modulesFromButtonGroup.checkedId()
-        return getServerModulesPath() if modulesFrom == 0 else getLocalModulesPath()
+        return getPublicModulesPath() if modulesFrom == 0 else getPrivateModulesPath()
 
     def _onMaskTextChanged(self, text: str):
         self.clearFilterButton.setVisible(bool(text))
@@ -847,7 +886,7 @@ class ModuleSelectorWidget(QWidget):
 
         modulesFrom = self.modulesFromButtonGroup.checkedId()
         modulesDirectory = self.getModulesRootDirectory()
-        modules = list(Module.ServerUids.values()) if modulesFrom == 0 else list(Module.LocalUids.values())
+        modules = list(Module.PublicUids.values()) if modulesFrom == 0 else list(Module.PrivateUids.values())
         modules = sorted(modules)
 
         self.treeWidget.clear()
@@ -896,200 +935,396 @@ class ModuleSelectorWidget(QWidget):
             dirItem.setExpanded(True if mask else False)
 
 
-class ModuleItem(QTreeWidgetItem):
-    def __init__(self, module: 'Module', **kwargs):
-        super().__init__(**kwargs)
-        self.module = module
+class ModuleModel(QAbstractItemModel):
+    """
+    Qt Model for Module hierarchy.
+    Enables MVC pattern where Module is the single source of truth.
+    """
+    def __init__(self, rootModule: Optional[Module] = None, parent=None):
+        super().__init__(parent)
+        self._rootModule = rootModule or Module()
+        self._draggedModules = [] # Temporary storage for internal drag and drop
 
-        self.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled)
+    def rootModule(self) -> Module:
+        return self._rootModule
 
-    def clone(self) -> "ModuleItem":
-        item = ModuleItem(self.module.copy())
-        for i in range(self.childCount()):
-            item.addChild(self.child(i).clone())
-        return item
+    def getModule(self, index: QModelIndex) -> Optional[Module]:
+        """Convert a QModelIndex to a Module object safely."""
+        if index.isValid():
+            return index.internalPointer()
+        return None
 
-    def data(self, column: int, role: int):
-        if column == 0: # name
-            if role == Qt.EditRole:
-                return self.module.name()
+    def index(self, row, column, parent=QModelIndex()):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
 
-            elif role == Qt.DisplayRole:
-                return self.module.name() + ("*" if self.module.modified() else " ")
+        if not parent.isValid():
+            parentModule = self._rootModule
+        else:
+            parentModule = parent.internalPointer()
 
-            elif role == Qt.ForegroundRole:
+        if row < 0 or row >= len(parentModule.children()):
+            return QModelIndex()
+
+        childModule = parentModule.children()[row]
+        return self.createIndex(row, column, childModule)
+
+    def parent(self, index):
+        if not index.isValid():
+            return QModelIndex()
+
+        childModule = index.internalPointer()
+        parentModule = childModule.parent()
+
+        if parentModule == self._rootModule or parentModule is None:
+            return QModelIndex()
+
+        grandParent = parentModule.parent()
+        if grandParent is None: # Should not happen if parentModule != rootModule
+            return QModelIndex()
+            
+        try:
+            row = grandParent.children().index(parentModule)
+        except ValueError:
+            return QModelIndex()
+
+        return self.createIndex(row, 0, parentModule)
+
+    def rowCount(self, parent=QModelIndex()):
+        if parent.column() > 0:
+            return 0
+
+        if not parent.isValid():
+            parentModule = self._rootModule
+        else:
+            parentModule = parent.internalPointer()
+
+        return len(parentModule.children())
+
+    def columnCount(self, parent=QModelIndex()):
+        return 4 # Name, Path, Source, UID
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+
+        module = index.internalPointer()
+        column = index.column()
+
+        if role == Qt.DisplayRole or role == Qt.EditRole:
+            if column == 0:
+                return module.name()+("*" if module.modified() else "")
+
+            elif column == 1:
+                return module.relativePathString().replace("\\", "/") + " "
+
+            elif column == 2:
+                source = ""
+                if module.loadedFromPrivate(): source = "private"
+                elif module.loadedFromPublic(): source = "public"
+                return source + " "
+
+            elif column == 3:
+                return module.uid()[:8]
+
+        elif role == Qt.ForegroundRole:
+            if column == 0:
                 isParentMuted = False
                 isParentReferenced = False
-
-                parent = self.parent()
-                while parent:
-                    isParentMuted = isParentMuted or parent.module.muted()
-                    isParentReferenced = isParentReferenced or parent.module.uid()
-                    parent = parent.parent()
-
+                p = module.parent()
+                while p:
+                    isParentMuted = isParentMuted or p.muted()
+                    isParentReferenced = isParentReferenced or p.uid()
+                    p = p.parent()
+                
                 color = QColor(200, 200, 200)
-
-                if isParentReferenced:
-                    color = QColor(140, 140, 180)
-
-                if self.module.muted() or isParentMuted:
-                    color = QColor(100, 100, 100)
-
+                if isParentReferenced: color = QColor(140, 140, 180)
+                if module.muted() or isParentMuted: color = QColor(100, 100, 100)
                 return color
 
-            elif role == Qt.BackgroundRole:
-                if not re.match("\\w*", self.module.name()):
+            elif column == 1:
+                return QColor(125, 125, 125)
+
+            elif column == 2:
+                if module.loadedFromPrivate(): return QColor(120, 220, 120)
+                return QColor(120, 120, 120)
+
+            elif column == 3:
+                return QColor(125, 125, 170)
+
+        elif role == Qt.BackgroundRole:
+            if column == 0:
+                if not re.match("\\w*", module.name()):
                     return QColor(170, 50, 50)
-
-                itemParent = self.parent()
-                if itemParent and len([ch for ch in itemParent.module.children() if ch.name() == self.module.name()]) > 1:
+                
+                p = module.parent()
+                if p and len([ch for ch in p.children() if ch.name() == module.name()]) > 1:
                     return QColor(170, 50, 50)
-
-                return super().data(column, role)
-
-        elif column == 1: # path
-            if role == Qt.DisplayRole:
-                return self.module.relativePathString().replace("\\", "/") + " "
-
-            elif role == Qt.EditRole:
-                return "(not editable)"
-
-            elif role == Qt.FontRole:
+        
+        elif role == Qt.FontRole:
+            if column == 1:
                 font = QFont()
                 font.setItalic(True)
                 return font
 
-            elif role == Qt.ForegroundRole:
-                return QColor(125, 125, 125)
+        return None
 
-        elif column == 2: # source
-            source = ""
-            if self.module.loadedFromLocal():
-                source = "local"
-            elif self.module.loadedFromServer():
-                source = "server"
-
-            if role == Qt.DisplayRole:
-                return source + " "
-
-            elif role == Qt.EditRole:
-                return "(not editable)"
-
-            elif role == Qt.ForegroundRole:
-                if source == "local":
-                    return QColor(120, 220, 120)
-                elif source == "server":
-                    return QColor(120, 120, 120)
-
-        elif column == 3: # uid
-            if role == Qt.DisplayRole:
-                return self.module.uid()[:8]
-            elif role == Qt.EditRole:
-                return "(not editable)"
-            elif role == Qt.ForegroundRole:
-                return QColor(125, 125, 170)
-        else:
-            return super().data(column, role)
-
-    def setData(self, column: int, role: int, value: object):
-        if column == 0:
-            if role == Qt.EditRole:
-                newName = replaceSpecialChars(value).strip()
-                if self.parent():
-                    existingNames = set([ch.name() for ch in self.parent().module.children() if ch is not self.module])
+    def setData(self, index, value, role=Qt.EditRole):
+        if index.isValid() and role == Qt.EditRole:
+            module = index.internalPointer()
+            column = index.column()
+            if column == 0:
+                newName = replaceSpecialChars(str(value)).strip()
+                p = module.parent()
+                if p:
+                    existingNames = set([ch.name() for ch in p.children() if ch is not module])
                     newName = findUniqueName(newName, existingNames)
-
-                connections = self._saveConnections(self.module) # rename in connections
-                self.module.setName(newName)
-                self.treeWidget().resizeColumnToContents(column)
+                
+                # Handle connection updates (migrated from ModuleItem)
+                connections = self._saveConnections(module)
+                module.setName(newName)
                 self._updateConnections(connections)
-        else:
-            return super().setData(column, role, value)
+                
+                self.dataChanged.emit(index, index)
+                return True
+        return False
 
     def _saveConnections(self, currentModule: "Module"):
         connections = []
         for a in currentModule.attributes():
             connections.append({"attr":a, "module": currentModule, "connections":a.listConnections()})
-
         for ch in currentModule.children():
             connections += self._saveConnections(ch)
         return connections
 
-    def _updateConnections(self, connections: list[dict[str, object]]):
+    def _updateConnections(self, connections: list[dict]):
         for data in connections:
             srcAttr = data["attr"]
             module = data["module"]
             for a in data["connections"]:
                 c = module.path().replace(a.module().path(inclusive=False), "") + "/" + srcAttr.name()
-                a.setConnect(c) # update connection path
-    
-    # === UI API METHODS ===
-    
-    def getLogger(self):
-        """Get logger from main window."""
-        treeWidget = self.treeWidget()
-        if treeWidget and treeWidget.mainWindow:
-            return treeWidget.mainWindow.logger        
-    
-    def validateModule(self):
-        """Validate this module and log any errors found. Returns True if valid."""
-        hasErrors = False
-        module = self.module
+                a.setConnect(c)
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return ["Name", "Path", "Source", "UID"][section]
+        return None
+
+    def flags(self, index):
+        if not index.isValid():
+            return Qt.ItemIsDropEnabled
+        return Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
+
+    # Helpers for structural changes
+    def addModuleAt(self, module: Module, parentIndex: QModelIndex = QModelIndex(), row: int = -1):
+        parentModule = parentIndex.internalPointer() if parentIndex.isValid() else self._rootModule
+        if row < 0:
+            row = len(parentModule.children())
         
-        # Check module name
-        if not re.match(r"^\w+$", module.name()):
-            self.getLogger().error(f"Module '{module.name()}': Invalid module name (only alphanumeric characters and underscore allowed)")
-            hasErrors = True
-        
-        # Check for duplicate child names
-        childNames = [ch.name() for ch in module.children()]
-        duplicates = [name for name in childNames if childNames.count(name) > 1]
-        if duplicates:
-            self.getLogger().error(f"Module '{module.name()}': Duplicate child module names: {list(set(duplicates))}")
-            hasErrors = True
-        
-        # Check attributes
-        for attr in module.attributes():
-            if not attr.template():
-                self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' has no template")
-                hasErrors = True
-            elif attr.template() not in TemplateWidgets:
-                self.getLogger().error(f"Module '{module.name()}': Unknown template '{attr.template()}' for attribute '{attr.name()}'")
-                hasErrors = True
+        self.beginInsertRows(parentIndex, row, row)
+        parentModule.insertChild(row, module)
+        self.endInsertRows()
+        return self.index(row, 0, parentIndex)
+
+    def indexForModule(self, module: Module, parent=QModelIndex()) -> QModelIndex:
+        """Find the QModelIndex for a given Module instance."""
+        if not module:
+             return QModelIndex()
+             
+        for row in range(self.rowCount(parent)):
+            idx = self.index(row, 0, parent)
+            if idx.internalPointer() == module:
+                return idx
             
-            # Check attribute connections
-            if attr.connect():
-                try:
-                    srcAttr = attr.findConnectionSource()
-                    if not srcAttr:
-                        self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' has invalid connection '{attr.connect()}'")
-                        hasErrors = True
-                except Exception as e:
-                    self.getLogger().error(f"Module '{module.name()}': Attribute '{attr.name()}' connection error: {str(e)}")
-                    hasErrors = True
+            # Recursive search
+            childIdx = self.indexForModule(module, idx)
+            if childIdx.isValid():
+                return childIdx
+        return QModelIndex()
+
+    def removeModule(self, index: QModelIndex):
+        module = self.getModule(index)
+        if not module:
+            return False
         
-        return not hasErrors
+        parentModule = module.parent() or self._rootModule
+        parentIndex = index.parent()
+        
+        try:
+            row = parentModule.children().index(module)
+        except ValueError:
+            return False
+            
+        self.beginRemoveRows(parentIndex, row, row)
+        parentModule.removeChild(module)
+        self.endRemoveRows()
+        return True
+
+    def mimeTypes(self) -> List[str]:
+        return ["text/uri-list", "application/x-rigbuilder-module-internal"]
+
+    def mimeData(self, indexes: List[QModelIndex]) -> QMimeData:
+        mimeData = QMimeData()
+        
+        self._draggedModules = []
+        for idx in indexes:
+            if idx.column() == 0:
+                m = self.getModule(idx)
+                if m:
+                    self._draggedModules.append(m)
+        
+        if self._draggedModules:
+            # We just need to signal that we have internal modules
+            mimeData.setData("application/x-rigbuilder-module-internal", b"true")
+        return mimeData
+
+    def supportedDropActions(self) -> Qt.DropActions:
+        return Qt.CopyAction | Qt.MoveAction
+
+    def canDropMimeData(self, data: QMimeData, action: Qt.DropAction, row: int, column: int, parent: QModelIndex) -> bool:
+        if data.hasFormat("application/x-rigbuilder-module-internal") or data.hasUrls():
+            return True
+        return False
+
+    def dropMimeData(self, data: QMimeData, action: Qt.DropAction, row: int, column: int, parent: QModelIndex) -> bool:
+        if action == Qt.IgnoreAction:
+            return True
+
+        if not data.hasFormat("application/x-rigbuilder-module-internal") and not data.hasUrls():
+            return False
+
+        parentModule = self.getModule(parent) or self._rootModule
+        if row < 0:
+            row = len(parentModule.children())
+
+        # External drops (from browser)
+        if data.hasUrls():
+            for url in data.urls():
+                filePath = url.toLocalFile()
+                if filePath and filePath.endswith(MODULE_EXT):
+                    try:
+                        m = Module.loadModule(filePath)
+                        self.addModuleAt(m, parent, row)
+                        row += 1
+                    except Exception:
+                        continue
+            return True
+
+        # Internal move is handled by the view/model if we return True and it was a MoveAction,
+        # but since we are using custom Module tree, we should handle it ourselves if needed.
+        # Actually, if we use InternalMove in the view, it calls removeRows/insertRows.        
+        
+        # If it's internal move (reordering)
+        if data.hasFormat("application/x-rigbuilder-module-internal"):
+            if not self._draggedModules:
+                return False
+
+            for m in self._draggedModules:
+                oldParent = m.parent() or self._rootModule
+                oldRow = oldParent.children().index(m)
+                
+                # Adjust target row if moving within same parent
+                targetRow = row
+                if oldParent == parentModule and oldRow < targetRow:
+                    targetRow -= 1
+
+                # Prevent moving into itself
+                temp = parentModule
+                while temp:
+                    if temp == m: return False
+                    temp = temp.parent()
+
+                oldParentIdx = self.indexForModule(oldParent) if oldParent != self._rootModule else QModelIndex()
+                
+                self.beginMoveRows(oldParentIdx, oldRow, oldRow, parent, row)
+                oldParent.removeChild(m)
+                parentModule.insertChild(targetRow, m)
+                self.endMoveRows()
+                
+                if targetRow <= row: row += 1
+            
+            self._draggedModules = []
+            return True
+        
+        return False
 
 
-class TreeWidget(QTreeWidget):
-    def __init__(self, *, mainWindow: 'RigBuilderWindow', **kwargs):
+    def replaceModule(self, index: QModelIndex, newModule: Module):
+        """Replace a module instance at the given index with a new one."""
+        oldModule = self.getModule(index)
+        if not oldModule:
+            return
+        
+        parentModule = oldModule.parent() or self._rootModule
+        
+        try:
+            row = parentModule.children().index(oldModule)
+        except ValueError:
+            return
+            
+        self.beginResetModel()
+        parentModule._children[row] = newModule
+        newModule._parent = parentModule
+        # Re-link children (they might have been lost in serialization/deserialization if not deep)
+        for child in newModule.children():
+            child._parent = newModule
+        self.endResetModel()
+
+class TreeWidget(QTreeView):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.mainWindow = mainWindow
-        self.dragItems = [] # using in drag & drop
         self.clipboard = []  # Module clipboard for copy/paste
+        self.middlePressPos = QPoint()
+        
+        self.moduleModel = ModuleModel()
+        self.setModel(self.moduleModel)
 
-        self.setHeaderLabels(["Name", "Path", "Source", "UID"])
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection) # ExtendedSelection
-
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
-        self.setDropIndicatorShown(True)
+        self.setDragEnabled(False) # Handle manually via middle button
         self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
 
         self.setIndentation(16)
+        self.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MiddleButton:
+            self.middlePressPos = event.pos()
+            idx = self.indexAt(event.pos())
+            if idx.isValid():
+                if not (event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)):
+                    self.selectionModel().clearSelection()
+                self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                self.setCurrentIndex(idx)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if event.buttons() & Qt.MiddleButton:
+            if (event.pos() - self.middlePressPos).manhattanLength() >= QApplication.startDragDistance():
+                self._startDrag()
+                self.middlePressPos = QPoint()
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def _startDrag(self):
+        selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices: return
+
+        mimeData = self.moduleModel.mimeData(selectedIndices)
+        drag = QDrag(self)
+        drag.setMimeData(mimeData)
+        drag.exec(Qt.MoveAction)
+
+    def dropEvent(self, event: QDropEvent):
+        if event.source() == self:
+            event.setDropAction(Qt.CopyAction) # Prevents Qt from double-removing items
+        super().dropEvent(event)
 
     def drawRow(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
         if self.selectionModel().isSelected(index):
@@ -1100,192 +1335,174 @@ class TreeWidget(QTreeWidget):
             option.palette.setBrush(QPalette.Highlight, self.palette().highlight())
         super().drawRow(painter, option, index)
 
-    def startDrag(self, supportedActions: Qt.DropActions):
-        if not (QApplication.mouseButtons() & Qt.MiddleButton):
-            return  # internal rearrangement only on middle button
-        self.dragItems = self.selectedItems()
-        super().startDrag(supportedActions)
-
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            event.accept()
-        else:
-            super().dragEnterEvent(event)
-
-    def dragMoveEvent(self, event: QDragMoveEvent):
-        super().dragMoveEvent(event)
-
-        if event.mimeData().hasUrls():
-            event.setDropAction(Qt.CopyAction)
-
-    def dropEvent(self, event: QDropEvent):
-        super().dropEvent(event)
-
-        if event.mimeData().hasUrls():
-            event.setDropAction(Qt.CopyAction)
-            for url in event.mimeData().urls():
-                path = url.toLocalFile()
-
-                with captureOutput(self.mainWindow.logWidget):
-                    try:
-                        m = Module.loadModule(path)
-                        self.addTopLevelItem(self.makeItemFromModule(m))
-
-                    except ET.ParseError as e:
-                        self.mainWindow.logger.error(f"'{path}': {str(e)} - invalid module")
-                        self.mainWindow.showLog()
-        else:
-            for item in self.dragItems:
-                if item.module.parent(): # remove from old parent
-                    item.module.parent().removeChild(item.module)
-
-                newParent = item.parent()
-                if newParent:
-                    if newParent.module.findChild(item.module.name()):
-                        existingNames = set([ch.name() for ch in newParent.module.children()])
-                        item.module.setName(findUniqueName(item.module.name(), existingNames))
-
-                    idx = newParent.indexOfChild(item)
-                    newParent.module.insertChild(idx, item.module)
-                    newParent.emitDataChanged()
-
-            self.dragItems = []
-
-    def makeItemFromModule(self, module: 'Module') -> ModuleItem:
-        item = ModuleItem(module)
-
-        for ch in module.children():
-            item.addChild(self.makeItemFromModule(ch))
-
-        return item
-
-    def replaceModule(self, item: ModuleItem, newModule: 'Module') -> ModuleItem:
-        """Replace a tree item with a new one built from newModule, preserving position and expanded state."""
-        newItem = self.makeItemFromModule(newModule)
-        expanded = item.isExpanded()
-
-        if item.parent():
-            parent = item.parent()
-            idx = parent.indexOfChild(item)
-            parent.removeChild(item)
-            parent.insertChild(idx, newItem)
-
-            parent.module.removeChild(item.module)
-            parent.module.insertChild(idx, newItem.module)
-
-        else:
-            parent = self.invisibleRootItem()
-            idx = parent.indexOfChild(item)
-            parent.removeChild(item)
-            parent.insertChild(idx, newItem)
-
-        newItem.setExpanded(expanded)
-        newItem.setSelected(True)
-        return newItem
-
     def contextMenuEvent(self, event: QContextMenuEvent):
-        self.mainWindow.menu().popup(event.globalPos())
+        mainWindow.menu().popup(event.globalPos())
 
-    def sendModuleToServer(self):
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+    def selectedModules(self) -> List[Module]:
+        return [self.moduleModel.getModule(idx) for idx in self.selectionModel().selectedRows()]
+
+    def currentModule(self) -> Optional[Module]:
+        selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices:
+            return None
+        
+        # If current index is among selected, return it.
+        # Otherwise return the first selected one.
+        curr = self.currentIndex()
+        if curr.isValid() and self.selectionModel().isSelected(curr):
+            return self.moduleModel.getModule(curr)
+        
+        return self.moduleModel.getModule(selectedIndices[0])
+
+    def _getTreeState(self) -> dict:
+        """Collect expansion paths, selection paths, and current index path in a single pass."""
+        state = {
+            "expanded": set(),
+            "selected": [],
+            "current": None
+        }
+        
+        # Save current index path
+        curr = self.currentIndex()
+        if curr.isValid():
+            path = []
+            tmp = curr
+            while tmp.isValid():
+                m = self.moduleModel.getModule(tmp)
+                if m: path.insert(0, m.name())
+                tmp = tmp.parent()
+            state["current"] = tuple(path)
+
+        def walk(index: QModelIndex, path: Tuple[str, ...]):
+            if self.isExpanded(index):
+                state["expanded"].add(path)
+            if self.selectionModel().isSelected(index):
+                state["selected"].append(path)
+            
+            for row in range(self.moduleModel.rowCount(index)):
+                childIdx = self.moduleModel.index(row, 0, index)
+                m = self.moduleModel.getModule(childIdx)
+                if m:
+                    walk(childIdx, path + (m.name(),))
+
+        for row in range(self.moduleModel.rowCount()):
+            idx = self.moduleModel.index(row, 0)
+            m = self.moduleModel.getModule(idx)
+            if m:
+                walk(idx, (m.name(),))
+        
+        return state
+
+    def _setTreeState(self, state: dict):
+        """Restore tree state (expansion, selection, current index) in a single pass."""
+        self.selectionModel().clearSelection()
+        selection = QItemSelection()
+        expanded = state.get("expanded", set())
+        selected = state.get("selected", [])
+        currentPath = state.get("current")
+
+        def walk(index: QModelIndex, path: Tuple[str, ...]):
+            if path in expanded:
+                self.setExpanded(index, True)
+            if path in selected:
+                selection.select(index, index)
+            if currentPath == path:
+                self.setCurrentIndex(index)
+
+            for row in range(self.moduleModel.rowCount(index)):
+                childIdx = self.moduleModel.index(row, 0, index)
+                m = self.moduleModel.getModule(childIdx)
+                if m:
+                    walk(childIdx, path + (m.name(),))
+
+        for row in range(self.moduleModel.rowCount()):
+            idx = self.moduleModel.index(row, 0)
+            m = self.moduleModel.getModule(idx)
+            if m:
+                walk(idx, (m.name(),))
+        
+        if not selection.isEmpty():
+            self.selectionModel().select(selection, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+
+    def replaceModule(self, index: QModelIndex, newModule: Module):
+        """Replace a module instance at the given index, preserving expansion and selection state."""
+        if not index.isValid():
             return
-
-        msg = "\n".join([item.module.name() for item in selectedItems])
-
-        if QMessageBox.question(self, "Rig Builder", "Send modules to server?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
-            return
-
-        for item in selectedItems:
-            if item.module.loadedFromLocal():
-                if sendToServer(item.module):
-                    QMessageBox.information(self, "Rig Builder", "Module '{}' has successfully been sent to server".format(item.module.name()))
-
-            else:
-                QMessageBox.warning(self, "Rig Builder", "Can't send '{}' to server.\nIt works for local modules only!".format(item.module.name()))
+        
+        state = self._getTreeState()
+        self.moduleModel.replaceModule(index, newModule)
+        self._setTreeState(state)
 
     def insertModule(self):
         m = Module()
         m.setName("module")
-        item = self.makeItemFromModule(m)
+        
+        # Add to root if nothing selected or current index is invalid
+        parentIdx = self.currentIndex()
+        if not self.selectionModel().hasSelection() or not parentIdx.isValid():
+             parentIdx = QModelIndex()
+        
+        newIdx = self.moduleModel.addModuleAt(m, parentIdx)
+        self.setCurrentIndex(newIdx)
+        self.scrollTo(newIdx)
 
-        sel = self.selectedItems()
-        if sel:
-            sel[0].addChild(item)
-            sel[0].module.addChild(item.module)
-        else:
-            self.addTopLevelItem(item)
+    def selectModule(self, module: Module):
+        idx = self.moduleModel.indexForModule(module)
+        if idx.isValid():
+            self.selectionModel().select(idx, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+            self.setCurrentIndex(idx)
+            self.scrollTo(idx)
 
     def importModule(self):
-        sceneDir = getLocalModulesPath()
-        currentFile = APIRegistry.currentSceneFile()
-        if currentFile:
-            sceneDir = os.path.dirname(currentFile)
-
-        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import", sceneDir, "*.xml")
-
+        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import", getPrivateModulesPath(), "*.xml")
         if not filePath:
             return
 
         Module.updateUidsCache()
-
         try:
             m = Module.loadModule(filePath)
-            self.addTopLevelItem(self.makeItemFromModule(m))
-
+            self.moduleModel.addModuleAt(m)
         except ET.ParseError:
-            self.mainWindow.logger.error(f"'{filePath}': invalid module")
-            self.mainWindow.showLog()
+            logger.error(f"'{filePath}': invalid module")
+            mainWindow.showLog()
 
     def importScript(self):
-        """Import .py file as new module: create empty module named after file, set run code to script content."""
-        sceneDir = getLocalModulesPath()
-        currentFile = APIRegistry.currentSceneFile()
-        if currentFile:
-            sceneDir = os.path.dirname(currentFile)
-
-        filePath, _ = QFileDialog.getOpenFileName(
-            self.mainWindow, "Import script", sceneDir, "Python (*.py);;All files (*)"
-        )
+        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import script", getPrivateModulesPath(), "Python (*.py);;All files (*)")
         if not filePath:
             return
 
-        try:
-            with open(filePath, "r", encoding="utf-8") as f:
-                code = f.read()
-        except OSError as e:
-            self.mainWindow.logger.error(f"Cannot read '{filePath}': {e}")
-            self.mainWindow.showLog()
-            return
+        with open(filePath, "r", encoding="utf-8") as f:
+            code = f.read()
 
         name = os.path.splitext(os.path.basename(filePath))[0]
         m = Module()
         m.setName(name)
         m.setRunCode(code)
-        item = self.makeItemFromModule(m)
-
-        self.addTopLevelItem(item)
-        self.mainWindow.selectModule(item)
+        
+        newIdx = self.moduleModel.addModuleAt(m)
+        self.setCurrentIndex(newIdx)
 
     def saveModule(self):
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices:
             return
 
-        msg = "\n".join(["{} -> {}".format(item.module.name(), item.module.getSavePath() or "N/A") for item in selectedItems])
+        modules = self.selectedModules()
+        msg = "\n".join(["{} -> {}".format(m.name(), m.getSavePath() or "N/A") for m in modules])
 
-        if QMessageBox.question(self, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(mainWindow, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         shouldCommit, commitMessage = False, ""
-        if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
-            shouldCommit, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
+        if mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+            shouldCommit, commitMessage = mainWindow.moduleHistoryWidget.showCommitMessageDialog()
 
-        for item in selectedItems:
-            outputPath = item.module.getSavePath()
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            outputPath = module.getSavePath()
 
             if not outputPath:
-                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+item.module.name(), os.path.join(getLocalModulesPath(), item.module.name()), "*.xml")
+                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+module.name(), os.path.join(getPrivateModulesPath(), module.name()), "*.xml")
 
             if outputPath:
                 dirname = os.path.dirname(outputPath)
@@ -1293,133 +1510,160 @@ class TreeWidget(QTreeWidget):
                     os.makedirs(dirname)
 
                 try:
-                    item.module.saveToFile(outputPath)
+                    module.saveToFile(outputPath)
                 except Exception as e:
-                    QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
+                    QMessageBox.critical(mainWindow, "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
                 else:
                     if shouldCommit:
-                        if not moduleHistoryBrowser.recordModuleSave(item.module, commitMessage):
-                            QMessageBox.critical(self, "Rig Builder", "Can't save history for '{}'".format(item.module.name()))
+                        if not moduleHistoryBrowser.recordModuleSave(module, commitMessage):
+                            QMessageBox.critical(mainWindow, "Rig Builder", "Can't save history for '{}'".format(module.name()))
+                    
+                    self.moduleModel.dataChanged.emit(idx, idx) # refresh display
+                    mainWindow.attributesTabWidget.updateWidgetStyles()
 
-                    item.emitDataChanged() # path changed
-                    self.mainWindow.attributesTabWidget.updateWidgetStyles()
-        self.mainWindow.moduleHistoryWidget.updateModuleHistory()
+        mainWindow.moduleHistoryWidget.updateModuleHistory()
 
     def saveAsModule(self):
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices:
             return
 
         shouldCommit, commitMessage = False, ""
-        if self.mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
-            shouldCommit, commitMessage = self.mainWindow.moduleHistoryWidget.showCommitMessageDialog()
+        if mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
+            shouldCommit, commitMessage = mainWindow.moduleHistoryWidget.showCommitMessageDialog()
 
-        for item in selectedItems:
-            outputDir = os.path.dirname(item.module.filePath()) or getLocalModulesPath()
-            outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+item.module.name(), outputDir + "/" +item.module.name(), "*.xml")
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            outputDir = os.path.dirname(module.filePath()) or getPrivateModulesPath()
+            outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+module.name(), outputDir + "/" + module.name(), "*.xml")
 
             if outputPath:
                 try:
-                    item.module.saveToFile(outputPath, newUid=True)
+                    module.saveToFile(outputPath, newUid=True)
                 except Exception as e:
-                    QMessageBox.critical(self, "Rig Builder", "Can't save module '{}': {}".format(item.module.name(), str(e)))
+                    QMessageBox.critical(mainWindow, "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
                 else:
                     if shouldCommit:
-                        moduleHistoryBrowser.recordModuleSave(item.module, commitMessage)
+                        moduleHistoryBrowser.recordModuleSave(module, commitMessage)
                         
-                    item.emitDataChanged() # path and uid changed
-                    self.mainWindow.attributesTabWidget.updateWidgetStyles()
+                    self.moduleModel.dataChanged.emit(idx, idx) # refresh display
+                    mainWindow.attributesTabWidget.updateWidgetStyles()
 
-        self.mainWindow.moduleHistoryWidget.updateModuleHistory()
+        mainWindow.moduleHistoryWidget.updateModuleHistory()
 
     def embedModule(self):
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        modules = self.selectedModules()
+        if not modules:
             return
 
-        msg = "\n".join([item.module.name() for item in selectedItems])
+        msg = "\n".join([m.name() for m in modules])
 
-        if QMessageBox.question(self, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(mainWindow, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
-        for item in selectedItems:
-            item.module.embed()
-            item.emitDataChanged() # path and uid changed
+        selectedIndices = self.selectionModel().selectedRows()
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            module.embed()
+            self.moduleModel.dataChanged.emit(idx, idx)
 
     def updateModule(self):
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        modules = self.selectedModules()
+        if not modules:
             return
 
         Module.updateUidsCache()
 
-        msg = "\n".join([item.module.name() for item in selectedItems])
-        if QMessageBox.question(self, "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        msg = "\n".join([m.name() for m in modules])
+        if QMessageBox.question(mainWindow, "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
-        for item in selectedItems:
-            if not item.module.uid():
-                QMessageBox.warning(self, "Rig Builder", "Can't update module '{}': no uid".format(item.module.name()))
+        selectedIndices = self.selectionModel().selectedRows()
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            if not module.uid():
+                QMessageBox.warning(mainWindow, "Rig Builder", "Can't update module '{}': no uid".format(module.name()))
                 continue
 
-            item.module.update()
-
-            self.replaceModule(item, item.module)
+            module.update()
+            # Since update() changes many things, emit layoutChanged or reset the model
+            self.moduleModel.layoutChanged.emit()
 
     def muteModule(self):
-        for item in self.selectedItems():
-            if item.module.muted():
-                item.module.unmute()
+        selectedIndices = self.selectionModel().selectedRows()
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            if module.muted():
+                module.unmute()
             else:
-                item.module.mute()
-            item.emitDataChanged()
+                module.mute()
+            self.moduleModel.dataChanged.emit(idx, idx)
 
     def duplicateModule(self):
-        newItems = []
-        for item in self.selectedItems():
-            newItem = self.makeItemFromModule(item.module.copy())
-            if item.parent():
-                existingNames = set([ch.name() for ch in item.parent().module.children()])
-                newItem.module.setName(findUniqueName(item.module.name(), existingNames))
+        selectedIndices = self.selectionModel().selectedRows(0)
+        if not selectedIndices:
+            return
 
-            parent = item.parent()
-            if parent:
-                parent.addChild(newItem)
-                parent.module.addChild(newItem.module)
-            else:
-                self.addTopLevelItem(newItem)
+        # Duplicate each selected module exactly once.
+        selectedItems = []
+        seenModuleIds = set()
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            if not module:
+                continue
 
-            newItems.append(newItem)
+            moduleId = id(module)
+            if moduleId in seenModuleIds:
+                continue
 
-        self.clearSelection()
-        for item in newItems:
-            item.setSelected(True)
+            seenModuleIds.add(moduleId)
+            parentModule = module.parent() or self.moduleModel.rootModule()
+            row = parentModule.children().index(module)
+            selectedItems.append((parentModule, row, module))
+
+        if not selectedItems:
+            return
+
+        # Insert bottom-up so earlier inserts do not shift later target rows.
+        selectedItems.sort(key=lambda item: (id(item[0]), item[1]), reverse=True)
+
+        newIndices = []
+        for parentModule, row, sourceModule in selectedItems:
+            newModule = sourceModule.copy()
+            existingNames = {child.name() for child in parentModule.children()}
+            newModule.setName(findUniqueName(sourceModule.name(), existingNames))
+
+            parentIdx = QModelIndex()
+            if parentModule is not self.moduleModel.rootModule():
+                parentIdx = self.moduleModel.indexForModule(parentModule)
+
+            newIndices.append(self.moduleModel.addModuleAt(newModule, parentIdx, row + 1))
+
+        self.selectionModel().clearSelection()
+        for idx in newIndices:
+            if idx.isValid():
+                self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
 
     def copyModules(self):
         """Copy selected modules to clipboard."""
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        modules = self.selectedModules()
+        if not modules:
             return
             
         self.clipboard = []
-        for item in selectedItems:
-            self.clipboard.append(item.module.copy())
+        for m in modules:
+            self.clipboard.append(m.copy())
         
-        self.mainWindow.logger.info(f"Copied {len(self.clipboard)} module(s)")
-
     def cutModules(self):
         """Cut selected modules to clipboard."""
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        modules = self.selectedModules()
+        if not modules:
             return
             
         self.clipboard = []
-        for item in selectedItems:
-            self.clipboard.append(item.module.copy())
+        for m in modules:
+            self.clipboard.append(m.copy())
         
-        self.mainWindow.logger.info(f"Cut {len(self.clipboard)} module(s)")
-        
-        # Remove the cut modules without confirmation
         self.removeModule(askConfirmation=False)
 
     def pasteModules(self):
@@ -1427,57 +1671,73 @@ class TreeWidget(QTreeWidget):
         if not self.clipboard:
             return
 
-        parent = self.mainWindow.currentModule()
+        parentIdx = self.currentIndex()
+        if not self.selectionModel().hasSelection() or not parentIdx.isValid():
+            parentIdx = QModelIndex()
+            
+        parentModule = self.moduleModel.getModule(parentIdx) or self.moduleModel.rootModule()
 
-        pastedItems = []
+        pastedIndices = []
         for module in self.clipboard:
-            newModule = module.copy()  # Make another copy to avoid reference issues
+            newModule = module.copy()
             
             # Ensure unique names
-            if parent:
-                existingNames = set([ch.name() for ch in parent.module.children()])
-                newModule.setName(findUniqueName(newModule.name(), existingNames))
+            existingNames = set([ch.name() for ch in parentModule.children()])
+            newModule.setName(findUniqueName(newModule.name(), existingNames))
             
-            newItem = self.makeItemFromModule(newModule)
-            
-            if parent:
-                parent.addChild(newItem)
-                parent.module.addChild(newModule)
-            else:
-                self.addTopLevelItem(newItem)
-            
-            pastedItems.append(newItem)
+            newIdx = self.moduleModel.addModuleAt(newModule, parentIdx)
+            pastedIndices.append(newIdx)
         
         # Select pasted items
-        self.clearSelection()
-        for item in pastedItems:
-            item.setSelected(True)
+        self.selectionModel().clearSelection()
+        for idx in pastedIndices:
+            self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
             
-        self.mainWindow.logger.info(f"Pasted {len(pastedItems)} module(s)")
-
     def removeModule(self, *, askConfirmation: bool = True):
-        selectedItems = self.selectedItems()
-        if not selectedItems:
+        selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices:
             return
 
         if askConfirmation:
-            msg = "\n".join([item.module.name() for item in selectedItems])
-            if QMessageBox.question(self, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            modules = self.selectedModules()
+            msg = "\n".join([m.name() for m in modules])
+            if QMessageBox.question(mainWindow, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
-        for item in selectedItems:
-            parent = item.parent()
-            if parent:
-                parent.removeChild(item)
-                parent.module.removeChild(item.module)
-                parent.emitDataChanged()
-            else:
-                self.invisibleRootItem().removeChild(item)
+        # Sort indices in reverse order to avoid shifting issues when removing
+        sortedIndices = sorted(selectedIndices, key=lambda x: x.row(), reverse=True)
+        for idx in sortedIndices:
+            self.moduleModel.removeModule(idx)
 
-    def addModule(self, module: "Module") -> "ModuleItem":
-        item = self.makeItemFromModule(module)
-        self.addTopLevelItem(item)
-        return item
+    def publishModule(self):
+        """Publish selected modules."""
+        modules = self.selectedModules()
+        if not modules:
+            return
+
+        msg = "\n".join([m.name() for m in modules])
+        if QMessageBox.question(mainWindow, "Rig Builder", "Publish modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+
+        for m in modules:
+            publishModule(m)
+        
+        self.moduleModel.layoutChanged.emit() # refresh display as source might change
+
+    def addModule(self, module: "Module") -> "Module":
+        """Adds top level module."""
+        self.moduleModel.addModuleAt(module)
+        return module
+
+    def selectModule(self, module: Module):
+        """Find and select a module in the tree view."""
+        if not module:
+             return
+        idx = self.moduleModel.indexForModule(module)
+        if idx.isValid():
+            self.setCurrentIndex(idx)
+            self.scrollTo(idx)
+
 
 class TemplateSelectorDialog(QDialog):
     selectedTemplate = Signal(str)
@@ -1521,7 +1781,7 @@ class TemplateSelectorDialog(QDialog):
             w.setJsonData(w.getDefaultData())
             self.gridLayout.addWidget(w)
 
-            selectBtn = QPushButton("Select")
+            selectBtn = QPushButton("✅ Select")
             selectBtn.clicked.connect(partial(self.selectTemplate, t))
             self.gridLayout.addWidget(selectBtn)
 
@@ -1552,16 +1812,19 @@ class EditTemplateWidget(QWidget):
 
         buttonsLayout = QHBoxLayout()
         buttonsLayout.setContentsMargins(0,0,0,0)
-        upBtn = QPushButton("<")
+        upBtn = QPushButton("🔼")
         upBtn.setFixedSize(35, 25)
+        upBtn.setToolTip("Move attribute up")
         upBtn.clicked.connect(self._onUpBtnClicked)
 
-        downBtn = QPushButton(">")
+        downBtn = QPushButton("🔽")
         downBtn.setFixedSize(35, 25)
+        downBtn.setToolTip("Move attribute down")
         downBtn.clicked.connect(self._onDownBtnClicked)
 
-        removeBtn = QPushButton("x")
+        removeBtn = QPushButton("❌")
         removeBtn.setFixedSize(35, 25)
+        removeBtn.setToolTip("Remove attribute")
         removeBtn.clicked.connect(self._onRemoveBtnClicked)
 
         buttonsLayout.addWidget(upBtn)
@@ -1636,11 +1899,13 @@ class EditAttributesWidget(QWidget):
     nameChanged = Signal(str, str)
     RecentTemplates = []
 
-    def __init__(self, moduleItem: "ModuleItem", category: str, **kwargs):
+    def __init__(self, module: Module, category: str, **kwargs):
         super().__init__(**kwargs)
 
-        self.moduleItem = moduleItem
         self.category = category
+        self.module = module
+        if not self.module:
+             return
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -1650,7 +1915,7 @@ class EditAttributesWidget(QWidget):
         self.placeholderWidget.setAlignment(Qt.AlignCenter)
         self.placeholderWidget.setStyleSheet("color: gray;")
 
-        for a in self.moduleItem.module.attributes():
+        for a in self.module.attributes():
             if a.category() == self.category:
                 w = self.insertCustomWidget(a.template())
                 w.nameWidget.setText(a.name())
@@ -1708,7 +1973,7 @@ class EditAttributesWidget(QWidget):
         self.insertCustomWidget(template)
 
     def addTemplateAttribute(self):
-        selector = TemplateSelectorDialog(parent=mainWindow)
+        selector = TemplateSelectorDialog(parent=self)
         selector.selectedTemplate.connect(self._onTemplateSelected)
         selector.exec()
 
@@ -1731,11 +1996,15 @@ class EditAttributesWidget(QWidget):
             w.nameWidget.setFixedWidth(maxWidth)
 
 class EditAttributesTabWidget(QTabWidget):
-    def __init__(self, moduleItem: ModuleItem, currentIndex: int = 0, **kwargs):
+    def __init__(self, module: Module, currentIndex: int = 0, **kwargs):
         super().__init__(**kwargs)
 
-        self.moduleItem = moduleItem
-        self.tempRunCode = moduleItem.module.runCode()
+        self.module = module
+        if not self.module:
+            self.setEnabled(False)
+            return
+
+        self.tempRunCode = self.module.runCode()
 
         self.setTabBar(QTabBar())
         self.setMovable(True)
@@ -1744,7 +2013,7 @@ class EditAttributesTabWidget(QTabWidget):
         self.tabCloseRequested.connect(self._onTabCloseRequested)
 
         tabTitlesInOrder = []
-        for a in self.moduleItem.module.attributes():
+        for a in self.module.attributes():
             if a.category() not in tabTitlesInOrder:
                 tabTitlesInOrder.append(a.category())
 
@@ -1757,7 +2026,7 @@ class EditAttributesTabWidget(QTabWidget):
         self.setCurrentIndex(currentIndex)
 
     def addTabCategory(self, category: str):
-        w = EditAttributesWidget(self.moduleItem, category)
+        w = EditAttributesWidget(self.module, category)
         w.nameChanged.connect(self._onNameChanged)
 
         scrollArea = QScrollArea()
@@ -1785,10 +2054,10 @@ class EditAttributesTabWidget(QTabWidget):
             self.tempRunCode = replacePairs(pairs, self.tempRunCode)
 
             # rename in connections
-            attr = self.moduleItem.module.findAttribute(oldName)
+            attr = self.module.findAttribute(oldName)
             if attr:
                 for a in attr.listConnections():
-                    c = self.moduleItem.module.path().replace(attr.module().path(inclusive=False), "") + "/" + newName # update connection path
+                    c = self.module.path().replace(attr.module().path(inclusive=False), "") + "/" + newName # update connection path
                     a.setConnect(c)
 
     def tabBarMouseDoubleClickEvent(self, event: QMouseEvent):
@@ -1819,22 +2088,21 @@ class EditAttributesTabWidget(QTabWidget):
         self.clear()
 
 class EditAttributesDialog(QDialog):
-    def __init__(self, moduleItem: ModuleItem, currentIndex: int = 0, **kwargs):
+    def __init__(self, module: Module, currentIndex: int = 0, **kwargs):
         super().__init__(**kwargs)
 
-        self.moduleItem = moduleItem
-
-        self.setWindowTitle("Edit Attributes - " + self.moduleItem.module.name())
+        self.module = module
+        self.setWindowTitle("Edit Attributes - " + self.module.name())
         self.setGeometry(0, 0, 800, 600)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        self.tabWidget = EditAttributesTabWidget(self.moduleItem, currentIndex)
+        self.tabWidget = EditAttributesTabWidget(self.module, currentIndex)
 
-        okBtn = QPushButton("Ok")
+        okBtn = QPushButton("✅ OK")
         okBtn.clicked.connect(self.saveAttributes)
-        cancelBtn = QPushButton("Cancel")
+        cancelBtn = QPushButton("❌ Cancel")
         cancelBtn.clicked.connect(self.close)
 
         hlayout = QHBoxLayout()
@@ -1847,7 +2115,7 @@ class EditAttributesDialog(QDialog):
         centerWindow(self)
 
     def saveAttributes(self):
-        module = self.moduleItem.module
+        module = self.module
 
         def attrMetaEqual(a: Attribute, b: Attribute) -> bool:
             return (a.name() == b.name()
@@ -1884,7 +2152,6 @@ class EditAttributesDialog(QDialog):
         if not anythingChanged and not origModuleModified:
             module._modified = False
 
-        self.moduleItem.emitDataChanged()
         self.accept()
 
     def buildAttributesFromTabs(self) -> List[Attribute]:
@@ -1908,11 +2175,10 @@ class EditAttributesDialog(QDialog):
         return attrs
 
 class CodeEditorWidget(CodeEditorWithNumbersWidget):
-    def __init__(self, moduleItem: Optional[ModuleItem] = None, *, mainWindow: 'RigBuilderWindow', **kwargs):
+    def __init__(self, module: Optional[Module] = None, **kwargs):
         super().__init__(**kwargs)
 
-        self.mainWindow = mainWindow
-        self.moduleItem = moduleItem
+        self.module = module
         self._skipSaving = False
 
         self.editorWidget.textChanged.connect(self._onCodeChanged)
@@ -1920,35 +2186,38 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.updateState()
 
     def _onCodeChanged(self):
-        if not self.moduleItem or self._skipSaving:
+        if not self.module or self._skipSaving:
             return
 
-        self.moduleItem.module.setRunCode(self.editorWidget.toPlainText())
-        self.moduleItem.emitDataChanged()
+        self.module.setRunCode(self.editorWidget.toPlainText())
+        # The model should ideally emit dataChanged, but since runCode isn't in columns,
+        # we might just notify the window or emit an internal signal if needed.
+        # For now, let's keep it simple.
 
     def updateState(self):
-        if not self.moduleItem:
+        if not self.module:
+            self.editorWidget.clear()
             return
 
         self.editorWidget.ignoreStates = True
         self._skipSaving = True
-        self.editorWidget.setText(self.moduleItem.module.runCode())
+        self.editorWidget.setText(self.module.runCode())
         self._skipSaving = False
         self.editorWidget.ignoreStates = False
 
         self.editorWidget.document().clearUndoRedoStacks()
         self.generateCompletionWords()
 
-        self.editorWidget.preset = id(self.moduleItem)
+        self.editorWidget.preset = id(self.module)
         self.editorWidget.loadState()
 
     def generateCompletionWords(self):
-        if not self.moduleItem:
+        if not self.module:
             return
 
-        words = set(self.moduleItem.module.context().keys())
+        words = set(self.module.context().keys())
 
-        for a in self.moduleItem.module.attributes():
+        for a in self.module.attributes():
             words.add("@" + a.name())
             words.add("@" + a.name() + "_data")
             words.add("@set_" + a.name())
@@ -2048,7 +2317,7 @@ class DiffViewDialog(QDialog):
         DiffHighlighter(self.textEdit.document())
         layout.addWidget(self.textEdit)
 
-        closeBtn = QPushButton("Close")
+        closeBtn = QPushButton("🚪 Close")
         closeBtn.clicked.connect(self.accept)
         layout.addWidget(closeBtn)
 
@@ -2110,6 +2379,8 @@ class MyProgressBar(QWidget):
         self.show()
 
     def stepProgress(self, value: int, text: Optional[str] = None):
+        if not self.queue:
+            return
         q = self.queue[-1]
         q["value"] = value
 
@@ -2122,6 +2393,8 @@ class MyProgressBar(QWidget):
             QApplication.processEvents()
 
     def endProgress(self):
+        if not self.queue:
+            return
         self.queue.pop()
         if not self.queue:
             self.hide()
@@ -2129,24 +2402,169 @@ class MyProgressBar(QWidget):
             q = self.queue[-1] # get latest state
             self.updateWithState(q)
 
+# --- Server Management Dialog ---
+class ManageHostsDialog(QDialog):
+    hostsChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Manage Hosts")
+        self.resize(480, 500)
+        layout = QVBoxLayout(self)
+
+        self.listWidget = QListWidget()
+        layout.addWidget(self.listWidget)
+
+        formLayout = QGridLayout()
+        self.nameEdit = QLineEdit(); self.nameEdit.setPlaceholderText("Name (e.g. Maya 2025)")
+        self.hostCombo = QComboBox()
+        self.addressEdit = QLineEdit("localhost")
+        self.repPortEdit = QLineEdit(); self.repPortEdit.setPlaceholderText("REP port")
+        self.pubPortEdit = QLineEdit(); self.pubPortEdit.setPlaceholderText("PUB port")
+
+        # Populate host types using server/hosts utility
+        self.hostCombo.addItems(AVAILABLE_HOSTS)
+        
+        for row, (label, widget) in enumerate([
+            ("Name", self.nameEdit), ("Host", self.hostCombo), ("Address", self.addressEdit),
+            ("REP port", self.repPortEdit), ("PUB port", self.pubPortEdit)]):
+            formLayout.addWidget(QLabel(label), row, 0)
+            formLayout.addWidget(widget, row, 1)
+        layout.addLayout(formLayout)
+
+        self.codeEdit = QPlainTextEdit()
+        self.codeEdit.setReadOnly(True)
+        self.codeEdit.setFixedHeight(60)
+        
+        copyLayout = QHBoxLayout()
+        copyLayout.addWidget(QLabel("Startup code:"))
+        copyLayout.addStretch()
+        self.copyBtn = QPushButton("📋")
+        self.copyBtn.setToolTip("Copy to clipboard")
+        self.copyBtn.clicked.connect(self._copyCode)
+        copyLayout.addWidget(self.copyBtn)
+        
+        layout.addLayout(copyLayout)
+        layout.addWidget(self.codeEdit)
+
+        btnLayout = QHBoxLayout()
+        addBtn = QPushButton("➕ Add")
+        removeBtn = QPushButton("🗑️ Remove selected")
+        closeBtn = QPushButton("🚪 Close")
+        btnLayout.addWidget(addBtn)
+        btnLayout.addWidget(removeBtn)
+        btnLayout.addStretch()
+        btnLayout.addWidget(closeBtn)
+        layout.addLayout(btnLayout)
+
+        addBtn.clicked.connect(self._add)
+        removeBtn.clicked.connect(self._remove)
+        closeBtn.clicked.connect(self.accept)
+
+        self.listWidget.itemSelectionChanged.connect(self._onSelectionChanged)
+        self.listWidget.itemDoubleClicked.connect(self._onItemDoubleClicked)
+        self.hostCombo.currentIndexChanged.connect(self._refreshCode)
+        self.addressEdit.textChanged.connect(self._refreshCode)
+        self.repPortEdit.textChanged.connect(self._refreshCode)
+        self.pubPortEdit.textChanged.connect(self._refreshCode)
+
+        self._refreshList()
+
+    def _onItemDoubleClicked(self, item):
+        name = item.data(Qt.UserRole)
+        entry = connectionManager.findServer(name)
+        if entry:
+            self.nameEdit.setText(name)
+            
+            idx = self.hostCombo.findText(entry["host"])
+            self.hostCombo.setCurrentIndex(idx)
+
+            self.addressEdit.setText(entry["address"])
+            self.repPortEdit.setText(str(entry["rep_port"]))
+            self.pubPortEdit.setText(str(entry["pub_port"]))
+            self._refreshCode()
+
+    def _onSelectionChanged(self):
+        item = self.listWidget.currentItem()
+        if item:
+            self._onItemDoubleClicked(item)
+
+    def _refreshCode(self):
+        host = self.hostCombo.currentText().lower()
+        if host == "standalone":
+            self.codeEdit.setPlainText("# Standalone server is normally started from the UI")
+            return
+
+        HostClass = host.capitalize() + "Server"
+        rep = self.repPortEdit.text() or "0"
+        pub = self.pubPortEdit.text() or "0"
+
+        try:
+            self.codeEdit.setPlainText(HOST_STARTUP_TEMPLATE.format(
+                host=host, HostClass=HostClass, rep_port=rep, pub_port=pub,
+                rigBuilderPath=os.path.dirname(RigBuilderPath)))
+
+        except Exception as e:
+            self.codeEdit.setPlainText("# error generating code: " + str(e))
+
+    def _copyCode(self):
+        QApplication.clipboard().setText(self.codeEdit.toPlainText())
+        self.copyBtn.setText("✅")
+        QTimer.singleShot(1500, lambda: self.copyBtn.setText("📋"))
+
+    def _refreshList(self):
+        self.listWidget.clear()
+        # Sort on UI side and store name as user data
+        servers = connectionManager.servers()
+        for name in sorted(servers.keys(), key=lambda x: x.lower()):
+            entry = servers[name]
+            label = "{} | {} | {}:{}/{}".format(
+                name, entry["host"],
+                entry["address"], entry["rep_port"], entry["pub_port"])
+            
+            item = QListWidgetItem(label)
+            item.setData(Qt.UserRole, name)
+            self.listWidget.addItem(item)
+
+    def _add(self):
+        try:
+            connectionManager.addServer(
+                self.nameEdit.text().strip(), self.hostCombo.currentText().strip(),
+                self.addressEdit.text().strip(),
+                int(self.repPortEdit.text()), int(self.pubPortEdit.text()))
+
+            self.hostsChanged.emit()
+            self._refreshList()
+            self.nameEdit.clear(); self.repPortEdit.clear(); self.pubPortEdit.clear()
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", str(e))
+
+    def _remove(self):
+        item = self.listWidget.currentItem()
+        if not item:
+            return
+            
+        name = item.data(Qt.UserRole)
+        connectionManager.removeServer(name)
+        self.hostsChanged.emit()
+        self._refreshList()
+
 
 class RigBuilderWindow(QFrame):
-    # === API SIGNALS ===
-    moduleSelected = Signal(object)  # ModuleItem
-    moduleAdded = Signal(object)     # ModuleItem
-    moduleRemoved = Signal(object)   # ModuleItem
-    moduleChanged = Signal(object)   # ModuleItem
-    attributeChanged = Signal(object, object)  # ModuleItem, Attribute
     aboutToRunModule = Signal()
 
     def __init__(self):
-        super().__init__(parent=parentWindow)
+        super().__init__()
+        global mainWindow
+        mainWindow = self
         self.modulesAutoReloadWatcher = None
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 700)
 
-        self.setWindowFlags(self.windowFlags() | Qt.Window)
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint)
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -2154,26 +2572,27 @@ class RigBuilderWindow(QFrame):
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         
-        # Create isolated logger for this window
-        self.logger = logging.getLogger(f'rigBuilder_{id(self):0x}')
+        self.logger = logging.getLogger('rigBuilder')
         self.logger.setLevel(logging.DEBUG)
         
-        # Create isolated log handler for this window
         self.logHandler = RigBuilderLogHandler()
         self.logHandler.setLogWidget(self.logWidget)
         self.logHandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
         self.logger.addHandler(self.logHandler)
+        self._progressCounter = 0
 
-        self.attributesTabWidget = AttributesTabWidget(None, mainWindow=self)
+        self.treeWidget = TreeWidget()
+        self.treeWidget.selectionModel().selectionChanged.connect(self._onTreeSelectionChanged)
 
-        self.treeWidget = TreeWidget(mainWindow=self)
-        self.treeWidget.itemSelectionChanged.connect(self._onTreeItemSelectionChanged)
+        self.attributesTabWidget = AttributesTabWidget()
+        self.attributesTabWidget.moduleChanged.connect(partial(self.treeWidget.moduleModel.layoutChanged.emit)) # refresh tree
+        self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
 
-        self.codeEditorWidget = CodeEditorWidget(mainWindow=self)
+        self.codeEditorWidget = CodeEditorWidget()
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
 
-        self.vscodeBtn = QPushButton("Edit in VSCode")
+        self.vscodeBtn = QPushButton("📝 Edit in VSCode")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
         self.vscodeBtn.setContextMenuPolicy(Qt.CustomContextMenu)
         self.vscodeBtn.customContextMenuRequested.connect(self.onVscodeBtnContextMenu)
@@ -2183,14 +2602,46 @@ class RigBuilderWindow(QFrame):
         self.codeWidget.layout().addWidget(self.codeEditorWidget)
         self.codeWidget.layout().addWidget(self.vscodeBtn)
 
-        self.runBtn = QPushButton("Run!")
+        self.runBtn = QPushButton("🚀 Run")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
         self.runBtn.clicked.connect(self.runModule)
         self.runBtn.hide()
 
+        # --- Host picker row ---
+        self.hostCombo = QComboBox()
+        self.hostCombo.setPlaceholderText("No host")
+        self.hostCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._refreshHostCombo()
+
+        self.hostConnectBtn = QPushButton("🔗")
+        self.hostConnectBtn.setCheckable(True)
+        self.hostConnectBtn.setToolTip("Connect to selected host")
+        self.hostConnectBtn.clicked.connect(self._onHostConnectClicked)
+
+        self.hostManageBtn = QPushButton("⚙️")
+        self.hostManageBtn.setToolTip("Manage hosts")
+        self.hostManageBtn.clicked.connect(self._onManageHosts)
+
+        self.windowPinBtn = QPushButton("📌")
+        self.windowPinBtn.setCheckable(True)
+        self.windowPinBtn.setToolTip("Pin window (stays on top)")
+        self.windowPinBtn.clicked.connect(self._onTogglePin)
+        self.windowPinBtn.setStyleSheet("QPushButton:checked { background-color: #3e7bd6; border-color: #6ea7ff; color: #ffffff; }")
+
+        hostRow = QHBoxLayout()
+        hostRow.setContentsMargins(0, 0, 0, 5)
+        hostRow.addWidget(self.hostCombo)
+        hostRow.addWidget(self.hostConnectBtn)
+        hostRow.addWidget(self.hostManageBtn)
+        hostRow.addWidget(self.windowPinBtn)
+
+        self.hostRowWidget = QWidget()
+        self.hostRowWidget.setLayout(hostRow)
+        self.hostRowWidget.setStyleSheet("border-bottom: 1px solid #444; padding-bottom: 2px;")
+
         self.moduleHistoryWidget = ModuleHistoryWidget(self)
 
-        self.docBrowser = DocBrowser(mainWindow=self)
+        self.docBrowser = DocBrowser()
 
         self.rightSplitter = WideSplitter(Qt.Vertical, 4)
         self.rightSplitter.addWidget(self.attributesTabWidget)
@@ -2228,31 +2679,117 @@ class RigBuilderWindow(QFrame):
         self.codeWidget.setEnabled(False)
 
         self.progressBarWidget = MyProgressBar()
-        self.progressBarWidget.hide()
-
+        self.progressBarWidget.hide()        
         self.treeWidget.addActions(getActions(self.menu()))
         setActionsLocalShortcut(self.treeWidget)
 
+        layout.addWidget(self.hostRowWidget)
         layout.addWidget(self.workspaceSplitter)
         layout.addWidget(self.progressBarWidget)
 
+        self.setupModulesAutoReloadWatcher()
         centerWindow(self)
-        applyStylesheet(self)
+
+    def _onModuleExecutionRequested(self, code: str):
+        module = getCurrentModule()
+        if not module:
+            return
+
+        newModule = hostExecutor.executeModuleCode(module, code)
+        if newModule is None:
+            return
+
+        idx = self.treeWidget.moduleModel.indexForModule(module)
+        if idx.isValid():
+            self.treeWidget.replaceModule(idx, newModule)
+            self.attributesTabWidget.updateTabs(newModule)
 
     def setupModulesAutoReloadWatcher(self):
-        watchRoots = [getServerModulesPath(), getLocalModulesPath()]
+        """Setup the modules auto-reload watcher."""
+        def onModulesReloaded():
+            Module.updateUidsCache()
+            self.moduleSelectorWidget.applyMask()
+
+        watchRoots = [getPublicModulesPath(), getPrivateModulesPath()]
         self.modulesAutoReloadWatcher = DirectoryWatcher(
             watchRoots,
             filePatterns=["*.xml"],
             debounceMs=700,
             recursive=True,
-            parent=self
-        )
-        self.modulesAutoReloadWatcher.somethingChanged.connect(self._onModulesReloaded)
+            parent=self)
 
-    def _onModulesReloaded(self):
-        Module.updateUidsCache()
-        self.moduleSelectorWidget.applyMask()
+        self.modulesAutoReloadWatcher.somethingChanged.connect(onModulesReloaded)
+
+    def _refreshHostCombo(self):
+        """Repopulate the host dropdown from hosts.json."""
+        self.hostCombo.blockSignals(True)
+        self.hostCombo.clear()
+
+        # Sort on UI side
+        entries = sorted(connectionManager.servers().items(), key=lambda x: x[0].lower())
+        for name, entry in entries:
+            label = "{} ({})".format(name, entry["host"])
+            self.hostCombo.addItem(label, userData=name)
+
+        self.hostCombo.blockSignals(False)
+
+    def _resetHostConnectionRow(self):
+        """Disconnected UI state for the host row (no message boxes)."""
+        self.hostConnectBtn.blockSignals(True)
+        self.hostConnectBtn.setChecked(False)
+        self.hostConnectBtn.setText("🔗")
+        self.hostConnectBtn.setToolTip("Connect to selected host")
+        self.hostConnectBtn.setEnabled(True)
+        self.hostCombo.setEnabled(True)
+        self.hostRowWidget.setStyleSheet("")
+        self.hostConnectBtn.blockSignals(False)
+        self.cleanupRun()
+
+    def _onHostConnectionLost(self, reason: str):
+        connectionManager.disconnect()
+        QMessageBox.critical(self, "Rig Builder", "Connection to host lost.\n\n{}".format(reason))
+        self._resetHostConnectionRow()
+
+    def _onHostConnectClicked(self, checked: bool):
+        """Toggle connection to the selected host."""
+
+        name = self.hostCombo.currentData()
+
+        if not checked or not name:
+            connectionManager.disconnect()
+            self._resetHostConnectionRow()
+            return
+
+        self.hostConnectBtn.setText("⏳ Connecting...")
+        self.hostConnectBtn.setToolTip("Connecting...")
+        self.hostConnectBtn.setEnabled(False)
+        self.hostCombo.setEnabled(False)
+
+        try:
+            conn = connectionManager.connect(name, parent=self)
+            conn.onConnectionLost.connect(self._onHostConnectionLost)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Rig Builder", str(e))
+            self._resetHostConnectionRow()
+            return
+
+        self.hostConnectBtn.setText("✂️")
+        self.hostConnectBtn.setToolTip("Disconnect from host")
+        self.hostConnectBtn.setEnabled(True)
+        self.hostCombo.setEnabled(False)
+        self.hostRowWidget.setStyleSheet("QWidget { color: #66cc66; }")
+
+    def _onManageHosts(self):
+        """Open a simple dialog to add/remove hosts."""
+        dialog = ManageHostsDialog(parent=self)
+        dialog.hostsChanged.connect(self._refreshHostCombo)
+        dialog.exec()
+
+    def _onTogglePin(self, checked: bool):
+        """Toggle 'Stay on Top' window flag and update opacity."""
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, checked)
+        self.show()
 
     def menu(self):
         menu = QMenu(self)
@@ -2263,24 +2800,22 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
         menu.addAction("Save as", self.treeWidget.saveAsModule)
-        menu.addAction("Send to server", self.treeWidget.sendModuleToServer, "Ctrl+P")
+        menu.addAction("Publish", self.treeWidget.publishModule, "Ctrl+P")
         menu.addSeparator()
 
         menu.addAction("Locate file", self.locateModuleFile)
-        menu.addAction("Copy tool code", self.copyToolCode)
         menu.addAction("View edit history", self.showModuleInHistory, "Ctrl+H")
         menu.addSeparator()
         menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
         menu.addSeparator()
         menu.addAction("Copy", self.treeWidget.copyModules, "Ctrl+C")
         menu.addAction("Cut", self.treeWidget.cutModules, "Ctrl+X")
-        if self.treeWidget.clipboard:
-            menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
+        menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
         menu.addSeparator()
 
         diffMenu = menu.addMenu("Diff")
         diffMenu.addAction("vs File", self.diffModule, "Alt+D")
-        diffMenu.addAction("vs Server", partial(self.diffModule, reference="server"), "Ctrl+Alt+D")
+        diffMenu.addAction("vs Host", partial(self.diffModule, reference="server"), "Ctrl+Alt+D")
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
         menu.addAction("Embed", self.treeWidget.embedModule)
@@ -2300,7 +2835,7 @@ class RigBuilderWindow(QFrame):
     def onVscodeBtnContextMenu(self, pos):
         menu = QMenu(self)
         menu.addAction("Set VSCode command", self.setVscodeCommand)
-        menu.exec_(self.vscodeBtn.mapToGlobal(pos))
+        menu.exec(self.vscodeBtn.mapToGlobal(pos))
 
     def setVscodeCommand(self):
         currentCommand = Settings.get("vscode", "vscode.exe")
@@ -2312,7 +2847,27 @@ class RigBuilderWindow(QFrame):
         Settings["vscode"] = command.strip()
         saveSettings()
 
+    def addModule(self, module: Module) -> Optional[Module]:
+        """Add a module to the tree and return it."""
+        idx = self.treeWidget.moduleModel.addModuleAt(module)
+        if idx.isValid():
+            return self.treeWidget.moduleModel.getModule(idx)
+        return None
+
+    def selectModule(self, module: Module):
+        """Select a module in the tree."""
+        self.treeWidget.selectModule(module)
+
     def editInVSCode(self):
+        module = self.treeWidget.currentModule()
+        if not module:
+            return         
+
+        if not shutil.which(Settings["vscode"]):
+            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(Settings["vscode"])
+            QMessageBox.warning(self,"Editor Error", msg)
+            return
+   
         def getFunctionDefinition(f: Callable[..., object], *, name: Optional[str] = None) -> str: # f(a,b,c=1) => 'def f(a,b,c=1):pass'
             signature = inspect.signature(f)
             args = []
@@ -2326,133 +2881,102 @@ class RigBuilderWindow(QFrame):
         def getVariableValue(v: object) -> Optional[object]:
             if type(v) == str:
                 return '"' + v + '"'
-
             try:
-                _ = json.dumps(v) # check if v is JSON serializable
-            except:
+                jv = copyJson(v) # check if v is JSON serializable
+            except Exception:
+                return None
+            return jv
+
+        def onRunCodeFileChanged(filePath: str, uid: str, modulePath: str):
+            # Try to find the "live" module in the tree (it might have been replaced)
+            root = self.treeWidget.moduleModel.rootModule()
+            targetModule = None
+
+            def findByUid(m, uid):
+                if m.uid() == uid: return m
+                for ch in m.children():
+                    res = findByUid(ch, uid)
+                    if res: return res
                 return None
 
-            return v
+            if uid:
+                targetModule = findByUid(root, uid)
+            
+            if not targetModule:
+                targetModule = root.findModuleByPath(modulePath)
 
-        def onRunCodeFileChanged(filePath: str):
-            nonlocal item
-            if not item:
+            if not targetModule:
+                logger.error("Could not find module for path: {}".format(modulePath))
                 return
 
             with open(filePath, "r") as f:
                 lines = f.read().splitlines()
 
-            code = "\n".join(lines[1:]) # skip first line: import predefined things
+            code = "\n".join(lines[1:]) # skip first line: import header file
             code = replaceAttrPrefixInverse(code)
-            item.module.setRunCode(code)
-            self.codeEditorWidget.updateState()
-
-        def onModuleFileChanged(filePath: str):
-            nonlocal item
-            if not item:
-                return
-
-            try:
-                editedModule = Module.loadFromFile(filePath)
-            except Exception:
-                QMessageBox.warning(self, "Rig Builder", "Failed to load module file")
-                return
-
-            childItems = item.takeChildren()
-            item.module.removeChildren()
-            editedModule.removeChildren()
-            newItem = self.treeWidget.replaceModule(item, editedModule)
-
-            for childItem in childItems:
-                newItem.addChild(childItem)
-                newItem.module.addChild(childItem.module)
-
-            item = newItem
+            targetModule.setRunCode(code)
+            
+            # Refresh UI if this module is currently selected
+            if getCurrentModule() == targetModule:
+                self.codeEditorWidget.updateState()
 
         def startTrackedFileThread(filePath: str, callback: Callable[..., None]):
             if filePath in trackFileChangesThreads:
-                trackFileChangesThreads[filePath].terminate()
+                old_th = trackFileChangesThreads[filePath]
+                old_th.stop()
+                old_th.wait(1000)
 
             th = TrackFileChangesThread(filePath)
             th.somethingChanged.connect(callback)
             th.start()
             trackFileChangesThreads[filePath] = th
 
-        item = self.currentModule()
-        if not item:
-            return
-
         setupVscode()
 
-        module = item.module
+        # generate header file
+        fileName = module.path().lstrip("/").replace("/", "__")
+        headerFile = os.path.join(RigBuilderPrivatePath, "vscode", "{}_header.py".format(fileName))
+        runCodeFilePath = os.path.join(RigBuilderPrivatePath, "vscode", "{}.py".format(fileName))
 
-        # generate predefined things
-        fileName = module.path().replace("/", "__")
-        predefinedFile = os.path.join(RigBuilderLocalPath, "vscode", "{}_predef.py".format(fileName))
-        runCodeFilePath = os.path.join(RigBuilderLocalPath, "vscode", "{}.py".format(fileName))
-
-        moduleFilePath = runCodeFilePath.replace(".py", MODULE_EXT)
-        tmpModule = module.copy()
-        tmpModule.setRunCode("") # run code is editable in VSCode with its own file
-        tmpModule.removeChildren() # remove children to avoid editing them, module must be self-contained
-        tmpModule.saveToFile(moduleFilePath)
-
-        predefinedCode = ["# Use AI_context.md for technical specification."]
+        headerCode = []
 
         # expose attributes
         for a in module.attributes():
-            predefinedCode.append("{}{} = {}".format(ATTR_PREFIX, a.name(), getVariableValue(a.get())))
-            predefinedCode.append(getFunctionDefinition(a.set, name="{}set_{}".format(ATTR_PREFIX, a.name())))
-            predefinedCode.append("{}{}_data = {}".format(ATTR_PREFIX, a.name(), a.data()))
+            headerCode.append("{}{} = {}".format(ATTR_PREFIX, a.name(), getVariableValue(a.get())))
+            headerCode.append(getFunctionDefinition(a.set, name="{}set_{}".format(ATTR_PREFIX, a.name())))
+            headerCode.append("{}{}_data = {}".format(ATTR_PREFIX, a.name(), a.localData()))
 
         # expose API
         env = module.context()
 
         for k, v in env.items():
             if callable(v):
-                predefinedCode.append(getFunctionDefinition(v, name=k))
+                headerCode.append(getFunctionDefinition(v, name=k))
             else:
-                predefinedCode.append("{} = {}".format(k, getVariableValue(v)))
+                headerCode.append("{} = {}".format(k, getVariableValue(v)))
 
-        with open(predefinedFile, "w") as f:
-            f.write("\n".join(predefinedCode))
+        with open(headerFile, "w") as f:
+            f.write("\n".join(headerCode))
 
         with open(runCodeFilePath, "w") as f:
-            predefinedModule = os.path.splitext(os.path.basename(predefinedFile))[0]
+            headerModule = os.path.splitext(os.path.basename(headerFile))[0]
             code = replaceAttrPrefix(module.runCode())
-            importLine = "from .{} import * # must be the first line".format(predefinedModule)
+            importLine = "from .{} import * # must be the first line".format(headerModule)
             f.write("\n".join([importLine, code]))
 
-        contextFilePath = os.path.join(RigBuilderLocalPath, "vscode", "AI_context.md")
-        shutil.copyfile("AI_context.md", contextFilePath)
-
-        startTrackedFileThread(
-            runCodeFilePath,
-            partial(onRunCodeFileChanged, runCodeFilePath),
-        )
-        startTrackedFileThread(
-            moduleFilePath,
-            partial(onModuleFileChanged, moduleFilePath),
-        )
-
-        if not shutil.which(Settings["vscode"]):
-            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(Settings["vscode"])
-            QMessageBox.warning(self,"Editor Error", msg)
-            return
+        startTrackedFileThread(runCodeFilePath, partial(onRunCodeFileChanged, runCodeFilePath, module.uid(), module.path()))
 
         try:
-            subprocess.Popen([Settings["vscode"], RigBuilderLocalPath+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([Settings["vscode"], RigBuilderPrivatePath+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
     def diffModule(self, *, reference: Optional[str] = None):
         import difflib
 
-        item = self.currentModule()
-        if not item:
+        module = self.treeWidget.currentModule()
+        if not module:
             return
-
-        module = item.module
 
         path = module.referenceFile(source=reference) if reference else module.filePath()
         if not path:
@@ -2461,7 +2985,7 @@ class RigBuilderWindow(QFrame):
 
         path = os.path.normpath(path)
         currentXml = module.toXml()
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             originalXml = f.read()
 
         fromDesc = path
@@ -2476,19 +3000,8 @@ class RigBuilderWindow(QFrame):
         diffText = "\n".join(diffLines)
 
         dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
-        execFunc(dlg)
+        dlg.exec()
                     
-    def copyToolCode(self):
-        item = self.currentModule()
-        if not item:
-            return
-            
-        if item.module.loadedFromLocal() or item.module.loadedFromServer():
-            code = '''import rigBuilder.ui;rigBuilder.ui.RigBuilderTool(r"{}").show()'''.format(item.module.relativePath())
-            QApplication.clipboard().setText(code)
-        else:
-            QMessageBox.critical(self, "Rig Builder", "Module must be loaded from local or server!")
-
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.treeWidget.clear()
@@ -2502,45 +3015,45 @@ class RigBuilderWindow(QFrame):
 
     def openFunctionBrowser(self):
         from .functionBrowser import showFunctionBrowser
-        showFunctionBrowser(parent=self)
+        browser = showFunctionBrowser(parent=self)
+        browser.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
+
+    def _onModuleAdditionRequested(self, module: Module):
+        """Handle module addition from external browsers."""
+        added = self.addModule(module)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        if added:
+            self.selectModule(added)
 
     def locateModuleFile(self):
-        for item in self.treeWidget.selectedItems():
-            if item and os.path.exists(item.module.filePath()):
-                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.module.filePath())))
+        for module in self.treeWidget.selectedModules():
+            if module and os.path.exists(module.filePath()):
+                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(module.filePath())))
 
-    def _onTreeItemSelectionChanged(self):
-        item = self.currentModule()
-        en = item is not None
+    def _onTreeSelectionChanged(self, selected, deselected):
+        module = self.treeWidget.currentModule()
+        en = module is not None
         self.rightSplitter.setVisible(en)
         self.runBtn.setVisible(en)
         self.moduleHistoryWidget.setVisible(not en)
         self.docBrowser.setVisible(en)
         self.codeWidget.setEnabled(en and not self.isCodeEditorHidden())
 
-        if item:
-            self.attributesTabWidget.moduleItem = item
-            self.attributesTabWidget.updateTabs()
+        if module:
+            self.attributesTabWidget.updateTabs(module)
 
             if self.codeWidget.isEnabled():
-                self.codeEditorWidget.moduleItem = item
+                self.codeEditorWidget.module = module
                 self.codeEditorWidget.updateState()
             
-            # Validate module and log errors
-            if not item.validateModule():
-                # Show log if validation failed
-                self.showLog()
-            
-
-            # Emit API signal
-            self.moduleSelected.emit(item)
-
         self.docBrowser.updateDoc()
 
     def showDiffView(self, diffText: str, fromDesc: str, toDesc: str):
         """Show diff in a modal dialog (used by history link handler)."""
         dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
-        execFunc(dlg)
+        dlg.exec()
 
     def isCodeEditorHidden(self) -> bool:
         return self.workspaceSplitter.sizes()[1] == 0 # code section size
@@ -2550,9 +3063,9 @@ class RigBuilderWindow(QFrame):
             self.codeWidget.setEnabled(False)
 
         elif not self.codeWidget.isEnabled():
-            item = self.currentModule()
-            if item:
-                self.codeEditorWidget.moduleItem = item
+            module = self.treeWidget.currentModule()
+            if module:
+                self.codeEditorWidget.module = module
                 self.codeEditorWidget.updateState()
                 self.codeWidget.setEnabled(True)
 
@@ -2563,216 +3076,98 @@ class RigBuilderWindow(QFrame):
             self.workspaceSplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
-    def runModule(self, moduleItem: Optional[ModuleItem] = None):
-        """Run module with full UI support (progress, undo, logging)."""
+    def onConnectionErrorCallback(self, text: str):
+        QMessageBox.warning(self, "Rig Builder", text)
+        self._resetHostConnectionRow()
+        self.cleanupRun()
 
-        def uiCallback(module: Module):
-            self.logger.info(f"{module.path()} is running...")
-            self.progressBarWidget.stepProgress(self.progressCounter, module.path())
-            self.progressCounter += 1
+    def onErrorCallback(self, text: str, tb: str):
+        self.logger.error(text)
+        printErrorStack()
+        self.showLog()
+        self.cleanupRun()
 
-        def getChildrenCount(item: ModuleItem) -> int:
+    def onPrintCallback(self, text: str):
+        self.logWidget.write(text + "\n")
+
+    def cleanupRun(self):
+        self.progressBarWidget.endProgress()
+        self.runBtn.setEnabled(True)  
+
+    def onRunCallback(self, path: str):
+        self.logger.info(f"{path} is running...")
+        self.progressBarWidget.stepProgress(self._progressCounter, path)
+        self._progressCounter += 1
+
+    def runModule(self):
+        """Run module on the host server."""
+        def getChildrenCount(m: Module) -> int:
             count = 0
-            for i in range(item.childCount()):
+            for ch in m.children():
                 count += 1
-                count += getChildrenCount(item.child(i))
+                count += getChildrenCount(ch)
             return count
 
-        self.aboutToRunModule.emit()
-
-        # Determine which module to run
-        if moduleItem:
-            currentItem = moduleItem
-        else:
-            currentItem = self.currentModule()
-            if not currentItem:
-                self.logger.warning("No module selected for execution")
-                return
-
-        self.logger.info(f"Running module: {currentItem.module.name()}")
+        currentModule = self.treeWidget.currentModule()
+        if not currentModule:
+            return
 
         self.setFocus()
-
         self.logWidget.clear()
         self.showLog()
+        self.runBtn.setEnabled(False)
 
-        with captureOutput(self.logWidget):
-            startTime = time.time()
+        count = getChildrenCount(currentModule)
+        self.progressBarWidget.initialize()
+        self.progressBarWidget.beginProgress(currentModule.path(), count + 1)
+        self._progressCounter = 0
 
-            self.progressBarWidget.initialize()
-            self.progressCounter = 0
+        self.aboutToRunModule.emit()
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.logger.info(f"[{ts}] Running on {connectionManager.activeServerName()}")
 
-            count = getChildrenCount(currentItem)
-            self.progressBarWidget.beginProgress(currentItem.module.name(), count+1)
+        newModule = hostExecutor.runModule(currentModule)
 
-            muted = currentItem.module.muted()
-            currentItem.module.unmute()
-
-            APIRegistry.override("beginProgress", self.progressBarWidget.beginProgress) # update UI functions
-            APIRegistry.override("stepProgress", self.progressBarWidget.stepProgress)
-            APIRegistry.override("endProgress", self.progressBarWidget.endProgress)
-
-            try:
-                APIRegistry.openUndoChunk()
-
-                currentItem.module.run(callback=uiCallback)
-
-            except ModuleRuntimeError as e:
-                self.logger.error(str(e))
-            except Exception as e:
-                self.logger.error(f"Unexpected error in module '{currentItem.module.name()}': {str(e)}")
-                printErrorStack()
-            finally:
-                APIRegistry.closeUndoChunk()
-                    
-                if muted:
-                    currentItem.module.mute()
-
-                executionTime = time.time() - startTime
-                self.logger.info(f"Execution completed in {executionTime:.2f}s")
-
-        self.progressBarWidget.endProgress()
-        self.attributesTabWidget.updateTabs()
-
-    # === API METHODS FOR MODULE MANAGEMENT ===
-    
-    def addModule(self, moduleOrPath: Union[str, Module], parent: Optional[ModuleItem] = None) -> Optional[ModuleItem]:
-        """Add module to the tree. Returns ModuleItem or None if failed."""
-        try:
-            if isinstance(moduleOrPath, str):
-                # Load from file path
-                module = Module.loadModule(moduleOrPath)
-            else:
-                # Assume it's already a Module instance
-                module = moduleOrPath
-            
-            moduleItem = self.treeWidget.makeItemFromModule(module)
-            
-            if parent:
-                parent.addChild(moduleItem)
-                parent.module.addChild(module)
-            else:
-                self.treeWidget.addTopLevelItem(moduleItem)
-            
-            self.moduleAdded.emit(moduleItem)
-            return moduleItem
-            
-        except Exception as e:
-            self.logger.error(f"Adding module: {e}")
-            return
-    
-    def removeModule(self, moduleItem: Optional[ModuleItem]):
-        """Remove module from tree."""
-        if not moduleItem:
-            self.logger.warning("Cannot remove module: moduleItem is None")
-            return
-            
-        parent = moduleItem.parent()
-        if parent:
-            parent.removeChild(moduleItem)
-            parent.module.removeChild(moduleItem.module)
-            parent.emitDataChanged()
-        else:
-            self.treeWidget.invisibleRootItem().removeChild(moduleItem)
+        if newModule is not None:
+            idx = self.treeWidget.moduleModel.indexForModule(currentModule)
+            if idx.isValid():
+                self.treeWidget.replaceModule(idx, newModule)
+                self.attributesTabWidget.updateTabs(newModule)
+                QTimer.singleShot(0, partial(self.logger.info, "Done!"))
+            else:            
+                QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
         
-        self.moduleRemoved.emit(moduleItem)
-    
+        self.cleanupRun()
+
     def showModuleInHistory(self):
         """Put selected module UID into history browser filter and clear selection so user can view history."""
-        item = self.currentModule()
-        if not item:
+        module = self.treeWidget.currentModule()
+        if not module:
             return
 
-        module = item.module
         if not module.uid():
             return
             
         self.moduleHistoryWidget.filterEdit.setText(module.uid())
         self.treeWidget.clearSelection()
 
-    def selectedModules(self) -> List[ModuleItem]:
-        """Get list of currently selected ModuleItems."""
-        return self.treeWidget.selectedItems()
-
-    def currentModule(self) -> Optional[ModuleItem]:
-        """Get currently selected module."""
-        selectedItems = self.treeWidget.selectedItems()
-        if selectedItems:
-            return selectedItems[0]
-    
-    def selectModule(self, moduleItem: Optional[ModuleItem]):
-        """Select specific module in tree."""
-        if moduleItem:
-            self.treeWidget.clearSelection()
-            moduleItem.setSelected(True)
-            self.treeWidget.setCurrentItem(moduleItem)
-    
-    def findModule(self, nameOrPath: str) -> Optional[ModuleItem]:
-        """Find module by name or path in tree."""
-        iterator = QTreeWidgetItemIterator(self.treeWidget)
-        while iterator.value():
-            item = iterator.value()
-            if isinstance(item, ModuleItem):
-                if (item.module.name() == nameOrPath or 
-                    item.module.path() == nameOrPath):
-                    return item
-            iterator += 1
-    
-
-
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
             if thread.isRunning():
-                thread.terminate()
+                thread.stop()
                 thread.wait(1000)  # Wait up to 1 second for thread to finish
         trackFileChangesThreads.clear()
         
         # Call parent close event
         super().closeEvent(event)
 
-def RigBuilderTool(spec, child=None, *, size=None): # spec can be full path, relative path, uid
-    module = Module.loadModule(spec)
-    if not module:
-        print(f"Cannot load '{spec}' module")
-        return
-
-    if child is not None:
-        if type(child) == str:
-            module = module.findChild(child)
-
-        elif type(child) == int:
-            module = module.children()[child]
-
-        if not module:
-            print(f"Cannot find '{child}' child")
-            return
-
-    w = RigBuilderWindow()
-    w.setWindowTitle("Rig Builder Tool - {}".format(module.relativePath()))
-    w.treeWidget.addTopLevelItem(w.treeWidget.makeItemFromModule(module))
-    w.treeWidget.setCurrentItem(w.treeWidget.topLevelItem(0))
-
-    w.codeWidget.hide()
-    w.leftSplitter.hide()
-
-    centerWindow(w)
-
-    if size:
-        if type(size) in [int, float]:
-            size = [size, size]
-        w.resize(size[0], size[1])
-    else: # auto size
-        w.adjustSize()
-
-    return w
-
 def setupVscode():  # path to .vscode folder
     settings = {
         "python.autoComplete.extraPaths": [],
     }
 
-    folder = os.path.join(RigBuilderLocalPath, "vscode", ".vscode")
+    folder = os.path.join(RigBuilderPrivatePath, "vscode", ".vscode")
     os.makedirs(folder, exist_ok=True)
     settingsFile = os.path.join(folder, "settings.json")
 
@@ -2780,19 +3175,14 @@ def setupVscode():  # path to .vscode folder
         with open(settingsFile, "r") as f:
             settings.update(json.load(f))
 
-    # ensure key exists even if missing in existing settings
-    settings.setdefault("python.autoComplete.extraPaths", [])
-
-    # add paths
-    for path in sys.path:
-        if path not in settings["python.autoComplete.extraPaths"]:
-            settings["python.autoComplete.extraPaths"].append(path)
+    context = hostExecutor.executeCode("import sys;hostSysPath=sys.path")
+    settings["python.autoComplete.extraPaths"] = context.get("hostSysPath", [])
 
     with open(settingsFile, "w") as f:
         json.dump(settings, f, indent=4)
 
 def cleanupVscode():
-    vscodeFolder = RigBuilderLocalPath+"/vscode"
+    vscodeFolder = RigBuilderPrivatePath+"/vscode"
     if not os.path.exists(vscodeFolder):
         return
     
@@ -2800,16 +3190,15 @@ def cleanupVscode():
         if f.endswith(".py") or f.endswith(MODULE_EXT): # remove module files
             os.remove(os.path.join(vscodeFolder, f))
 
-def aboutToQuit():
-    """Save workspace and settings (on quit)."""
-    saveWorkspace(mainWindow)
-    saveSettings()
-
-
-cleanupVscode()
+# global references
 
 mainWindow = RigBuilderWindow()
-loadWorkspace(mainWindow)
-mainWindow.aboutToRunModule.connect(partial(saveWorkspace, mainWindow))
-QApplication.instance().aboutToQuit.connect(aboutToQuit)
-mainWindow.setupModulesAutoReloadWatcher()
+logger = mainWindow.logger
+
+hostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
+hostExecutor.onPrint.connect(mainWindow.onPrintCallback)
+hostExecutor.onError.connect(mainWindow.onErrorCallback)
+hostExecutor.onRunCallback.connect(mainWindow.onRunCallback)
+hostExecutor.beginProgress.connect(mainWindow.progressBarWidget.beginProgress)
+hostExecutor.stepProgress.connect(mainWindow.progressBarWidget.stepProgress)
+hostExecutor.endProgress.connect(mainWindow.progressBarWidget.endProgress)

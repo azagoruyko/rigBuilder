@@ -1,7 +1,7 @@
+import re
+from functools import partial
 from ..qt import *
 
-
-import re
 from ..utils import clamp, findBracketSpans
 from .utils import getActions, setActionsLocalShortcut, wordAtCursor, fontSize, setFontSize, getFontWidth
 
@@ -224,7 +224,7 @@ class SwoopSearchDialog(QDialog):
         self.filterWidget.keyPressEvent = self.filterKeyPressEvent
 
         self.replaceModeBtn = QPushButton("Replace")
-        self.replaceModeBtn.clicked.connect(lambda _:self.switchReplaceMode())
+        self.replaceModeBtn.clicked.connect(partial(self.switchReplaceMode))
         
         filterLayout = QHBoxLayout()
         filterLayout.addWidget(self.filterWidget)
@@ -676,6 +676,8 @@ class CodeEditorWidget(QTextEdit):
             state = self._editorState[self.preset]
             if cursor:
                 c = self.textCursor()
+                if state["cursor"] > c.document().blockCount():
+                    state["cursor"] = 0
                 c.setPosition(state["cursor"])
                 self.setTextCursor(c)
 
@@ -719,8 +721,8 @@ class CodeEditorWidget(QTextEdit):
         menu.addSeparator()
         menu.addAction("Goto line", self.gotoLine, "Ctrl+G")
         menu.addAction("Duplicate line", self.duplicateLine, "Ctrl+D")
-        menu.addAction("Move line up", lambda: self.moveLine("up"), "Alt+Up")
-        menu.addAction("Move line down", lambda: self.moveLine("down"), "Alt+Down")
+        menu.addAction("Move line up", partial(self.moveLine, "up"), "Alt+Up")
+        menu.addAction("Move line down", partial(self.moveLine, "down"), "Alt+Down")
         menu.addAction("Remove line", self.removeLines, "Ctrl+K")
         menu.addAction("Comment line", self.toggleCommentBlock, "Ctrl+;")
         menu.addSeparator()
@@ -765,7 +767,10 @@ class CodeEditorWidget(QTextEdit):
             self.completionWidget.hide()
 
         elif key == Qt.Key_Escape:
-            self.completionWidget.hide()
+            if self.completionWidget.isVisible():
+                self.completionWidget.hide()
+            else:
+                super().keyPressEvent(event)
 
         elif key == Qt.Key_Return:
             if self.completionWidget.isVisible():
@@ -1148,9 +1153,9 @@ class CodeEditorWithNumbersWidget(QWidget):
 
         self.numberBarWidget = NumberBarWidget(self.editorWidget)
         self.editorWidget.numberBarUpdateRequested.connect(self.numberBarWidget.updateState)
-        self.editorWidget.document().blockCountChanged.connect(lambda _: self.numberBarWidget.updateState())
+        self.editorWidget.document().blockCountChanged.connect(partial(self.numberBarWidget.updateState))
         self.editorWidget.document().documentLayoutChanged.connect(self.numberBarWidget.updateState)
-        self.editorWidget.verticalScrollBar().valueChanged.connect(lambda _: self.numberBarWidget.updateState())
+        self.editorWidget.verticalScrollBar().valueChanged.connect(partial(self.numberBarWidget.updateState))
 
         hlayout = QHBoxLayout()
         hlayout.setContentsMargins(0, 0, 0, 0)
