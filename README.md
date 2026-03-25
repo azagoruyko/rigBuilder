@@ -1,69 +1,73 @@
 # 🏗️ RigBuilder
 
 [![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
-[![Documentation](https://img.shields.io/badge/docs-blue?logo=read-the-docs)](https://github.com/azagoruyko/rigBuilder/wiki/Documentation)
 
-**RigBuilder** is a visual, module-based tool for building character and creature rigs—and related pipeline tools—in DCC applications.
+**RigBuilder** is a standalone application for managing scripts and complex hierarchies of scripts with the connections and expressions which can be executed in any host application (Maya, Blender, Unreal Engine, etc.).
 
-It provides a consistent, maintainable way to assemble rigs from building blocks (spine, limbs, face, fingers, etc.) and to share or version those setups as XML.
+It provides a visual, module-based workflow for building character rigs and pipeline tools by assembling reusable building blocks.
 
 ![RigBuilder UI](https://github.com/user-attachments/assets/922a8f6e-c48e-41e2-bcfb-ab4596f90ea0)
 
 ---
 
-## ⚙️ How it works
+## ⚙️ Core Concepts
 
-The core of the system is a **hierarchy of modules**, each with **attributes** (parameters, connections, widget types) and **run code** (module-level Python and per-attribute expressions).
+At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
 
-The graph defines the execution order. When you run the pipeline, modules execute in that order and drive the DCC. Everything else builds on this foundation.
+- **📦 Modules**: The primary building blocks. Each module represents a specific step (e.g., Spine, Limb, Rig Utilities).
+- **🎛️ Attributes**: Parameters that define module behavior. Attributes can hold any JSON-compatible data and dynamic **Python expressions**.
+- **🔗 Connections**: Attributes can be "wired" together using absolute or relative paths (e.g., `/parent/input`).
+- **🧠 Expressions**: Evaluated on the **client** side; they alter attribute values.
+- **🖥️ Host Connectivity**: RigBuilder connects to host applications and executes modules inside bringing the result back.
+- **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its API.
 
 ---
 
 ## ✨ Key Features
 
-   **📦 Module-based assembly** — Define rig steps as XML modules and arrange them in a hierarchy to run the full pipeline from one place.
-
-   **🔗 Visual wiring** — Connect outputs of one module to inputs of another using path-style references (`/path/to/attr`).
-
-   **📜 Module history** — Built-in, git-backed history browser for all module changes. It allows you to track every save, view precise diffs between versions, and instantly restore or re-add previous module configurations to your tree. Requires no manual setup beyond having Git installed.
-
-   **🖥️ DCC Agnostic** — Use it inside **Maya**, **Blender**, or any other Python-capable DCC; each host registers its operations via `APIRegistry`.
-
-   **🔍 Function browser** — Discover and run Python functions from a folder without leaving the UI.
-
-   **💾 Workspace persistence** — Automatically save and restore your module tree and layout before each run and on quit.
-
-   **📂 Local and server modules** — Use local modules for testing and server paths (via module selector) for shared team libraries.
-
-   **🤖 AI-Assisted Editing** — Use the **"Edit in VS Code"** button to export modules for external editing inside your favourite vscode based editor. This workflow is optimized for AI assistance, providing a dedicated `AI_context.md` for prompts and a sidecar `_predef.py` file for autocomplete and type hinting.
+- **📦 Module-based assembly** — Define rig steps as XML modules and arrange them in a hierarchy to run the full pipeline from one place.
+- **📜 Module history** — Built-in, git-backed history browser for all module changes. Track every save, view diffs, and restore versions instantly.
+- **🖥️ DCC Agnostic** — RigBuilder communicates with **Maya**, **Blender**, **Unreal Engine**, or any other Python-capable host.
+- **🔍 Function browser** — Discover and run Python functions from a folder without leaving the UI.
+- **🤖 AI-Assisted Editing** — Use the **"Edit in VS Code"** button to export modules for external editing inside your favorite VS Code based editor, optimized for AI assistance.
 
 ---
 
 ## 🚀 Quick Start
 
-### In Maya
-```python
-import rigBuilder.ui
-rigBuilder.ui.mainWindow.show()
+### 1. Installation
+Clone the repository and install the required dependencies for the standalone application:
+```bash
+git clone https://github.com/azagoruyko/rigBuilder.git
+cd rigBuilder
+pip install -r requirements.txt
 ```
 
-### Standalone (no DCC)
+### 2. Launch
+Run RigBuilder as a standalone window:
 ```bash
 python run.py
 ```
-> DCC is auto-detected (e.g. Maya when `maya.cmds` is available); otherwise the UI runs in standalone mode for testing and development.
 
-> **Note:** [Git](https://git-scm.com/downloads) is required for the Module History feature.
+### 3. Host Setup (Connectivity)
+To execute modules inside a host, you must install **`pyzmq`** in that host's Python environment.
+
+- **Maya**: `mayapy -m pip install pyzmq`
+- **Blender**: Install `pyzmq` via Blender's internal Python.
+- **Unreal Engine**: 
+  - Enable the "Python Editor Script Plugin".
+  - Install `pyzmq` for Unreal's Python.
+  - 💡 **Tip**: Install `unreal-stub` for autocompletion in your IDE.
 
 ---
 
 ## 🛠️ Dependencies
 
-- **PySide6** ≥ 6.0.0 (or PySide2 in Maya)
-- **markdown** ≥ 3.0.0 (for module documentation rendering)
-- **pytest** ≥ 7.0.0 (for testing)
-
-Check [requirements.txt](requirements.txt) for more details.
+- **Python** ≥ 3.9
+- **PySide6** ≥ 6.0.0 (Standalone UI)
+- **pyzmq** ≥ 24.0.0 (Host connectivity)
+- **markdown** ≥ 3.0.0 (Module documentation)
+- **pytest** ≥ 7.0.0 (Testing)
 
 ---
 
@@ -73,9 +77,4 @@ Run tests using `pytest` from the project root:
 
 ```bash
 pytest test_core.py -v
-pytest test_core.py --cov=core --cov-report=term-missing
 ```
-
----
-
-📖 **Full documentation is available in the [Wiki](https://github.com/azagoruyko/rigBuilder/wiki/Documentation).**
