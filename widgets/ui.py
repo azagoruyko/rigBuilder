@@ -9,6 +9,7 @@ from ..utils import *
 from ..ui.utils import *
 from .jsonWidget import JsonWidget
 from ..client.hostExecutor import hostExecutor
+from ..client.connectionManager import connectionManager
 from ..ui.editor import CodeEditorWithNumbersWidget
 
 RootPath = os.path.dirname(__file__) # Rig Builder root folder
@@ -616,18 +617,17 @@ class ListBoxTemplateWidget(TemplateWidget):
         menu.addAction("Remove", self.removeItem)
         menu.addAction("Edit", self.editItems)
 
-        def f():
+        def sortItems():
             self.listWidget.sortItems()
             self.somethingChanged.emit()
-        menu.addAction("Sort", f)
+        menu.addAction("Sort", sortItems)
 
         menu.addSeparator()
 
-        hostLabel = APIRegistry.getHostName() or "Host"
-        menu.addAction("Get selected from " + hostLabel, partial(self.getFromHost, False))
-        menu.addAction("Add selected from " + hostLabel, partial(self.getFromHost, True))
-        menu.addAction("Select in " + hostLabel, partial(self.selectInHost, False))
-        menu.addAction("Select all in " + hostLabel, self.selectInHost)
+        menu.addAction("Get selected", partial(self.getSelectedFromHost, False))
+        menu.addAction("Add selected", partial(self.getSelectedFromHost, True))
+        menu.addAction("Select", partial(self.selectInHost, False))
+        menu.addAction("Select all", self.selectInHost)
 
         menu.addSeparator()
         menu.addAction("Clear", self.clearItems)
@@ -658,24 +658,31 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 300))
 
     def selectInHost(self, allItems=True):
-        items = [self.listWidget.item(i).text() for i in range(self.listWidget.count()) if allItems or self.listWidget.item(i).isSelected()]
+        items = ["'{}'".format(self.listWidget.item(i).text())
+                for i in range(self.listWidget.count()) 
+                if allItems or self.listWidget.item(i).isSelected()]
 
-        APIRegistry.selectNodes(items)
+        host = connectionManager.activeHost()
+        selectCmd = 'from rigBuilder.server.hosts.{} import select;select([{}])'.format(host, ",".join(items))
+        hostExecutor.executeCode(selectCmd)
 
-    def getFromHost(self, add=False):
-        def updateUI(nodes):
+    def getSelectedFromHost(self, add=False):
+        host = connectionManager.activeHost()
+        selectCmd = 'from rigBuilder.server.hosts.{} import getSelected;sel=getSelected()'.format(host)
+        ctx = hostExecutor.executeCode(selectCmd)
+        nodes = ctx.get("sel", [])
+
+        if not add and not nodes:
+            return
+
+        with blockedWidgetContext(self.listWidget) as w:
             if not add:
-                with blockedWidgetContext(self.listWidget) as w:
-                    w.clear()
-
+                w.clear()
             for n in nodes:
-                self.listWidget.addItem(ListBoxItem(n))
+                w.addItem(ListBoxItem(n))
 
-            self.resizeWidget()
-            self.somethingChanged.emit()
-
-        nodes = APIRegistry.getSelectedNodes() or []
-        updateUI(nodes)
+        self.resizeWidget()
+        self.somethingChanged.emit()
 
     def clearItems(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes

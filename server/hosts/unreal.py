@@ -9,10 +9,7 @@ Run inside Unreal (e.g. from Python Script Editor):
 import queue
 import traceback
 
-try:
-    import unreal
-except ImportError:
-    unreal = None
+import unreal
 
 from rigBuilder.server.hosts import HostServer
 
@@ -64,3 +61,25 @@ class UnrealServer(HostServer):
 
     def executeOnMainThread(self, taskFunction):
         self._queue.put(taskFunction)
+
+
+# API functions mostly used by the client's widgets
+
+def select(names: list[str]) -> None:
+    """Select actors by their label or name."""
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    all_actors = actor_subsystem.get_all_level_actors()
+
+    to_select = []
+    names_set = set(names)
+    for actor in all_actors:
+        if actor.get_actor_label() in names_set or actor.get_name() in names_set:
+            to_select.append(actor)
+
+    actor_subsystem.set_selected_level_actors(to_select)
+
+
+def getSelected() -> list[str]:
+    """Get selected actors labels."""
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    return [a.get_actor_label() for a in actor_subsystem.get_selected_level_actors()]

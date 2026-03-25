@@ -7,6 +7,7 @@ Run once inside Maya (e.g. from userSetup.py or Script Editor):
 """
 
 import maya.utils
+import maya.cmds as cmds
 
 from rigBuilder.server.hosts import HostServer
 
@@ -16,3 +17,13 @@ class MayaServer(HostServer):
 
     def executeOnMainThread(self, taskFunction):
         maya.utils.executeDeferred(taskFunction)
+
+# API functions mostly used by the client's widgets
+
+def select(objects: list[str]):
+    """Select objects."""
+    cmds.select([o for o in objects if cmds.objExists(o)], replace=True)
+
+def getSelected() -> list[str]:
+    """Get selected objects."""
+    return cmds.ls(sl=True)

@@ -22,3 +22,17 @@ class HoudiniServer(HostServer):
                 hou.ui.removeEventLoopCallback(task)
 
         hou.ui.addEventLoopCallback(task)
+
+
+# API functions mostly used by the client's widgets
+
+def select(names: list[str]) -> None:
+    """Select nodes by name."""
+    for name in names:
+        node = hou.node(name)
+        if node:
+            node.setSelected(True)
+
+def getSelected() -> list[str]:
+    """Get selected nodes."""
+    return [node.path() for node in hou.selectedNodes()]

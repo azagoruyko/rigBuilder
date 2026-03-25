@@ -11,8 +11,7 @@ import zmq
 
 from rigBuilder.server.runner import runModule, executeModuleCode, executeCode
 
-
-AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"])
+AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"]) # names MUST match the host files in this folder!
 
 HOST_STARTUP_TEMPLATE = """import sys
 rigBuilderPath = r"{rigBuilderPath}"
