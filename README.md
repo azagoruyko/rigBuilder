@@ -17,7 +17,7 @@ At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
 - **📦 Modules**: The primary building blocks. Each module represents a specific step (e.g., Spine, Limb, Rig Utilities).
 - **🎛️ Attributes**: Parameters that define module behavior. Attributes can hold any JSON-compatible data and dynamic **Python expressions**.
 - **🔗 Connections**: Attributes can be "wired" together using absolute or relative paths (e.g., `/parent/input`).
-- **🧠 Expressions**: Evaluated on the **client** side; they alter attribute values.
+- **🧠 Expressions**: They alter attribute values at time of value resolution.
 - **🖥️ Host Connectivity**: RigBuilder connects to host applications and executes modules inside bringing the result back.
 - **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its API.
 
