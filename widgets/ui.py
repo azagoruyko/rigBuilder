@@ -350,7 +350,6 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         super().__init__(**kwargs)
 
         self.templates = {}
-        self.templates["Get selected"] = {"label": "<", "command": "nodes = getSelectedNodes()\nvalue = nodes[0] if nodes else ''"}
         
         self.buttonCommand = 'print("Hello, world!")'
         self.buttonEnabled = True
