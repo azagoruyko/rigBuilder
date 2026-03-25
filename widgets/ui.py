@@ -488,7 +488,14 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         
         words = list(APIRegistry.api().keys())
         
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="value = 'hello world'", words=words, python=True)
+        editText = EditTextDialog(
+            self.buttonCommand, 
+            title="Edit command", 
+            placeholder="value = 'hello world'", 
+            words=words, 
+            python=True,
+            parent=self)
+            
         editText.saved.connect(save)
         editText.show()
 
