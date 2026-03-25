@@ -16,6 +16,7 @@ class ConnectionManager:
     def __init__(self):
         self._active = None
         self._active_name = ""
+        self._active_host = ""
 
     # ------------------------------------------------------------------
     # Server list persistence
@@ -104,6 +105,7 @@ class ConnectionManager:
 
         self._active = conn
         self._active_name = name
+        self._active_host = entry.get("host", "")
         return conn
 
     def disconnect(self):
@@ -112,6 +114,7 @@ class ConnectionManager:
             self._active.stop()
         self._active = None
         self._active_name = ""
+        self._active_host = ""
 
     def activeConnection(self) -> Optional[HostClient]:
         """Return the active HostClient, or None if not connected."""
@@ -120,6 +123,12 @@ class ConnectionManager:
     def activeServerName(self) -> str:
         """Return the name of the active server, or empty string."""
         return self._active_name
+
+    def activeHost(self) -> str:
+        """Return the host name of the active connection: i.e. maya, blender, houdini, etc.
+        Returns an empty string if not connected.
+        """
+        return self._active_host
 
 connectionManager = ConnectionManager()
 
