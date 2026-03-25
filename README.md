@@ -6,7 +6,7 @@
 
 It provides a visual, module-based workflow for building character rigs and pipeline tools by assembling reusable building blocks.
 
-![RigBuilder UI](https://github.com/user-attachments/assets/922a8f6e-c48e-41e2-bcfb-ab4596f90ea0)
+<img width="1373" height="1008" alt="Screenshot 2026-03-25 174827" src="https://github.com/user-attachments/assets/5e936582-9e2c-4c58-a5cb-7fcadd00b12c" />
 
 ---
 
