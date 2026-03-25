@@ -179,4 +179,3 @@ class SearchReplaceDialog(QDialog):
         opts = {l: w.isChecked() for l, w in self.optionsWidgets.items()}
         self.onReplace.emit(self.searchWidget.text(), self.replaceWidget.text(), opts)
         self.accept()
-

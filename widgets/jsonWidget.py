@@ -11,12 +11,11 @@ RootDirectory = os.path.dirname(__file__)
 
 FloatType = 6  # QMetaType.Double
 
-
 def _moveItemSortKey(direction, root, x):
     """Sort key for moveItem: order by index, direction controls sign."""
     return -direction * (x.parent() or root).indexOfChild(x)
 
-class EditJsonTextWindow(QDialog):
+class EditJsonTextDialog(QDialog):
     saved = Signal(object)
 
     def __init__(self, data, *, readOnly=False, **kwargs):
@@ -26,7 +25,7 @@ class EditJsonTextWindow(QDialog):
         self.setGeometry(100, 100, 600, 500)
 
         layout = QVBoxLayout()
-        layout.setMargin(0)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
         self.prettyPrintWidget = QCheckBox("Pretty print")        
@@ -212,7 +211,7 @@ class JsonWidget(QTreeWidget):
         self._readOnly = False
         self._undoSystem = SimpleUndo()
 
-        self._searchReplaceDialog = SearchReplaceDialog(["Keys"])
+        self._searchReplaceDialog = SearchReplaceDialog(["Keys"], parent=self)
         self._searchReplaceDialog.onReplace.connect(self._onSearchReplace)
 
         self.header().hide()
@@ -288,7 +287,7 @@ class JsonWidget(QTreeWidget):
             menu.addAction("Cut", self.cutItem, "Ctrl+X")
             menu.addAction("Paste", self.pasteItem, "Ctrl+V")
             
-            menu.addAction("Replace text", self._searchReplaceDialog.exec_, "Ctrl+R")
+            menu.addAction("Replace text", self._searchReplaceDialog.exec, "Ctrl+R")
         
         else:
             menu.addAction("View JSON", self.editItemData, "Return")
@@ -302,7 +301,7 @@ class JsonWidget(QTreeWidget):
 
         menu.addAction("Reveal", self.revealSelected, "F")
         menu.addAction("Set as root", lambda: self.setRootItem(self.selectedItem()), "Ctrl+Space")
-        menu.addAction("Reset root", self.setRootItem, "Escape")
+        menu.addAction("Reset root", self.setRootItem)
         menu.addAction("Copy path", self.copyPath)
 
         menu.addSeparator()
@@ -509,9 +508,9 @@ class JsonWidget(QTreeWidget):
         item = item or self.selectedItem()
         data = self.itemToJson(item) if item else self.toJsonList()
 
-        dlg = EditJsonTextWindow(data, readOnly=self._readOnly)
+        dlg = EditJsonTextDialog(data, readOnly=self._readOnly, parent=self)
         dlg.saved.connect(partial(saveCallback, item))
-        dlg.exec_()
+        dlg.exec()
 
     def moveItem(self, direction):
         selectedItems = self.selectedItems()

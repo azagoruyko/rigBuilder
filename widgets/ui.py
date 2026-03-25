@@ -4,41 +4,20 @@ from functools import partial
 
 import os
 from .core import *
-from ..core import APIRegistry, replaceAttrPrefix
+from ..core import APIRegistry
 from ..utils import *
 from ..ui.utils import *
-from ..ui.editor import *
 from .jsonWidget import JsonWidget
+from ..client.hostExecutor import hostExecutor
+from ..ui.editor import CodeEditorWithNumbersWidget
 
 RootPath = os.path.dirname(__file__) # Rig Builder root folder
 
-class TemplateWidget(QFrame):
-    somethingChanged = Signal()
-
-    def __init__(self, *, executor=None, **kwargs):
-        super().__init__(**kwargs)
-        self.executor = executor or self._defaultExecutor # used to execute commands
-
-    def _defaultExecutor(self, cmd, context=None):
-        ctx = APIRegistry.api()
-        ctx.update(context or {})
-        exec(replaceAttrPrefix(cmd), ctx)
-        return ctx
-
-    def getDefaultData(self):
-        return self.getJsonData()
-
-    def getJsonData(self):
-        raise Exception("getJsonData must be implemented")
-
-    def setJsonData(self, data):
-        raise Exception("setJsonData must be implemented")
-    
 class EditTextDialog(QDialog):
     saved = Signal(str) # emitted when user clicks OK
 
-    def __init__(self, text="", *, title="Edit", placeholder="", words=None, python=False):
-        super().__init__(parent=QApplication.activeWindow())
+    def __init__(self, text="", *, title="Edit", placeholder="", words=None, python=False, **kwargs):
+        super().__init__(**kwargs)
 
         self.setWindowTitle(title)
         self.setGeometry(0, 0, 600, 400)
@@ -60,11 +39,14 @@ class EditTextDialog(QDialog):
         self.textWidget.setPlaceholderText(placeholder)
         self.textWidget.setPlainText(text)
 
-        okBtn = QPushButton("OK")
-        okBtn.clicked.connect(self.saveAndClose)
-
         layout.addWidget(editorContainerWidget or self.textWidget)
-        layout.addWidget(okBtn)
+        
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttonBox.button(QDialogButtonBox.Ok).setText("✅ OK")
+        self.buttonBox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
+        self.buttonBox.accepted.connect(self.saveAndClose)
+        self.buttonBox.rejected.connect(self.reject)
+        layout.addWidget(self.buttonBox)
 
         centerWindow(self)
 
@@ -75,8 +57,8 @@ class EditTextDialog(QDialog):
 class EditJsonDialog(QDialog):
     saved = Signal(object)
 
-    def __init__(self, data, *, title="Edit"):
-        super().__init__(parent=QApplication.activeWindow())
+    def __init__(self, data, *, title="Edit", **kwargs):
+        super().__init__(**kwargs)
 
         self.setWindowTitle(title)
         self.setGeometry(0, 0, 600, 400)
@@ -86,17 +68,36 @@ class EditJsonDialog(QDialog):
 
         self.jsonWidget = JsonWidget(data)
 
-        okBtn = QPushButton("OK")
-        okBtn.clicked.connect(self.saveAndClose)
-
         layout.addWidget(self.jsonWidget)
-        layout.addWidget(okBtn)
+
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttonBox.button(QDialogButtonBox.Ok).setText("✅ OK")
+        self.buttonBox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
+        self.buttonBox.accepted.connect(self.saveAndClose)
+        self.buttonBox.rejected.connect(self.reject)
+        layout.addWidget(self.buttonBox)
         centerWindow(self)
 
     def saveAndClose(self):
         dataList = self.jsonWidget.toJsonList()
         self.saved.emit(dataList)
-        self.accept()
+        self.accept()        
+
+class TemplateWidget(QFrame):
+    somethingChanged = Signal()
+    moduleCodeExecutionRequested = Signal(str)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def getDefaultData(self):
+        return self.getJsonData()
+
+    def getJsonData(self):
+        raise Exception("getJsonData must be implemented")
+
+    def setJsonData(self, data):
+        raise Exception("setJsonData must be implemented")
 
 class LabelTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -124,8 +125,7 @@ class LabelTemplateWidget(TemplateWidget):
             self.setLabelText(text)
             self.somethingChanged.emit()
 
-        placeholder = '<img src="$ROOT/images/icons/info.png">Description'
-        editTextDialog = EditTextDialog(self._actualText, title="Edit text", placeholder=placeholder)
+        editTextDialog = EditTextDialog(self._actualText, title="Edit text", placeholder='Description', parent=self)
         editTextDialog.saved.connect(save)
         editTextDialog.show()        
 
@@ -175,13 +175,20 @@ class ButtonTemplateWidget(TemplateWidget):
 
         words = list(APIRegistry.api().keys())
     
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder='chset("/someAttr", 1)', words=words, python=True)
+        editText = EditTextDialog(
+            self.buttonCommand, 
+            title="Edit command", 
+            placeholder='chset("/someAttr", 1)', 
+            words=words, 
+            python=True,
+            parent=self)
+
         editText.saved.connect(save)
         editText.show()
 
     def _onButtonClicked(self):
         if self.buttonCommand:
-            self.executor(self.buttonCommand)
+            self.moduleCodeExecutionRequested.emit(self.buttonCommand)
 
     def getDefaultData(self):
         return {"command": 'chset("/someAttr", 1)',
@@ -245,7 +252,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
             self.setItems(newData)
 
         data = self.getItems()
-        w = EditJsonDialog(data, title="Edit items")
+        w = EditJsonDialog(data, title="Edit items", parent=self)
         w.saved.connect(save)
         w.show()
 
@@ -319,7 +326,7 @@ class LineEditOptionsDialog(QDialog):
         self.maxWidget.setEnabled(False)
         self.maxWidget.setValidator(QIntValidator())
 
-        okBtn = QPushButton("OK")
+        okBtn = QPushButton("✅ OK")
         okBtn.clicked.connect(self.accept)
         okBtn.setAutoDefault(False)
 
@@ -482,18 +489,18 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         
         words = list(APIRegistry.api().keys())
         
-        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="Your python command...", words=words, python=True)
+        editText = EditTextDialog(self.buttonCommand, title="Edit command", placeholder="value = 'hello world'", words=words, python=True)
         editText.saved.connect(save)
         editText.show()
 
     def _onButtonClicked(self):
         if self.buttonEnabled and self.buttonCommand:
-            oldValue = smartConversion(self.textWidget.text().strip())
-            ctx = {"value": oldValue}
-            outCtx = self.executor(self.buttonCommand, ctx)
-            self.value = outCtx["value"]
-            if self.value != oldValue:
-                self.textWidget.setText(fromSmartConversion(self.value))
+            ctx = hostExecutor.executeCode(self.buttonCommand)
+            newValue = ctx.get("value")
+            if newValue is not None and newValue != self.value:
+                self.value = newValue
+                with blockedWidgetContext(self.textWidget) as w:
+                    w.setText(str(newValue))
                 self.colorizeValue()
                 self.somethingChanged.emit()
 
@@ -610,11 +617,11 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         menu.addSeparator()
 
-        dccLabel = APIRegistry.getDccName() or "DCC"
-        menu.addAction("Get selected from " + dccLabel, partial(self.getFromDCC, False))
-        menu.addAction("Add selected from " + dccLabel, partial(self.getFromDCC, True))
-        menu.addAction("Select in " + dccLabel, partial(self.selectInDCC, False))
-        menu.addAction("Select all in " + dccLabel, self.selectInDCC)
+        hostLabel = APIRegistry.getHostName() or "Host"
+        menu.addAction("Get selected from " + hostLabel, partial(self.getFromHost, False))
+        menu.addAction("Add selected from " + hostLabel, partial(self.getFromHost, True))
+        menu.addAction("Select in " + hostLabel, partial(self.selectInHost, False))
+        menu.addAction("Select all in " + hostLabel, self.selectInHost)
 
         menu.addSeparator()
         menu.addAction("Clear", self.clearItems)
@@ -632,7 +639,7 @@ class ListBoxTemplateWidget(TemplateWidget):
             self.resizeWidget()            
 
         data = self.getItems()
-        w = EditJsonDialog(data, title="Edit items")
+        w = EditJsonDialog(data, title="Edit items", parent=self)
         w.saved.connect(save)
         w.show()        
 
@@ -644,12 +651,12 @@ class ListBoxTemplateWidget(TemplateWidget):
         height += 2*self.listWidget.frameWidth() + 50
         self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 300))
 
-    def selectInDCC(self, allItems=True):
+    def selectInHost(self, allItems=True):
         items = [self.listWidget.item(i).text() for i in range(self.listWidget.count()) if allItems or self.listWidget.item(i).isSelected()]
 
         APIRegistry.selectNodes(items)
 
-    def getFromDCC(self, add=False):
+    def getFromHost(self, add=False):
         def updateUI(nodes):
             if not add:
                 with blockedWidgetContext(self.listWidget) as w:
@@ -1674,7 +1681,7 @@ class CompoundTemplateWidget(TemplateWidget):
             self.setJsonData({"templates": templates, "widgets": widgets, "values": values, "default": "values"})
             self.somethingChanged.emit()
 
-        dlg = EditCompountWidgetsDialog(self)
+        dlg = EditCompountWidgetsDialog(parent=self)
         dlg.saved.connect(saveWidgets)
         dlg.exec_()
 
@@ -1711,7 +1718,7 @@ class CompoundTemplateWidget(TemplateWidget):
         clearLayout(layout)
         for i in range(len(widgets)):
             template = templates[i]
-            w = TemplateWidgets[template](executor=self.executor)
+            w = TemplateWidgets[template]()
             w.template = template
 
             d = dict(widgets[i])

@@ -2,7 +2,8 @@ import sys
 import os
 import re
 import json
-from contextlib import contextmanager
+import io
+from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
@@ -67,18 +68,28 @@ def copyJson(data):
 
     else:
         raise TypeError("Data of '{}' type is not JSON compatible: {}".format(type(data), str(data)))
+
+def jsonifyContext(context: dict) -> dict:
+    """Filter dictionary to include only JSON-serializable values."""
+    safe = {}
+    for k, v in context.items():
+        if k.startswith("__") or callable(v):
+            continue
+
+        try:
+            # Check if value is JSON-serializable using copyJson
+            copyJson(v)
+            safe[k] = v
+        except (TypeError, Exception):
+            continue
+
+    return safe
     
 @contextmanager
-def captureOutput(stream):
+def captureOutput(stream: io.TextIOBase):
     """Context manager to capture stdout/stderr to a stream."""
-    default_stdout = sys.stdout
-    default_stderr = sys.stderr
-
-    sys.stdout = stream
-    sys.stderr = stream
-    yield
-    sys.stdout = default_stdout
-    sys.stderr = default_stderr
+    with redirect_stdout(stream), redirect_stderr(stream):
+        yield stream
 
 def printErrorStack():
     """Print formatted error stack trace."""
@@ -99,7 +110,8 @@ def printErrorStack():
         if not skip:
             print("{}{}, {}, in line {},".format(indent, tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name, tb.tb_lineno))
             indent += "  "
-    print("Error: {}".format(exc_value))
+    if exc_value:
+        print("Error: {}".format(exc_value))
 
 def findOpeningBracketPosition(text: str, offset: int, brackets: str = "{(["):
     """Find position of opening bracket matching the bracket at offset."""

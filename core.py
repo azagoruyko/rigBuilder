@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
 RigBuilderPath = os.path.dirname(__file__)
-RigBuilderLocalPath = os.path.join(os.path.expanduser("~"), "rigBuilder")
+RigBuilderPrivatePath = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
 MODULE_EXT = ".xml"
 
 ATTR_PREFIX = "attr_"
@@ -271,7 +271,7 @@ class Attribute(object):
         if self._connect:
             srcAttr = self.findConnectionSource()
             if srcAttr:
-                srcAttr._setDefaultValue(self._defaultValue())            
+                srcAttr._setDefaultValue(self._defaultValue())   
                 srcAttr.push()
 
     def get(self, key: Optional[str] = None) -> Any:
@@ -338,7 +338,8 @@ class Attribute(object):
         attrs = [("name", self._name),
                  ("template", self._template),
                  ("category", self._category),
-                 ("connect", self._connect if keepConnection else "")]
+                 ("connect", self._connect if keepConnection else ""),
+                 ("modified", int(self._modified))]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
 
@@ -357,6 +358,7 @@ class Attribute(object):
         attr._template = root.attrib.get("template", "")
         attr._category = root.attrib.get("category", "")
         attr._connect = root.attrib.get("connect", "")
+        attr._modified = bool(int(root.attrib.get("modified", 0)))
         raw = root.text or "{}"
         attr._data = json.loads(raw) if raw.strip() else {}
         attr._expression = attr._data.pop("_expression", "")
@@ -400,10 +402,10 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
         return json.dumps(self._attr.data())
 
 class Module(object):
-    UpdateSource = "all" # all, server, local, (empty)
+    UpdateSource = "all" # all, public, private, (empty)
 
-    LocalUids = {}
-    ServerUids = {}
+    PrivateUids = {}
+    PublicUids = {}
 
     glob = Dict() # global memory
 
@@ -441,7 +443,7 @@ class Module(object):
         for ch in self._children:
             module.addChild(ch.copy())
 
-        module._parent = self._parent
+        module._parent = None
 
         module._filePath = self._filePath
         module._muted = self._muted
@@ -625,7 +627,9 @@ class Module(object):
         """Convert module to XML string representation."""
         attrs = [("name", self._name),
                  ("muted", int(self._muted)),
-                 ("uid", self._uid)]
+                 ("uid", self._uid),
+                 ("modified", int(self._modified)),
+                 ("filePath", self._filePath)]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
         template = ["<module {}>".format(attrsStr)]
@@ -658,7 +662,10 @@ class Module(object):
         module._name = root.attrib.get("name", "")
         module._uid = root.attrib.get("uid", "")
         module._muted = int(root.attrib.get("muted", 0))
+        module._modified = bool(int(root.attrib.get("modified", 0)))
+        module._filePath = root.attrib.get("filePath", "")
         module._runCode = root.findtext("run") or ""
+        
         doc_el = root.find("doc")
         if doc_el is not None:
             module._doc = doc_el.text or ""
@@ -674,34 +681,33 @@ class Module(object):
             for ch in children_el.findall("module"):
                 module.addChild(Module.fromXml(ch))
 
-        module._modified = False
         return module
 
-    def loadedFromServer(self) -> bool:
-        """Check if module was loaded from server."""
+    def loadedFromPublic(self) -> bool:
+        """Check if module was loaded from public path."""
         filePath = os.path.normpath(self._filePath or "")
-        serverRoot = getServerModulesPath()
-        return filePath.lower().startswith(serverRoot.lower() + os.sep)
+        publicRoot = getPublicModulesPath()
+        return filePath.lower().startswith(publicRoot.lower() + os.sep)
 
-    def loadedFromLocal(self) -> bool:
-        """Check if module was loaded from local path."""        
+    def loadedFromPrivate(self) -> bool:
+        """Check if module was loaded from private path."""        
         filePath = os.path.normpath(self._filePath or "")
-        localRoot = getLocalModulesPath()
-        return filePath.lower().startswith(localRoot.lower() + os.sep)
+        privateRoot = getPrivateModulesPath()
+        return filePath.lower().startswith(privateRoot.lower() + os.sep)
 
     def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
         """Get reference file path based on source preference."""
-        local = Module.LocalUids.get(self._uid)
-        server = Module.ServerUids.get(self._uid)
-        path = {"all": local or server, "server": server, "local": local, "":self._filePath}.get(source or Module.UpdateSource)
+        private = Module.PrivateUids.get(self._uid)
+        public = Module.PublicUids.get(self._uid)
+        path = {"all": private or public, "public": public, "private": private, "":self._filePath}.get(source or Module.UpdateSource)
         return path
 
     def relativePath(self) -> str:
         """Get relative path from modules directory."""
-        if self.loadedFromServer():
-            return calculateRelativePath(self._filePath, getServerModulesPath())
-        elif self.loadedFromLocal():
-            return calculateRelativePath(self._filePath, getLocalModulesPath())
+        if self.loadedFromPublic():
+            return calculateRelativePath(self._filePath, getPublicModulesPath())
+        elif self.loadedFromPrivate():
+            return calculateRelativePath(self._filePath, getPrivateModulesPath())
         else:
             return self._filePath
 
@@ -711,7 +717,7 @@ class Module(object):
             return ""
 
         path = ""
-        if self.loadedFromServer() or self.loadedFromLocal():
+        if self.loadedFromPublic() or self.loadedFromPrivate():
             path = self.relativePath()
         else:
             normLoadedPath = self._filePath.replace("\\", "/")
@@ -726,11 +732,11 @@ class Module(object):
 
     def getSavePath(self) -> str:
         """Get path for saving module."""
-        if self.loadedFromServer():
-            relativePath = os.path.relpath(self._filePath, getServerModulesPath())
-            return os.path.join(getLocalModulesPath(), relativePath)
+        if self.loadedFromPublic():
+            relativePath = os.path.relpath(self._filePath, getPublicModulesPath())
+            return os.path.join(getPrivateModulesPath(), relativePath)
 
-        else: # local or somewhere else
+        else: # private or somewhere else
             return self._filePath
         
     def embed(self):
@@ -774,22 +780,22 @@ class Module(object):
         for ch in self._children:
             ch.update()
 
-    def sendToServer(self) -> Optional[str]: # save the module on server, remove locally
-        """Save module to server and remove local copy."""
-        if self.loadedFromLocal():
-            savePath = os.path.join(getServerModulesPath(), self.relativePath())
+    def publish(self) -> Optional[str]: # save the module on public path, remove from private
+        """Save module to public path and remove private copy."""
+        if self.loadedFromPrivate():
+            savePath = os.path.join(getPublicModulesPath(), self.relativePath())
             if not os.path.exists(os.path.dirname(savePath)):
                 os.makedirs(os.path.dirname(savePath))
 
             oldPath = self._filePath
             self.saveToFile(savePath)
             try:
-                os.unlink(oldPath) # remove local file
+                os.unlink(oldPath) # remove private file
             except OSError:
                 pass  # file might already be deleted
 
-            Module.ServerUids[self._uid] = savePath
-            Module.LocalUids.pop(self._uid, None) # remove from local uids
+            Module.PublicUids[self._uid] = savePath
+            Module.PrivateUids.pop(self._uid, None) # remove from private uids
             return savePath
 
     def saveToFile(self, fileName: str, *, newUid: bool = False):
@@ -797,11 +803,12 @@ class Module(object):
         if not self._uid or newUid:
             self._uid = uuid.uuid4().hex
         
+        self._clearModificationFlag()
+        
         with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
             f.write(self.toXml(keepConnections=False))  # don't keep outer connections
 
         self._filePath = os.path.normpath(fileName)
-        self._clearModificationFlag()
 
     @staticmethod
     def loadFromFile(fileName: str) -> 'Module':
@@ -873,6 +880,38 @@ class Module(object):
         
         return attr
 
+    def findModuleByPath(self, path: str) -> Optional['Module']:
+        """Find a module by its path string (e.g., 'Root/Child/Grandchild' or 'Child/Grandchild')."""
+        if not path or path == ".":
+            return self
+
+        parts = path.split("/")
+        current = self
+
+        if parts[0] == self._name:
+            parts = parts[1:]
+
+        for part in parts:
+            if not part:
+                continue
+
+            if part == "..":
+                current = current._parent
+                if not current:
+                    return None
+                continue
+
+            elif part == ".":
+                continue
+
+            ch = current.findChild(part)
+            if ch:
+                current = ch
+            else:
+                return None
+
+        return current
+
     def context(self) -> Dict[str, Any]:        
         """Get execution environment for module."""
         ctx = APIRegistry.api()
@@ -889,6 +928,20 @@ class Module(object):
 
         return ctx
 
+    def executeCode(self, code: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute code in the context of the module."""
+        ctx = self.context()
+        ctx.update(context or {})
+        
+        try:
+            exec(replaceAttrPrefix(code), ctx)
+        except ExitModuleException:
+            pass            
+        except Exception as e:
+            raise ModuleRuntimeError(f"Module '{self.name()}': {str(e)}") from e
+        
+        return ctx
+
     def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
         """Execute module code and child modules."""
         if callable(callback):
@@ -897,15 +950,7 @@ class Module(object):
         for attr in self._attributes:
             attr.pull()
 
-        ctx = self.context()
-        runCode = replaceAttrPrefix(self._runCode)
-        
-        try:
-            exec(runCode, ctx)
-        except ExitModuleException:
-            pass
-        except Exception as e:
-            raise ModuleRuntimeError(f"Module '{self.name()}': {str(e)}") from e
+        ctx = self.executeCode(self._runCode)
 
         for ch in self._children:
             if not ch.muted():
@@ -915,9 +960,9 @@ class Module(object):
 
     @staticmethod
     def updateUidsCache():
-        """Update cached UIDs from local and server directories."""
-        Module.ServerUids = Module.findUids(getServerModulesPath())
-        Module.LocalUids = Module.findUids(getLocalModulesPath())
+        """Update cached UIDs from private and public directories."""
+        Module.PublicUids = Module.findUids(getPublicModulesPath())
+        Module.PrivateUids = Module.findUids(getPrivateModulesPath())
 
     @staticmethod
     def findUids(path: str) -> Dict[str, str]:
@@ -936,40 +981,40 @@ class Module(object):
 
         return uids
 
-def getLocalModulesPath() -> str:
-    """Return the local modules root directory, normalized (no user override)."""
-    localModulesRoot = os.path.join(RigBuilderLocalPath, "modules")
-    return os.path.normpath(localModulesRoot)
+def getPrivateModulesPath() -> str:
+    """Return the private modules root directory, normalized."""
+    privateModulesRoot = os.path.join(RigBuilderPrivatePath, "modules")
+    return os.path.normpath(privateModulesRoot)
 
-def getServerModulesPath() -> str:
-    """Return the server modules root directory, normalized (from settings or default)."""
-    path = Settings.get("serverModulesPath") or ""
+def getPublicModulesPath() -> str:
+    """Return the public modules root directory, normalized."""
+    path = Settings.get("publicModulesPath") or ""
     if path:
         return os.path.normpath(path)
 
-    defaultServerRoot = os.path.join(RigBuilderPath, "modules")
-    return os.path.normpath(defaultServerRoot)
+    defaultPublicRoot = os.path.join(RigBuilderPath, "modules")
+    return os.path.normpath(defaultPublicRoot)
 
 
 def getHistoryPath() -> str:
     """Return the history directory for module version history (git-tracked)."""
-    return os.path.normpath(os.path.join(RigBuilderLocalPath, "history"))
+    return os.path.normpath(os.path.join(RigBuilderPrivatePath, "history"))
 
 
 def resolveModuleSpec(spec: str) -> str:
     """Resolve spec (path or uid) to module file path, or empty string if not found."""
     if not spec:
         return ""
-    modulePath = Module.LocalUids.get(spec) or Module.ServerUids.get(spec)
+    modulePath = Module.PrivateUids.get(spec) or Module.PublicUids.get(spec)
     if not modulePath:
         specPath = os.path.expandvars(spec)
         for path in [
             specPath,
             specPath + MODULE_EXT,
-            os.path.join(getLocalModulesPath(), spec),
-            os.path.join(getLocalModulesPath(), spec + MODULE_EXT),
-            os.path.join(getServerModulesPath(), spec),
-            os.path.join(getServerModulesPath(), spec + MODULE_EXT),
+            os.path.join(getPrivateModulesPath(), spec),
+            os.path.join(getPrivateModulesPath(), spec + MODULE_EXT),
+            os.path.join(getPublicModulesPath(), spec),
+            os.path.join(getPublicModulesPath(), spec + MODULE_EXT),
         ]:
             if os.path.exists(path):
                 modulePath = path
@@ -978,12 +1023,12 @@ def resolveModuleSpec(spec: str) -> str:
 
 
 # Initialize directories and settings
-os.makedirs(RigBuilderLocalPath, exist_ok=True)
-settingsFile = os.path.join(RigBuilderLocalPath, "settings.json")
+os.makedirs(RigBuilderPrivatePath, exist_ok=True)
+settingsFile = os.path.join(RigBuilderPrivatePath, "settings.json")
 
 Settings = {
     "vscode": "code",
-    "serverModulesPath": "",
+    "publicModulesPath": "",
     "trackHistory": True
 }
 
@@ -999,7 +1044,7 @@ def saveSettings():
     with open(settingsFile, "w") as f:
         json.dump(Settings, f, indent=4)
         
-os.makedirs(getLocalModulesPath(), exist_ok=True)
+os.makedirs(getPrivateModulesPath(), exist_ok=True)
 os.makedirs(getHistoryPath(), exist_ok=True)
 
 Module.updateUidsCache()
@@ -1065,16 +1110,3 @@ APIRegistry.register("runButtonCommand", widgets_core.runButtonCommand)
 APIRegistry.register("beginProgress", beginProgress)
 APIRegistry.register("stepProgress", stepProgress)
 APIRegistry.register("endProgress", endProgress)
-
- # DCC functions, overridden in dcc module
-
-APIRegistry.register("getSelectedNodes")
-APIRegistry.register("selectNodes")
-APIRegistry.register("getDccName")
-APIRegistry.register("getParentWindow")
-APIRegistry.register("currentSceneFile")
-APIRegistry.register("openUndoChunk")
-APIRegistry.register("closeUndoChunk")
-
-from . import dcc
-dcc.register()

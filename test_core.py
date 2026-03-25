@@ -9,9 +9,9 @@ from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, Dict,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, ModuleRuntimeError, APIError,
-    getUidFromFile, calculateRelativePath, getLocalModulesPath,
+    getUidFromFile, calculateRelativePath, getPrivateModulesPath,
     resolveModuleSpec, printError, printWarning, exitModule,
-    APIRegistry, RigBuilderLocalPath
+    APIRegistry, RigBuilderPrivatePath
 )
 from rigBuilder.utils import copyJson
 
@@ -61,8 +61,8 @@ def cleanAPIRegistry():
 @pytest.fixture
 def tempDir():
     """Create temporary directory in local modules folder for realistic caching."""
-    # Create temp dir in local modules folder
-    tmpdir = tempfile.mkdtemp(prefix="test_", dir=RigBuilderLocalPath + "/modules")
+    # Create temp dir in private modules folder
+    tmpdir = tempfile.mkdtemp(prefix="test_", dir=RigBuilderPrivatePath + "/modules")
 
     yield tmpdir
 
@@ -207,6 +207,24 @@ class TestAttribute:
         attr.set(None)
         assert attr.get() is None
 
+    def testAttributeModificationFlags(self):
+        """Test that _modified flag is correctly set based on data changes."""
+        attr = createAttribute("test", "input", "float", 10.0)
+        attr._modified = False
+        
+        # Changing only the default value should NOT mark as modified
+        attr.setLocalData({"default": "value", "value": 20.0})
+        assert attr.modified() is False
+        
+        # Changing other data SHOULD mark as modified
+        attr.setLocalData({"default": "value", "value": 20.0, "other": "data"})
+        assert attr.modified() is True
+
+        # Changing the template/name SHOULD mark as modified
+        attr._modified = False
+        attr.setName("new_name")
+        assert attr.modified() is True
+
 
 class TestAttributeConnections:
     """Tests for attribute connections."""
@@ -342,6 +360,29 @@ class TestAttributeXML:
         xmlWithout = simpleAttribute.toXml(keepConnection=False)
         assert 'connect=""' in xmlWithout
 
+    def testLegacyLineEditConversion(self):
+        """Test that legacy lineEdit template is converted to lineEditAndButton."""
+        xml = '<attr name="legacy" template="lineEdit"><![CDATA[{"default": "value", "value": "text"}]]></attr>'
+        root = ET.fromstring(xml)
+        attr = Attribute.fromXml(root)
+        
+        assert attr.template() == "lineEditAndButton"
+        assert attr.localData()["buttonEnabled"] is False
+
+    def testLegacyCompoundLineEditConversion(self):
+        """Test that legacy lineEdit inside compound template is converted."""
+        data = {
+            "templates": ["float", "lineEdit"],
+            "widgets": [{}, {}]
+        }
+        xml = '<attr name="comp" template="compound"><![CDATA[{}]]></attr>'.format(json.dumps(data))
+        root = ET.fromstring(xml)
+        attr = Attribute.fromXml(root)
+        
+        newData = attr.localData()
+        assert newData["templates"][1] == "lineEditAndButton"
+        assert newData["widgets"][1]["buttonEnabled"] is False
+
 
 # ============================================================================
 # MODULE TESTS
@@ -400,6 +441,25 @@ class TestModule:
         assert module.uid() == ""
         assert module.filePath() == ""
         assert module.modified() is True
+
+    def testModuleModificationFlags(self, simpleModule):
+        """Test recursive and non-recursive flag clearing."""
+        child = createModule("child")
+        simpleModule.addChild(child)
+        
+        simpleModule._modified = True
+        child._modified = True
+        
+        # Non-recursive clear (in core.py this still clears direct children if they have no UID)
+        simpleModule._clearModificationFlag(recursive=False)
+        assert simpleModule.modified() is False
+        assert child.modified() is False  # core.py recurses regardless of 'recursive' flag for embedded children
+        
+        # Recursive clear
+        simpleModule._modified = True
+        simpleModule._clearModificationFlag(recursive=True)
+        assert simpleModule.modified() is False
+        assert child.modified() is False
 
 
 class TestModuleChildren:
@@ -576,6 +636,33 @@ class TestModulePaths:
         assert child2.path() == "root/child1/child2"
         assert child1.path(inclusive=False) == "root"
 
+    def testFindModuleByPath(self, moduleHierarchy):
+        """Test finding modules by path using various notations."""
+        # Root matches
+        assert moduleHierarchy.findModuleByPath("root") is moduleHierarchy
+        assert moduleHierarchy.findModuleByPath(".") is moduleHierarchy
+        assert moduleHierarchy.findModuleByPath("") is moduleHierarchy
+
+        # Child resolution
+        child1 = moduleHierarchy.findChild("child1")
+        assert moduleHierarchy.findModuleByPath("child1") is child1
+        assert moduleHierarchy.findModuleByPath("root/child1") is child1
+
+        # Deep resolution
+        child2 = child1.findChild("child2")
+        assert moduleHierarchy.findModuleByPath("child1/child2") is child2
+        assert moduleHierarchy.findModuleByPath("root/child1/child2") is child2
+
+        # Parent navigation (..)
+        assert child1.findModuleByPath("..") is moduleHierarchy
+        assert child2.findModuleByPath("../..") is moduleHierarchy
+        assert child2.findModuleByPath("..") is child1
+
+        # Invalid paths return None
+        assert moduleHierarchy.findModuleByPath("nonexistent") is None
+        assert moduleHierarchy.findModuleByPath("root/nonexistent") is None
+        assert moduleHierarchy.findModuleByPath("../../..") is None  # Beyond root
+
     def testFindAttributeByPath(self, moduleHierarchy):
         """Test finding attributes by path with various notations."""
         # Simple path
@@ -714,6 +801,34 @@ class TestModuleFileOperations:
 
         simpleModule.saveToFile(filePath, newUid=True)
         assert simpleModule.uid() != oldUid
+
+    def testModulePublishAndSavePath(self, simpleModule, tempDir, monkeypatch):
+        """Test module publishing and getSavePath logic."""
+        # Mock publicModulesPath in Settings
+        publicDir = os.path.join(tempDir, "public")
+        os.makedirs(publicDir, exist_ok=True)
+        
+        from rigBuilder.core import Settings
+        monkeypatch.setitem(Settings, "publicModulesPath", publicDir)
+        
+        # Save to private
+        privateFile = os.path.join(getPrivateModulesPath(), "myMod.xml")
+        simpleModule.saveToFile(privateFile)
+        assert simpleModule.loadedFromPrivate() is True
+        
+        # Check save path (should be same as current if already in private)
+        assert os.path.normpath(simpleModule.getSavePath()) == os.path.normpath(privateFile)
+        
+        # Publish
+        publicFile = simpleModule.publish()
+        assert publicFile is not None
+        assert os.path.exists(publicFile)
+        assert simpleModule.loadedFromPublic() is True
+        assert not os.path.exists(privateFile)
+        
+        # Save path for public module should point to private equivalent
+        savePath = simpleModule.getSavePath()
+        assert os.path.normpath(savePath) == os.path.normpath(privateFile)
 
     def testLoadModuleByPath(self, simpleModule, tempDir):
         """Test loading module by various path formats."""
@@ -1015,6 +1130,25 @@ class TestModuleFileOperations:
 
         # Module should remain unchanged
         assert len(module.attributes()) == 1
+
+    def testUpdateWithMatchingTemplatePreservesValue(self, tempDir):
+        """Test that update() preserves attribute value when template matches."""
+        # Create v1
+        v1 = createModule("module")
+        attr1 = createAttribute("input", "input", "float", 10.0)
+        v1.addAttribute(attr1)
+        filePath = os.path.join(tempDir, "module.xml")
+        v1.saveToFile(filePath)
+        
+        # Load and change value
+        loaded = Module.loadModule(filePath)
+        loaded.findAttribute("input").set(99.9)
+        
+        # Update (nothing changed on disk)
+        loaded.update()
+        
+        # Value should be preserved
+        assert loaded.findAttribute("input").get() == 99.9
 
 
 class TestModuleExecution:
@@ -1551,10 +1685,10 @@ class TestPathAndSettings:
         result = calculateRelativePath(path, root)
         assert result == os.path.normpath(path)
 
-    def testGetLocalModulesPath(self):
-        """getLocalModulesPath returns normalized path under RigBuilderLocalPath."""
-        expected = os.path.normpath(os.path.join(RigBuilderLocalPath, "modules"))
-        assert getLocalModulesPath() == expected
+    def testGetPrivateModulesPath(self):
+        """getPrivateModulesPath returns normalized path under RigBuilderPrivatePath."""
+        expected = os.path.normpath(os.path.join(RigBuilderPrivatePath, "modules"))
+        assert getPrivateModulesPath() == expected
 
     def testResolveModuleSpec_empty(self):
         """Empty spec should return empty string."""
@@ -1569,7 +1703,7 @@ class TestPathAndSettings:
         Module.updateUidsCache()
 
         uid = module.uid()
-        assert uid in Module.LocalUids
+        assert uid in Module.PrivateUids
 
         # By UID
         resolvedByUid = resolveModuleSpec(uid)
@@ -1580,8 +1714,8 @@ class TestPathAndSettings:
         resolvedNoExt = resolveModuleSpec(noExt)
         assert os.path.normpath(resolvedNoExt) == os.path.normpath(filePath)
 
-        # By relative name under local modules root
-        relName = os.path.relpath(filePath, getLocalModulesPath())
+        # By relative name under private modules root
+        relName = os.path.relpath(filePath, getPrivateModulesPath())
         # Use name without extension relative to local modules path
         relNameNoExt = relName[:-4]
         resolvedRel = resolveModuleSpec(relNameNoExt)
