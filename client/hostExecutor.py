@@ -9,6 +9,7 @@ class HostExecutor(QObject):
     onConnectionError = Signal(str)
     onPrint = Signal(str)
     onError = Signal(str, str)
+    onFinished = Signal()
     onRunCallback = Signal(str)
     beginProgress = Signal(str, int)
     stepProgress = Signal(int, str)
@@ -25,21 +26,21 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return {}
 
-        def onError(text: str, tb: str):
-            self.onError.emit(text, tb)            
-
-        conn.onPrint.connect(self.onPrint.emit)
-        conn.onError.connect(onError)
-        
-        try:
-            reply = conn.executeCode(code)
-            return reply.get("context", {}) if reply and reply.get("ok") else {}
-        finally:
+        def onFinished():
             try:
                 conn.onPrint.disconnect(self.onPrint.emit)
-                conn.onError.disconnect(onError)
+                conn.onError.disconnect(self.onError.emit)
+                conn.onFinished.disconnect(onFinished)
             except (RuntimeError, TypeError):
                 pass
+            self.onFinished.emit()
+
+        conn.onPrint.connect(self.onPrint.emit)
+        conn.onError.connect(self.onError.emit)
+        conn.onFinished.connect(onFinished)
+        
+        reply = conn.executeCode(code)
+        return reply.get("context", {}) if reply and reply.get("ok") else {}
 
     def executeModuleCode(self, module: Module, code: str) -> Optional[Module]:
         """Execute a Python snippet on the host server against a module subtree."""
@@ -49,32 +50,31 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return
 
-        def onError(text: str, tb: str):
-            self.onError.emit(text, tb)            
+        def onFinished():
+            try:
+                conn.onPrint.disconnect(self.onPrint.emit)
+                conn.onError.disconnect(self.onError.emit)
+                conn.onFinished.disconnect(onFinished)
+            except (RuntimeError, TypeError):
+                pass
+
+            self.onFinished.emit()
 
         conn.onPrint.connect(self.onPrint.emit)
-        conn.onError.connect(onError)
+        conn.onError.connect(self.onError.emit)
+        conn.onFinished.connect(onFinished)
 
-        # Send only the selected module subtree so modules stay independent.
-        # On the host, modulePath="." refers to the payload root.
         moduleXml = module.toXml()
         modulePath = "."
 
-        try:
-            reply = conn.executeModuleCode(moduleXml, modulePath, code)
-            
-            if reply and reply.get("ok"):
-                xmlOut = reply["xml"]
-                try:
-                    return Module.fromXml(ET.fromstring(xmlOut))
-                except Exception as e:
-                    self.onError.emit(f"Failed to sync state from server: {e}", "")
-        finally:
+        reply = conn.executeModuleCode(moduleXml, modulePath, code)
+        
+        if reply and reply.get("ok"):
+            xmlOut = reply["xml"]
             try:
-                conn.onPrint.disconnect(self.onPrint.emit)
-                conn.onError.disconnect(onError)
-            except (RuntimeError, TypeError):
-                pass
+                return Module.fromXml(ET.fromstring(xmlOut))
+            except Exception as e:
+                self.onError.emit(f"Failed to sync state from server: {e}", "")
 
     def runModule(self, module: Module) -> Optional[Module]:
         """Run module on the host server."""
@@ -83,40 +83,39 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return
 
-        def onError(text: str, tb: str):
-            self.onError.emit(text, tb)
-
-        conn.onError.connect(onError)
-        conn.onPrint.connect(self.onPrint.emit)
-        conn.onRunCallback.connect(self.onRunCallback.emit)
-        conn.beginProgress.connect(self.beginProgress.emit)
-        conn.stepProgress.connect(self.stepProgress.emit)
-        conn.endProgress.connect(self.endProgress.emit)
-
-        # Send only the selected module subtree so modules stay independent.
-        # On the host, modulePath="." refers to the payload root.
-        moduleXml = module.toXml()
-        
-        try:
-            reply = conn.runModule(moduleXml, ".")
-
-            if reply and reply.get("ok"):
-                xmlOut = reply.get("xml")
-                if xmlOut:
-                    try:
-                        return Module.fromXml(ET.fromstring(xmlOut))
-                    except Exception as e:
-                        self.onError.emit(f"Could not sync module state: {e}", "")
-        finally:
+        def onFinished():
             try:
-                conn.onError.disconnect(onError)
+                conn.onError.disconnect(self.onError.emit)
                 conn.onPrint.disconnect(self.onPrint.emit)
                 conn.onRunCallback.disconnect(self.onRunCallback.emit)
                 conn.beginProgress.disconnect(self.beginProgress.emit)
                 conn.stepProgress.disconnect(self.stepProgress.emit)
                 conn.endProgress.disconnect(self.endProgress.emit)
+                conn.onFinished.disconnect(onFinished)
             except (RuntimeError, TypeError):
                 pass
+
+            self.onFinished.emit()
+
+        conn.onError.connect(self.onError.emit)
+        conn.onPrint.connect(self.onPrint.emit)
+        conn.onRunCallback.connect(self.onRunCallback.emit)
+        conn.beginProgress.connect(self.beginProgress.emit)
+        conn.stepProgress.connect(self.stepProgress.emit)
+        conn.endProgress.connect(self.endProgress.emit)
+        conn.onFinished.connect(onFinished)
+
+        moduleXml = module.toXml()
+        
+        reply = conn.runModule(moduleXml, ".")
+
+        if reply and reply.get("ok"):
+            xmlOut = reply.get("xml")
+            if xmlOut:
+                try:
+                    return Module.fromXml(ET.fromstring(xmlOut))
+                except Exception as e:
+                    self.onError.emit(f"Could not sync module state: {e}", "")
 
 hostExecutor = HostExecutor()
 

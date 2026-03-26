@@ -53,14 +53,16 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
         msg = str(e)
         tb = traceback.format_exc()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        return {"ok": False, "error": msg, "traceback": tb}
+        emitFn({"event": "finished", "id": runId})
+        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     module = root.findModuleByPath(modulePath)
     if not module:
         msg = f"Module not found at path: {modulePath}"
         tb = ""
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        return {"ok": False, "error": msg, "traceback": tb}
+        emitFn({"event": "finished", "id": runId})
+        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     capture = _StreamCapture(emitFn, runId)
 
@@ -74,7 +76,8 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
             msg = str(e)
             tb = traceback.format_exc()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            return {"ok": False, "error": msg, "traceback": tb}
+            emitFn({"event": "finished", "id": runId})
+            return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     try:
         xmlOut = root.toXml()
@@ -82,9 +85,11 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
         msg = "Failed to serialize root module to XML"
         tb = traceback.format_exc()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        return {"ok": False, "error": msg, "traceback": tb}
+        emitFn({"event": "finished", "id": runId})
+        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
-    return {"ok": True, "xml": xmlOut}
+    emitFn({"event": "finished", "id": runId})
+    return {"ok": True, "xml": xmlOut, "id": runId}
 
 
 def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId: str) -> dict:
@@ -101,14 +106,16 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
         msg = str(e)
         tb = traceback.format_exc()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        return {"ok": False, "error": msg, "traceback": tb}
+        emitFn({"event": "finished", "id": runId})
+        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     module = root.findModuleByPath(modulePath)
     if not module:
         msg = f"Module not found at path: {modulePath}"
         tb = ""
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        return {"ok": False, "error": msg, "traceback": tb}
+        emitFn({"event": "finished", "id": runId})
+        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     capture = _StreamCapture(emitFn, runId)
 
@@ -119,7 +126,8 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
             msg = str(e)
             tb = traceback.format_exc()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            return {"ok": False, "error": msg, "traceback": tb}
+            emitFn({"event": "finished", "id": runId})
+            return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     try:
         xmlOut = root.toXml()
@@ -127,9 +135,11 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
         msg = "Failed to serialize root module to XML"
         tb = traceback.format_exc()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        return {"ok": False, "error": msg, "traceback": tb}
+        emitFn({"event": "finished", "id": runId})
+        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
-    return {"ok": True, "xml": xmlOut}
+    emitFn({"event": "finished", "id": runId})
+    return {"ok": True, "xml": xmlOut, "id": runId}
 
 
 def executeCode(code: str, emitFn, runId: str) -> dict:
@@ -145,6 +155,8 @@ def executeCode(code: str, emitFn, runId: str) -> dict:
             msg = str(e)
             tb = traceback.format_exc()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            return {"ok": False, "error": msg, "traceback": tb}
+            emitFn({"event": "finished", "id": runId})
+            return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
-    return {"ok": True, "context": jsonifyContext(context)}
+    emitFn({"event": "finished", "id": runId})
+    return {"ok": True, "context": jsonifyContext(context), "id": runId}

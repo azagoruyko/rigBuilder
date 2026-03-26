@@ -2827,6 +2827,9 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
+    def onFinishedCallback(self):
+        logger.info("Done!")
+
     def runModule(self):
         """Run module on the host server."""
         def getChildrenCount(m: Module) -> int:
@@ -2861,7 +2864,6 @@ class RigBuilderWindow(QFrame):
             if idx.isValid():
                 self.treeWidget.replaceModule(idx, newModule)
                 self.attributesTabWidget.updateTabs(newModule)
-                QTimer.singleShot(0, partial(logger.info, "Done!"))
             else:            
                 QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
         
@@ -2927,6 +2929,7 @@ hostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
 hostExecutor.onPrint.connect(mainWindow.onPrintCallback)
 hostExecutor.onError.connect(mainWindow.onErrorCallback)
 hostExecutor.onRunCallback.connect(mainWindow.onRunCallback)
+hostExecutor.onFinished.connect(mainWindow.onFinishedCallback)
 hostExecutor.beginProgress.connect(mainWindow.progressBarWidget.beginProgress)
 hostExecutor.stepProgress.connect(mainWindow.progressBarWidget.stepProgress)
 hostExecutor.endProgress.connect(mainWindow.progressBarWidget.endProgress)

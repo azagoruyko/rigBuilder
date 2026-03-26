@@ -23,6 +23,7 @@ class HostClient(QObject):
 
     onAnyEvent = Signal(dict)
     onRunCallback = Signal(str)
+    onFinished = Signal()
     onPrint = Signal(str)
     onError = Signal(str, str)
     onConnectionLost = Signal(str)
@@ -222,6 +223,9 @@ class HostClient(QObject):
 
         elif event == "error":
             self.onError.emit(ev.get("text", ""), ev.get("traceback", ""))
+
+        elif event == "finished":
+            self.onFinished.emit()
 
         elif event == "beginProgress":
             self.beginProgress.emit(ev.get("text", ""), ev.get("count", 0))
