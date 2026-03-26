@@ -624,10 +624,10 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         menu.addSeparator()
 
-        menu.addAction("Get selected", partial(self.getSelectedFromHost, False))
-        menu.addAction("Add selected", partial(self.getSelectedFromHost, True))
-        menu.addAction("Select", partial(self.selectInHost, False))
-        menu.addAction("Select all", self.selectInHost)
+        menu.addAction("Get selected from host", partial(self.getSelectedFromHost, False))
+        menu.addAction("Add selected from host", partial(self.getSelectedFromHost, True))
+        menu.addAction("Select in host", partial(self.selectInHost, False))
+        menu.addAction("Select all in host", self.selectInHost)
 
         menu.addSeparator()
         menu.addAction("Clear", self.clearItems)
