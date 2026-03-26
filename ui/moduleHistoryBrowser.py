@@ -28,6 +28,7 @@ from ..qt import (
     Signal,
 )
 from .utils import centerWindow
+from .diffBrowser import DiffBrowserDialog
 
 
 # --- Constants ---
@@ -213,10 +214,10 @@ class ModuleHistoryWidget(QWidget):
     """Widget with filter and text browser showing module history (git log). Emits linkClicked(url) for link handling."""
 
     linkClicked = Signal(object)
+    moduleAdditionRequested = Signal(object)
 
-    def __init__(self, mainWindow):
-        super().__init__(parent=mainWindow)
-        self.mainWindow = mainWindow
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -279,7 +280,7 @@ class ModuleHistoryWidget(QWidget):
                 try:
                     root = ET.fromstring(content.strip())
                     module = Module.fromXml(root)
-                    self.mainWindow.addModule(module)
+                    self.moduleAdditionRequested.emit(module)
 
                 except Exception:
                     pass
@@ -287,7 +288,7 @@ class ModuleHistoryWidget(QWidget):
         else:
             err, diffText = repo("show --minimal {} -- {}".format(rev, fileName))
             if not err and diffText:
-                self.mainWindow.showDiffView(diffText.strip(), "{}^".format(rev), rev)
+                DiffBrowserDialog(diffText=diffText.strip(), fromDesc="{}^".format(rev), toDesc=rev, parent=self).show()
 
         return True
 
@@ -313,7 +314,7 @@ class ModuleHistoryWidget(QWidget):
 
     def _onSquashHistory(self):
         if QMessageBox.question(
-            self.mainWindow,
+            self,
             "Squash history",
             "Squash all commits into one? This flushes the git history.",
             QMessageBox.Yes | QMessageBox.No,
@@ -325,14 +326,14 @@ class ModuleHistoryWidget(QWidget):
             self.updateModuleHistory()
         else:
             QMessageBox.warning(
-                self.mainWindow,
+                self,
                 "Squash history",
                 "Squash failed: {}".format(errMsg),
             )
 
     def showCommitMessageDialog(self):
-        """Show commit message dialog using the widget's main window. Returns (accepted, message)."""
-        return showCommitMessageDialog(self.mainWindow)
+        """Show commit message dialog. Returns (accepted, message)."""
+        return showCommitMessageDialog(self)
 
     def updateModuleHistory(self):
         """Update the module history widget with the latest history."""

@@ -16,7 +16,9 @@ from ..qt import *
 from .. import __version__
 from ..core import *
 from .editor import CodeEditorWithNumbersWidget
+from .docBrowser import DocBrowser
 from .moduleHistoryBrowser import ModuleHistoryWidget
+from .diffBrowser import DiffBrowserDialog
 from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
 from ..utils import *
 from .utils import *
@@ -24,257 +26,8 @@ from ..client.connectionManager import connectionManager
 from ..client.hostExecutor import hostExecutor
 from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
-
-updateFilesThread = None
-trackFileChangesThreads = {} # by file path
-
-def getCurrentModule() -> Optional[Module]:
-    """Return the currently selected module from the global UI window."""
-    global mainWindow
-    if not mainWindow:
-        return None
-    return mainWindow.treeWidget.currentModule()
-
-def getSelectedModules() -> List[Module]:
-    """Return currently selected modules from the global UI window."""
-    global mainWindow
-    if not mainWindow:
-        return []
-    return mainWindow.treeWidget.selectedModules()
-
-def convertMarkdownToHTML(text: str) -> str:
-    """Convert Markdown to HTML."""
-    try:
-        import markdown
-        return markdown.markdown(text, extensions=['fenced_code', 'codehilite', 'tables', 'extra', 'sane_lists'], output_format="html5")
-    except ImportError:
-        if text:
-            text = "<b>Markdown is not installed. Using simple HTML conversion.</b><br><br>" + text
-            text = convertTextToHTML(text)
-    return text
-
-def convertTextToHTML(text: str) -> str:
-    """Convert text to HTML."""
-    return text.replace("\n", "<br>").replace("\t", "&nbsp;"*4)
-
-
-class DocBrowser(QTextBrowser):
-    """HTML/Markdown browser for module documentation."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        self.setOpenLinks(False)
-        self.anchorClicked.connect(self._onAnchorClicked)
-        self.setPlaceholderText("Double-click to edit. HTML or Markdown supported.")
-        self.document().setDefaultStyleSheet("a { color: #55aaee; }")
-
-    def updateDoc(self):
-        module = getCurrentModule()
-        if not module:
-            self.clear()
-            return
-
-        if module.docFormat() == "markdown":
-            html = convertMarkdownToHTML(module.doc())
-        else:
-            html = convertTextToHTML(module.doc())
-
-        self.setHtml(html)
-
-    def _onAnchorClicked(self, url):
-        url = QUrl(url)
-        scheme = url.scheme()
-
-        if scheme in ("http", "https"):
-            QDesktopServices.openUrl(url)
-            return
-
-        if scheme == "module":
-            spec = url.toString()[len("module:"):].strip()
-            if spec:
-                self.openModuleBySpec(spec)
-            return
-
-    def openModuleBySpec(self, spec: str):
-        """Load and select module by spec (UID, relative or full path)."""
-        try:
-            module = Module.loadModule(spec)
-        except ModuleNotFoundError:
-            logger.warning("Module not found: {}".format(spec))
-            return
-
-        mainWindow.treeWidget.addModule(module)
-        mainWindow.treeWidget.selectModule(module)
-
-    def contextMenuEvent(self, event):
-        module = getCurrentModule()
-        if not module:
-            return
-
-        def setDocFormat(format: str):
-            module.setDocFormat(format)
-            self.updateDoc()
-
-        menu = QMenu(self)
-        action = menu.addAction("Show as HTML", partial(setDocFormat, "html"))
-        action.setCheckable(True)
-        action.setChecked(module.docFormat() == "html")
-
-        action = menu.addAction("Show as Markdown", partial(setDocFormat, "markdown"))
-        action.setCheckable(True)
-        action.setChecked(module.docFormat() == "markdown")
-
-        menu.popup(event.globalPos())
-
-    def mouseDoubleClickEvent(self, event):
-        """Edit source text and save it to module."""
-
-        module = getCurrentModule()
-        if not module:
-            return
-
-        def save(text):
-            module.setDoc(text)
-            self.updateDoc()
-
-        w = EditTextDialog(
-            module.doc(),
-            title="Edit documentation",
-            placeholder="Enter documentation here...",
-            words=set(),
-            python=False,
-            parent=self)
-
-        w.saved.connect(save)
-        w.show()
-
-# === GLOBAL LOGGING SYSTEM ===
-class RigBuilderLogHandler(logging.Handler):
-    """Custom log handler that redirects to logWidget."""
-    def __init__(self):
-        super().__init__()
-        self.logWidget = None
-        
-    def setLogWidget(self, logWidget: "LogWidget"):
-        """Connect handler to specific logWidget."""
-        self.logWidget = logWidget
-        
-    def emit(self, record: logging.LogRecord):
-        if self.logWidget:
-            msg = self.format(record)
-            self.logWidget.write(msg + '\n')
-
-def publishModule(module: Module) -> bool:
-    '''
-    Send module to public path (publish) with SVN, Git, Perforce or other VCS.
-    '''
-    module.publish() # copy file to public and add to VCS
-    return True
-
-class TrackFileChangesThread(QThread):
-    somethingChanged = Signal()
-
-    def __init__(self, filePath: str):
-        super().__init__()
-        self.filePath = filePath
-        self._running = True
-
-    def stop(self):
-        self._running = False
-
-    def run(self):
-        try:
-            lastModified = os.path.getmtime(self.filePath)
-        except Exception:
-            lastModified = 0
-
-        while self._running:
-            try:
-                if not os.path.exists(self.filePath):
-                    time.sleep(1)
-                    continue
-
-                currentModified = os.path.getmtime(self.filePath)
-                if currentModified != lastModified:
-                    self.somethingChanged.emit()
-                    lastModified = currentModified
-            except Exception:
-                pass # ignore temporary file access errors
-            
-            time.sleep(1)
-
-class DirectoryWatcher(QObject):
-    """Watch directories recursively and emit debounced change events."""
-    somethingChanged = Signal()
-
-    def __init__(self, roots: List[str], *, debounceMs: int = 700, filePatterns: Optional[List[str]] = None, recursive: bool = True, parent: Optional[QObject] = None):
-        super().__init__(parent=parent)
-        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
-        self.debounceMs = debounceMs
-        self.filePatterns = [p.lower() for p in (filePatterns or [])]
-        self.recursive = recursive
-        self.watcher = QFileSystemWatcher(self)
-        self.debounceTimer = QTimer(self)
-        self.debounceTimer.setSingleShot(True)
-
-        self.watcher.directoryChanged.connect(self._onFilesystemChanged)
-        self.watcher.fileChanged.connect(self._onFilesystemChanged)
-        self.debounceTimer.timeout.connect(self._onDebounceTimeout)
-
-        self.refreshWatchedPaths()
-
-    def refreshWatchedPaths(self):
-        paths = set()
-        for root in self.roots:
-            walkIterator = os.walk(root)
-            for dirPath, _, fileNames in walkIterator:
-                paths.add(os.path.normpath(dirPath))
-                for fileName in fileNames:
-                    fileNameLower = fileName.lower()
-                    if not self.filePatterns or any(fnmatch.fnmatch(fileNameLower, p) for p in self.filePatterns):
-                        paths.add(os.path.normpath(os.path.join(dirPath, fileName)))
-                if not self.recursive:
-                    break
-
-        if not paths:
-            return
-
-        oldPaths = set(self.watcher.files() + self.watcher.directories())
-        toRemove = list(oldPaths - paths)
-        toAdd = list(paths - oldPaths)
-        if toRemove:
-            self.watcher.removePaths(toRemove)
-        if toAdd:
-            self.watcher.addPaths(toAdd)
-
-    def _onFilesystemChanged(self, _path: str):
-        self.debounceTimer.start(self.debounceMs)
-
-    def _onDebounceTimeout(self):
-        # File watchers can drop updated paths on some platforms, so refresh first.
-        self.refreshWatchedPaths()
-        self.somethingChanged.emit()
-
-def updateFilesFromServer():
-    def update():
-        '''
-        Update files from server with SVN, Git, Perforce or other VCS.
-        '''
-        pass
-
-    global updateFilesThread
-    if not updateFilesThread or not updateFilesThread.isRunning():
-        updateFilesThread = MyThread(update)
-        updateFilesThread.start()
-
-class MyThread(QThread):
-    def __init__(self, runFunction: Callable[[], None]):
-        super().__init__()
-        self.runFunction = runFunction
-
-    def run(self):
-        self.runFunction()
+from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
+from .logger import logger, logHandler
 
 
 class AttributesWidget(QWidget):
@@ -588,6 +341,7 @@ class AttributesWidget(QWidget):
 class AttributesTabWidget(QTabWidget):
     moduleChanged = Signal(object) # Module
     executionRequested = Signal(str)
+    attributesChanged = Signal()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -615,7 +369,7 @@ class AttributesTabWidget(QTabWidget):
         dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=self)
         dialog.exec()
 
-        mainWindow.codeEditorWidget.updateState()
+        self.attributesChanged.emit()
         self.updateTabs()
 
     def _onReplace(self, old: str, new: str, opts: Dict[str, bool]):
@@ -850,9 +604,6 @@ class ModuleSelectorWidget(QWidget):
 
         self.treeWidget = ModuleBrowserTreeWidget()
 
-        self.loadingLabel = QLabel("Pulling modules from public path...")
-        self.loadingLabel.hide()
-
         controlsLayout = QHBoxLayout()
         controlsLayout.addWidget(QLabel("Modules from"))
         controlsLayout.addWidget(self.modulesFromPublicRadio)
@@ -862,26 +613,14 @@ class ModuleSelectorWidget(QWidget):
         controlsLayout.addWidget(self.updateSourceWidget)
 
         layout.addWidget(self.treeWidget)
-        layout.addWidget(self.loadingLabel)
         layout.addLayout(controlsLayout)
 
         self.refreshModules()
 
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""
-        self.loadingLabel.show()
-        updateFilesFromServer()
-
-        def onFinished():
-            Module.updateUidsCache()
-            self.loadingLabel.hide()
-            self.applyMask()
-
-        global updateFilesThread
-        if updateFilesThread and updateFilesThread.isRunning():
-            updateFilesThread.finished.connect(onFinished)
-        else:
-            onFinished()
+        Module.updateUidsCache()
+        self.applyMask()
 
     def updateSource(self):
         updateSource = self.updateSourceWidget.currentIndex()
@@ -1486,7 +1225,7 @@ class TreeWidget(QTreeView):
             self.scrollTo(idx)
 
     def importModule(self):
-        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import", getPrivateModulesPath(), "*.xml")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", getPrivateModulesPath(), "*.xml")
         if not filePath:
             return
 
@@ -1496,10 +1235,10 @@ class TreeWidget(QTreeView):
             self.moduleModel.addModuleAt(m)
         except ET.ParseError:
             logger.error(f"'{filePath}': invalid module")
-            mainWindow.showLog()
+            self.window().showLog()
 
     def importScript(self):
-        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import script", getPrivateModulesPath(), "Python (*.py);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", getPrivateModulesPath(), "Python (*.py);;All files (*)")
         if not filePath:
             return
 
@@ -1522,19 +1261,19 @@ class TreeWidget(QTreeView):
         modules = self.selectedModules()
         msg = "\n".join(["{} -> {}".format(m.name(), m.getSavePath() or "N/A") for m in modules])
 
-        if QMessageBox.question(mainWindow, "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(self.window(), "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         shouldCommit, commitMessage = False, ""
-        if mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
-            shouldCommit, commitMessage = mainWindow.moduleHistoryWidget.showCommitMessageDialog()
+        if self.window().moduleHistoryWidget.isHistoryTrackingEnabled():
+            shouldCommit, commitMessage = self.window().moduleHistoryWidget.showCommitMessageDialog()
 
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
             outputPath = module.getSavePath()
 
             if not outputPath:
-                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save "+module.name(), os.path.join(getPrivateModulesPath(), module.name()), "*.xml")
+                outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save "+module.name(), os.path.join(getPrivateModulesPath(), module.name()), "*.xml")
 
             if outputPath:
                 dirname = os.path.dirname(outputPath)
@@ -1544,16 +1283,16 @@ class TreeWidget(QTreeView):
                 try:
                     module.saveToFile(outputPath)
                 except Exception as e:
-                    QMessageBox.critical(mainWindow, "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
+                    QMessageBox.critical(self.window(), "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
                 else:
                     if shouldCommit:
                         if not moduleHistoryBrowser.recordModuleSave(module, commitMessage):
-                            QMessageBox.critical(mainWindow, "Rig Builder", "Can't save history for '{}'".format(module.name()))
+                            QMessageBox.critical(self.window(), "Rig Builder", "Can't save history for '{}'".format(module.name()))
                     
                     self.moduleModel.dataChanged.emit(idx, idx) # refresh display
-                    mainWindow.attributesTabWidget.updateWidgetStyles()
+                    self.window().attributesTabWidget.updateWidgetStyles()
 
-        mainWindow.moduleHistoryWidget.updateModuleHistory()
+        self.window().moduleHistoryWidget.updateModuleHistory()
 
     def saveAsModule(self):
         selectedIndices = self.selectionModel().selectedRows()
@@ -1561,27 +1300,27 @@ class TreeWidget(QTreeView):
             return
 
         shouldCommit, commitMessage = False, ""
-        if mainWindow.moduleHistoryWidget.isHistoryTrackingEnabled():
-            shouldCommit, commitMessage = mainWindow.moduleHistoryWidget.showCommitMessageDialog()
+        if self.window().moduleHistoryWidget.isHistoryTrackingEnabled():
+            shouldCommit, commitMessage = self.window().moduleHistoryWidget.showCommitMessageDialog()
 
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
             outputDir = os.path.dirname(module.filePath()) or getPrivateModulesPath()
-            outputPath, _ = QFileDialog.getSaveFileName(mainWindow, "Save as "+module.name(), outputDir + "/" + module.name(), "*.xml")
+            outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save as "+module.name(), outputDir + "/" + module.name(), "*.xml")
 
             if outputPath:
                 try:
                     module.saveToFile(outputPath, newUid=True)
                 except Exception as e:
-                    QMessageBox.critical(mainWindow, "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
+                    QMessageBox.critical(self.window(), "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
                 else:
                     if shouldCommit:
                         moduleHistoryBrowser.recordModuleSave(module, commitMessage)
                         
                     self.moduleModel.dataChanged.emit(idx, idx) # refresh display
-                    mainWindow.attributesTabWidget.updateWidgetStyles()
+                    self.window().attributesTabWidget.updateWidgetStyles()
 
-        mainWindow.moduleHistoryWidget.updateModuleHistory()
+        self.window().moduleHistoryWidget.updateModuleHistory()
 
     def embedModule(self):
         modules = self.selectedModules()
@@ -1590,7 +1329,7 @@ class TreeWidget(QTreeView):
 
         msg = "\n".join([m.name() for m in modules])
 
-        if QMessageBox.question(mainWindow, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(self.window(), "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         selectedIndices = self.selectionModel().selectedRows()
@@ -1607,14 +1346,14 @@ class TreeWidget(QTreeView):
         Module.updateUidsCache()
 
         msg = "\n".join([m.name() for m in modules])
-        if QMessageBox.question(mainWindow, "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(self.window(), "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         selectedIndices = self.selectionModel().selectedRows()
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
             if not module.uid():
-                QMessageBox.warning(mainWindow, "Rig Builder", "Can't update module '{}': no uid".format(module.name()))
+                QMessageBox.warning(self.window(), "Rig Builder", "Can't update module '{}': no uid".format(module.name()))
                 continue
 
             module.update()
@@ -1733,7 +1472,7 @@ class TreeWidget(QTreeView):
         if askConfirmation:
             modules = self.selectedModules()
             msg = "\n".join([m.name() for m in modules])
-            if QMessageBox.question(mainWindow, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            if QMessageBox.question(self.window(), "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
         # Sort indices in reverse order to avoid shifting issues when removing
@@ -1748,7 +1487,7 @@ class TreeWidget(QTreeView):
             return
 
         msg = "\n".join([m.name() for m in modules])
-        if QMessageBox.question(mainWindow, "Rig Builder", "Publish modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(self.window(), "Rig Builder", "Publish modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         for m in modules:
@@ -2330,63 +2069,6 @@ class LogWidget(QTextEdit):
         return
 
 
-class DiffHighlighter(QSyntaxHighlighter):
-    """Git-style coloring for unified diff: removed red, added green, hunk header blue."""
-
-    def __init__(self, parent: QTextDocument):
-        super().__init__(parent)
-
-        self.defaultFormat = QTextCharFormat()
-        self.defaultFormat.setForeground(QColor(180, 180, 180))
-
-        self.removedFormat = QTextCharFormat()
-        self.removedFormat.setForeground(QColor(200, 100, 100))
-
-        self.addedFormat = QTextCharFormat()
-        self.addedFormat.setForeground(QColor(100, 200, 100))
-
-        self.hunkFormat = QTextCharFormat()
-        self.hunkFormat.setForeground(QColor(130, 130, 220))
-        self.hunkFormat.setFontWeight(QFont.Bold)
-
-    def highlightBlock(self, text: str):
-        if not text:
-            return
-        
-        if text.startswith("-") and not text.startswith("---"):
-            self.setFormat(0, len(text), self.removedFormat)
-        elif text.startswith("+") and not text.startswith("+++"):
-            self.setFormat(0, len(text), self.addedFormat)
-        elif text.startswith("@@"):
-            self.setFormat(0, len(text), self.hunkFormat)
-        else:
-            self.setFormat(0, len(text), self.defaultFormat)
-
-
-class DiffViewDialog(QDialog):
-    """Modal dialog showing inline unified diff with git-style coloring."""
-
-    def __init__(self, diffText: str, fromDesc: str, toDesc: str, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-
-        self.setWindowTitle("Diff: {} vs {}".format(fromDesc, toDesc))
-        self.setMinimumSize(700, 450)
-        self.resize(900, 550)
-
-        layout = QVBoxLayout(self)
-        self.textEdit = QPlainTextEdit()
-        self.textEdit.setReadOnly(True)
-        self.textEdit.setPlainText(diffText)
-        DiffHighlighter(self.textEdit.document())
-        layout.addWidget(self.textEdit)
-
-        closeBtn = QPushButton("🚪 Close")
-        closeBtn.clicked.connect(self.accept)
-        layout.addWidget(closeBtn)
-
-        centerWindow(self)
-
-
 class WideSplitterHandle(QSplitterHandle):
     def __init__(self, orientation: Qt.Orientation, parent: QWidget, **kwargs):
         super().__init__(orientation, parent, **kwargs)
@@ -2623,8 +2305,6 @@ class RigBuilderWindow(QFrame):
 
     def __init__(self):
         super().__init__()
-        global mainWindow
-        mainWindow = self
         self.modulesAutoReloadWatcher = None
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
@@ -2638,13 +2318,6 @@ class RigBuilderWindow(QFrame):
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         
-        self.logger = logging.getLogger('rigBuilder')
-        self.logger.setLevel(logging.DEBUG)
-        
-        self.logHandler = RigBuilderLogHandler()
-        self.logHandler.setLogWidget(self.logWidget)
-        self.logHandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-        self.logger.addHandler(self.logHandler)
         self._progressCounter = 0
 
         self.treeWidget = TreeWidget()
@@ -2653,6 +2326,7 @@ class RigBuilderWindow(QFrame):
         self.attributesTabWidget = AttributesTabWidget()
         self.attributesTabWidget.moduleChanged.connect(partial(self.treeWidget.moduleModel.layoutChanged.emit)) # refresh tree
         self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
+        self.attributesTabWidget.attributesChanged.connect(lambda: self.codeEditorWidget.updateState())
 
         self.codeEditorWidget = CodeEditorWidget()
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -2706,8 +2380,10 @@ class RigBuilderWindow(QFrame):
         self.hostRowWidget.setStyleSheet("border-bottom: 1px solid #444; padding-bottom: 2px;")
 
         self.moduleHistoryWidget = ModuleHistoryWidget(self)
+        self.moduleHistoryWidget.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
 
         self.docBrowser = DocBrowser()
+        self.docBrowser.moduleRequested.connect(self.selectModuleBySpec)
 
         self.rightSplitter = WideSplitter(Qt.Vertical, 4)
         self.rightSplitter.addWidget(self.attributesTabWidget)
@@ -2757,7 +2433,7 @@ class RigBuilderWindow(QFrame):
         centerWindow(self)
 
     def _onModuleExecutionRequested(self, code: str):
-        module = getCurrentModule()
+        module = self.treeWidget.currentModule()
         if not module:
             return
 
@@ -2881,7 +2557,7 @@ class RigBuilderWindow(QFrame):
 
         diffMenu = menu.addMenu("Diff")
         diffMenu.addAction("vs File", self.diffModule, "Alt+D")
-        diffMenu.addAction("vs Host", partial(self.diffModule, reference="server"), "Ctrl+Alt+D")
+        diffMenu.addAction("vs Reference", partial(self.diffModule, reference=True), "Ctrl+Alt+D")
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
         menu.addAction("Embed", self.treeWidget.embedModule)
@@ -2922,6 +2598,17 @@ class RigBuilderWindow(QFrame):
 
     def selectModule(self, module: Module):
         """Select a module in the tree."""
+        self.treeWidget.selectModule(module)
+
+    def selectModuleBySpec(self, spec: str):
+        """Load and select module by spec (UID, relative or full path)."""
+        try:
+            module = Module.loadModule(spec)
+        except ModuleNotFoundError:
+            logger.warning("Module not found: {}".format(spec))
+            return
+
+        self.treeWidget.addModule(module)
         self.treeWidget.selectModule(module)
 
     def editInVSCode(self):
@@ -2983,7 +2670,7 @@ class RigBuilderWindow(QFrame):
             targetModule.setRunCode(code)
             
             # Refresh UI if this module is currently selected
-            if getCurrentModule() == targetModule:
+            if self.treeWidget.currentModule() == targetModule:
                 self.codeEditorWidget.updateState()
 
         def startTrackedFileThread(filePath: str, callback: Callable[..., None]):
@@ -3037,9 +2724,7 @@ class RigBuilderWindow(QFrame):
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
-    def diffModule(self, *, reference: Optional[str] = None):
-        import difflib
-
+    def diffModule(self, *, reference: bool = False):
         module = self.treeWidget.currentModule()
         if not module:
             return
@@ -3054,19 +2739,7 @@ class RigBuilderWindow(QFrame):
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             originalXml = f.read()
 
-        fromDesc = path
-        toDesc = "Current"
-        diffLines = difflib.unified_diff(
-            originalXml.splitlines(),
-            currentXml.splitlines(),
-            fromfile=fromDesc,
-            tofile=toDesc,
-            lineterm="",
-        )
-        diffText = "\n".join(diffLines)
-
-        dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
-        dlg.exec()
+        DiffBrowserDialog(originalXml, currentXml, path, "Current", parent=self).exec()
                     
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
@@ -3114,12 +2787,8 @@ class RigBuilderWindow(QFrame):
                 self.codeEditorWidget.module = module
                 self.codeEditorWidget.updateState()
             
-        self.docBrowser.updateDoc()
+        self.docBrowser.updateDoc(module)
 
-    def showDiffView(self, diffText: str, fromDesc: str, toDesc: str):
-        """Show diff in a modal dialog (used by history link handler)."""
-        dlg = DiffViewDialog(diffText, fromDesc, toDesc, parent=self)
-        dlg.exec()
 
     def isCodeEditorHidden(self) -> bool:
         return self.workspaceSplitter.sizes()[1] == 0 # code section size
@@ -3148,20 +2817,20 @@ class RigBuilderWindow(QFrame):
         self.cleanupRun()
 
     def onErrorCallback(self, text: str, tb: str):
-        self.logger.error(text)
+        logger.error(text)
         printErrorStack()
         self.showLog()
         self.cleanupRun()
 
     def onPrintCallback(self, text: str):
-        self.logWidget.write(text + "\n")
+        logger.info(text)
 
     def cleanupRun(self):
         self.progressBarWidget.endProgress()
         self.runBtn.setEnabled(True)  
 
     def onRunCallback(self, path: str):
-        self.logger.info(f"{path} is running...")
+        logger.info(f"{path} is running...")
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
@@ -3190,7 +2859,7 @@ class RigBuilderWindow(QFrame):
 
         self.aboutToRunModule.emit()
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
-        self.logger.info(f"[{ts}] Running on {connectionManager.activeServerName()}")
+        logger.info(f"[{ts}] Running on {connectionManager.activeServerName()}")
 
         newModule = hostExecutor.runModule(currentModule)
 
@@ -3199,7 +2868,7 @@ class RigBuilderWindow(QFrame):
             if idx.isValid():
                 self.treeWidget.replaceModule(idx, newModule)
                 self.attributesTabWidget.updateTabs(newModule)
-                QTimer.singleShot(0, partial(self.logger.info, "Done!"))
+                QTimer.singleShot(0, partial(logger.info, "Done!"))
             else:            
                 QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
         
@@ -3259,7 +2928,7 @@ def cleanupVscode():
 # global references
 
 mainWindow = RigBuilderWindow()
-logger = mainWindow.logger
+logHandler.setTarget(mainWindow.logWidget)
 
 hostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
 hostExecutor.onPrint.connect(mainWindow.onPrintCallback)

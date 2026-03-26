@@ -147,10 +147,8 @@ class _MainWindowProxy:
 
     def __init__(self, logWidget):
         self.logWidget = logWidget
-        self.logger = logging.getLogger("rigBuilder.functionBrowser")
-        if not self.logger.handlers:
-            self.logger.addHandler(logging.StreamHandler(stream=sys.stdout))
-        self.logger.setLevel(logging.INFO)
+        from .logger import logger
+        self.logger = logger
 
     def showLog(self):
         return
