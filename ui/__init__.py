@@ -145,19 +145,16 @@ class AttributesWidget(QWidget):
         # Presets submenu
         presetsMenu = menu.addMenu("Presets")
         presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
-
         presetsMenu.addAction("Save as Preset...", partial(self._saveAsPreset, attrWidgetIndex))
         
-        # Apply Preset (filtered by template)
-        applyMenu = presetsMenu.addMenu("Apply Preset")
+        # Presets filtered by template
         presets = WidgetPresetManager.presets()
         compatiblePresets = {name: data for name, data in presets.items() if data.get("template") == attr.template()}
         
-        if not compatiblePresets:
-            applyMenu.setEnabled(False)
-        else:
+        if compatiblePresets:
+            presetsMenu.addSeparator()
             for name, data in sorted(compatiblePresets.items()):
-                applyMenu.addAction(name, partial(self._applyPreset, attrWidgetIndex, data["data"]))
+                presetsMenu.addAction(name, partial(self._applyPreset, attrWidgetIndex, data["data"]))
 
         menu.popup(event.globalPos())
 
@@ -1712,16 +1709,13 @@ class EditAttributesWidget(QWidget):
         menu = QMenu(self)
 
         presetsMenu = menu.addMenu("Presets")
-        
-        addFromPresetMenu = presetsMenu.addMenu("Add from Preset")
-        presets = WidgetPresetManager.presets()
-        if not presets:
-            addFromPresetMenu.setEnabled(False)
-        else:
-            for name, data in sorted(presets.items()):
-                addFromPresetMenu.addAction(f"{name} ({data['template']})", partial(self._addFromPreset, data))
-        
         presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
+        
+        presets = WidgetPresetManager.presets()
+        if presets:
+            presetsMenu.addSeparator()
+            for name, data in sorted(presets.items()):
+                presetsMenu.addAction(f"{name} ({data['template']})", partial(self._addFromPreset, data))        
 
         menu.addAction("Add", self.addTemplateAttribute)
         menu.addAction("Copy visible", self.copyVisibleAttributes)
