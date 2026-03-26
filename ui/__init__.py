@@ -1708,6 +1708,14 @@ class EditAttributesWidget(QWidget):
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
 
+        menu.addAction("Add", self.addTemplateAttribute)
+        menu.addAction("Copy visible", self.copyVisibleAttributes)
+
+        if EditTemplateWidget.Clipboard:
+            menu.addAction("Paste", self.pasteAttribute)
+
+        menu.addSeparator()
+
         presetsMenu = menu.addMenu("Presets")
         presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
         
@@ -1716,12 +1724,6 @@ class EditAttributesWidget(QWidget):
             presetsMenu.addSeparator()
             for name, data in sorted(presets.items()):
                 presetsMenu.addAction(f"{name} ({data['template']})", partial(self._addFromPreset, data))        
-
-        menu.addAction("Add", self.addTemplateAttribute)
-        menu.addAction("Copy visible", self.copyVisibleAttributes)
-
-        if EditTemplateWidget.Clipboard:
-            menu.addAction("Paste", self.pasteAttribute)
 
         if EditAttributesWidget.RecentTemplates:
             menu.addSeparator()
