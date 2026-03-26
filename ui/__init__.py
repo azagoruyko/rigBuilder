@@ -2501,12 +2501,16 @@ class ManageHostsDialog(QDialog):
         pub = self.pubPortEdit.text() or "0"
 
         try:
-            self.codeEdit.setPlainText(HOST_STARTUP_TEMPLATE.format(
-                host=host, HostClass=HostClass, rep_port=rep, pub_port=pub,
-                rigBuilderPath=os.path.dirname(RigBuilderPath)))
-
+            code = HOST_STARTUP_TEMPLATE.format(
+                HostClass=HostClass,
+                host=host,
+                rigBuilderPath=os.path.dirname(RigBuilderPath),
+                rep_port=rep,
+                pub_port=pub
+            )
+            self.codeEdit.setPlainText(code)
         except Exception as e:
-            self.codeEdit.setPlainText("# error generating code: " + str(e))
+            self.codeEdit.setPlainText("# Error generating code: " + str(e))
 
     def _copyCode(self):
         QApplication.clipboard().setText(self.codeEdit.toPlainText())
@@ -2515,7 +2519,6 @@ class ManageHostsDialog(QDialog):
 
     def _refreshList(self):
         self.listWidget.clear()
-        # Sort on UI side and store name as user data
         servers = connectionManager.servers()
         for name in sorted(servers.keys(), key=lambda x: x.lower()):
             entry = servers[name]
@@ -2532,7 +2535,7 @@ class ManageHostsDialog(QDialog):
             connectionManager.addServer(
                 self.nameEdit.text().strip(), self.hostCombo.currentText().strip(),
                 self.addressEdit.text().strip(),
-                int(self.repPortEdit.text()), int(self.pubPortEdit.text()))
+                int(self.repPortEdit.text() or "0"), int(self.pubPortEdit.text() or "0"))
 
             self.hostsChanged.emit()
             self._refreshList()
