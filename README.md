@@ -60,6 +60,7 @@ To execute modules inside a host, you must install **`zmq`** (or `pyzmq`) in tha
 #### 🧱 Blender
 - **Python**: `C:\Program Files\Blender Foundation\Blender<version>\python\bin\python.exe`
 - **Install**: `.\python.exe -m pip install zmq`
+- **In case of troubles**: try `.\python.exe -m pip install --upgrade --target="BLENDER-PATH\python\lib\site-packages" pyzmq`
 
 #### 🎮 Unreal Engine (5.6+)
 1. Enable the **"Python Editor Script Plugin"** in Settings.
