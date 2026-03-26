@@ -350,8 +350,6 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.templates = {}
-        
         self.buttonCommand = 'print("Hello, world!")'
         self.buttonEnabled = True
         self.value = ""
@@ -458,19 +456,6 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         if self.buttonEnabled:
             menu.addSeparator()
             menu.addAction("Disable button", lambda: self.setButtonEnabled(False))
-
-        if self.templates:
-            def setCommand(cmd):
-                if self.buttonWidget.text() == cmd["label"] and self.buttonCommand == cmd["command"]:
-                    return
-                self.buttonWidget.setText(cmd["label"])
-                self.buttonCommand = cmd["command"]
-                self.somethingChanged.emit()
-
-            templatesMenu = QMenu("Templates", self)
-            for k, cmd in self.templates.items():
-                templatesMenu.addAction(k, lambda cmd=cmd:setCommand(cmd))
-            menu.addMenu(templatesMenu)
 
         menu.popup(event.globalPos())
 
