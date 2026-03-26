@@ -2552,7 +2552,7 @@ class RigBuilderWindow(QFrame):
 
         diffMenu = menu.addMenu("Diff")
         diffMenu.addAction("vs File", self.diffModule, "Alt+D")
-        diffMenu.addAction("vs Reference", partial(self.diffModule, reference=True), "Ctrl+Alt+D")
+        diffMenu.addAction("vs Public", partial(self.diffModule, reference="public"), "Ctrl+Alt+D")
 
         menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
         menu.addAction("Embed", self.treeWidget.embedModule)
@@ -2719,7 +2719,7 @@ class RigBuilderWindow(QFrame):
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
-    def diffModule(self, *, reference: bool = False):
+    def diffModule(self, *, reference: Optional[str] = None):
         module = self.treeWidget.currentModule()
         if not module:
             return
