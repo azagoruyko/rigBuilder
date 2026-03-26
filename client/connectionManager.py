@@ -137,6 +137,7 @@ connectionManager = ConnectionManager()
 defaultServer = connectionManager.findServer("Default")
 if not defaultServer:
     connectionManager.addServer("Default", "standalone", "127.0.0.1", 7000, 7001)
+    defaultServer = connectionManager.findServer("Default")
 
 defaultStandaloneServer = StandaloneServer(defaultServer["rep_port"], defaultServer["pub_port"])
 defaultStandaloneServer.start()
