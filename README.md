@@ -36,17 +36,17 @@ At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
 ## 🚀 Quick Start
 
 ### 1. Installation
-Clone the repository and install the required dependencies for the standalone application:
+Clone the repository and run the installation script which will set up a virtual environment and install dependencies:
 ```bash
 git clone https://github.com/azagoruyko/rigBuilder.git
 cd rigBuilder
-pip install -r requirements.txt
+install.bat
 ```
 
 ### 2. Launch
-Run RigBuilder as a standalone window:
+Run RigBuilder using the launch script:
 ```bash
-python run.py
+run.bat
 ```
 
 ### 3. Host Setup (Connectivity)
