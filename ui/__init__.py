@@ -2057,7 +2057,6 @@ class LogWidget(QTextEdit):
     def write(self, txt: str):
         self.insertPlainText(txt)
         self.ensureCursorVisible()
-        QApplication.processEvents()
 
     def flush(self):
         return
