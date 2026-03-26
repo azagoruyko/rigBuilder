@@ -71,7 +71,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
 
 # --- Squash ---
 
-def squashHistory(message: str = "Initial squashed") -> Tuple[bool, str]:
+def squashHistory() -> Tuple[bool, str]:
     """
     Squash entire history into a single commit using an orphan branch. The repo
     will have one commit with the current tree. Returns (success, errorMessage).
@@ -92,8 +92,7 @@ def squashHistory(message: str = "Initial squashed") -> Tuple[bool, str]:
     if err:
         repo("checkout {}".format(branch))
         return False, "Failed to create orphan branch: {}".format(err)
-    msg = (message or "Squashed history").strip()
-    err, _ = repo.commit(msg, [])
+    err, _ = repo.commit("Squashed history", [])
     if err:
         repo("checkout {}".format(branch))
         repo("branch -D {}".format(tempBranch))
@@ -175,11 +174,16 @@ def buildHistoryHtml(filterText: str = "") -> str:
             datePart = dateTimeParts[0] if dateTimeParts else ""
             timePart = dateTimeParts[1] if len(dateTimeParts) > 1 else ""
             for uid in entry["files"]:
+                label = subject
+                if subject.startswith("Squashed history"):
+                    filePath = Module.PrivateUids.get(uid) or Module.PublicUids.get(uid) or "Unknown"
+                    label = os.path.splitext(os.path.basename(filePath))[0]
+
                 diffUrl = "{}:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 recoverUrl = "{}:recover:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 diffLink = "<a href='{}' title='View diff for this commit'>diff</a>".format(diffUrl)
                 recoverLink = " <a href='{}' title='Add module from this revision to the tree'>recover</a>".format(recoverUrl)
-                line = "{}, {}, {} {}{}".format(escape(datePart), escape(timePart), escape(subject), diffLink, recoverLink)
+                line = "{}, {}, {} {}{}".format(escape(datePart), escape(timePart), escape(label), diffLink, recoverLink)
                 parts.append("<p>{}</p>".format(line))
     return "".join(parts)
 
@@ -316,7 +320,7 @@ class ModuleHistoryWidget(QWidget):
             QMessageBox.No,
         ) != QMessageBox.Yes:
             return
-        success, errMsg = squashHistory("Initial squashed")
+        success, errMsg = squashHistory()
         if success:
             self.updateModuleHistory()
         else:
