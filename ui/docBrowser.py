@@ -3,17 +3,14 @@ from functools import partial
 from ..qt import *
 from ..core import Module
 from .logger import logger
+import markdown
 
 def convertMarkdownToHTML(text: str) -> str:
     """Convert Markdown to HTML."""
-    try:
-        import markdown
-        return markdown.markdown(text, extensions=['fenced_code', 'codehilite', 'tables', 'extra', 'sane_lists'], output_format="html5")
-    except ImportError:
-        if text:
-            text = "<b>Markdown is not installed. Using simple HTML conversion.</b><br><br>" + text
-            text = convertTextToHTML(text)
-    return text
+    return markdown.markdown(
+        text, 
+        extensions=['fenced_code', 'codehilite', 'tables', 'extra', 'sane_lists'], 
+        output_format="html5")
 
 def convertTextToHTML(text: str) -> str:
     """Convert text to HTML."""
