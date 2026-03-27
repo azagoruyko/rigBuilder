@@ -1,6 +1,7 @@
 # 🏗️ RigBuilder
 
 [![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
+![Commits since latest release](https://img.shields.io/github/commits-since/azagoruyko/rigBuilder/latest)
 [![Docs](https://img.shields.io/badge/docs-wiki-blue?logo=github)](https://github.com/azagoruyko/rigBuilder/wiki/Documentation)
 
 **RigBuilder** is a standalone application for managing scripts and complex hierarchies of scripts with the connections and expressions which can be executed in any host application (Maya, Blender, Unreal Engine, etc.).
