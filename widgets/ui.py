@@ -379,6 +379,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         self.buttonCommand = 'print("Hello, world!")'
         self.buttonEnabled = True
         self.value = ""
+        self.placeholderText = ""
         self.minValue = 0
         self.maxValue = 100
         self.validator = 0
@@ -443,8 +444,16 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         enableButtonAction.setCheckable(True)
         enableButtonAction.setChecked(self.buttonEnabled)
         enableButtonAction.triggered.connect(lambda checked: self.setButtonEnabled(checked))
+        menu.addAction("Set placeholder...", self.editPlaceholder)
         menu.addAction("Options...", self._onOptionsClicked)
         menu.popup(event.globalPos())
+
+    def editPlaceholder(self):
+        text, ok = QInputDialog.getText(self, "Rig Builder", "Placeholder text", QLineEdit.Normal, self.placeholderText)
+        if ok and text != self.placeholderText:
+            self.placeholderText = text
+            self.textWidget.setPlaceholderText(self.placeholderText)
+            self.somethingChanged.emit()
 
     def _onOptionsClicked(self):
         oldState = (self.minValue, self.maxValue, self.validator)
@@ -532,6 +541,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
 
     def getJsonData(self):
         return {"value": self.value,
+                "placeholder": self.placeholderText,
                 "buttonCommand": self.buttonCommand,
                 "buttonLabel": self.buttonWidget.text(),
                 "buttonEnabled": self.buttonEnabled,
@@ -545,6 +555,8 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
         self.minValue = int(data.get("min") or self.defaultMin)
         self.maxValue = int(data.get("max") or self.defaultMax)
         self.value = data.get("value", "")
+        self.placeholderText = data.get("placeholder", "")
+        self.textWidget.setPlaceholderText(self.placeholderText)
 
         if self.validator == 1: # int
             validator = QIntValidator()
