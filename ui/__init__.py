@@ -1619,9 +1619,23 @@ class EditTemplateWidget(QWidget):
 
         menu.addSeparator()
         presetsMenu = menu.addMenu("Presets")
-        presetsMenu.addAction("Save as Preset...", self._saveAsPreset)
+        presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
+        presetsMenu.addAction("Save as Preset...", self._saveAsPreset) 
+
+        presets = WidgetPresetManager.presets()
+        if presets:
+            matchingPresets = {name: data for name, data in presets.items() if data["template"] == self.template}
+            if matchingPresets:
+                presetsMenu.addSeparator()
+                for name, data in sorted(matchingPresets.items()):
+                    presetsMenu.addAction(name, partial(self._applyPreset, data))
 
         menu.popup(event.globalPos())
+
+    def _applyPreset(self, presetData: dict):
+        data = presetData["data"]
+        self.templateWidget.setJsonData(data)
+        self.attrModified = True
 
     def _saveAsPreset(self):
         name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, self.nameWidget.text())
@@ -1723,7 +1737,7 @@ class EditAttributesWidget(QWidget):
         if presets:
             presetsMenu.addSeparator()
             for name, data in sorted(presets.items()):
-                presetsMenu.addAction(f"{name} ({data['template']})", partial(self._addFromPreset, data))        
+                presetsMenu.addAction(f"{name} ({data['template']})", partial(self._addFromPreset, name, data))        
 
         if EditAttributesWidget.RecentTemplates:
             menu.addSeparator()
@@ -1737,7 +1751,7 @@ class EditAttributesWidget(QWidget):
 
         menu.popup(event.globalPos())
 
-    def _addFromPreset(self, presetData: dict):
+    def _addFromPreset(self, presetName: str, presetData: dict):
         template = presetData["template"]
         data = presetData["data"]
         w = self.insertCustomWidget(template)
@@ -1745,7 +1759,7 @@ class EditAttributesWidget(QWidget):
             w.templateWidget.setJsonData(data)
             # Find unique name for the new attribute
             existingNames = {self.attributesLayout.itemAt(k).widget().nameWidget.text() for k in range(self.attributesLayout.count()) if self.attributesLayout.itemAt(k).widget()}
-            w.nameWidget.setText(findUniqueName("attr_preset", existingNames))
+            w.nameWidget.setText(findUniqueName(presetName, existingNames))
 
     def copyVisibleAttributes(self):
         EditTemplateWidget.Clipboard = []
