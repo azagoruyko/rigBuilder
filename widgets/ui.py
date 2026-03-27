@@ -1717,7 +1717,7 @@ class CompoundTemplateWidget(TemplateWidget):
             self.setJsonData({"templates": templates, "widgets": widgets, "values": values, "default": "values"})
             self.somethingChanged.emit()
 
-        dlg = EditCompountWidgetsDialog(parent=self)
+        dlg = EditCompountWidgetsDialog(self, parent=self)
         dlg.saved.connect(saveWidgets)
         dlg.exec_()
 
