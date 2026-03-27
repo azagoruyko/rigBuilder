@@ -144,6 +144,7 @@ class ButtonTemplateWidget(TemplateWidget):
         super().__init__(**kwargs)
 
         self.buttonCommand = ""
+        self.buttonColor = ""
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -160,8 +161,29 @@ class ButtonTemplateWidget(TemplateWidget):
 
         menu.addAction("Edit label", self.editLabel)
         menu.addAction("Edit command", self.editCommand)
+        menu.addSeparator()
+        menu.addAction("Set color", self._onSetColor)
+        menu.addAction("Clear color", self._onClearColor)
 
         menu.popup(event.globalPos())
+
+    def _onSetColor(self):
+        color = QColorDialog.getColor(initial=QColor(self.buttonColor or "#AAAAAA"), parent=self)
+        if color.isValid():
+            self.buttonColor = color.name()
+            self._updateButtonStyle()
+            self.somethingChanged.emit()
+
+    def _onClearColor(self):
+        self.buttonColor = ""
+        self._updateButtonStyle()
+        self.somethingChanged.emit()
+
+    def _updateButtonStyle(self):
+        if self.buttonColor:
+            self.buttonWidget.setStyleSheet("QPushButton { background-color: %s }" % self.buttonColor)
+        else:
+            self.buttonWidget.setStyleSheet("")
 
     def editLabel(self):
         newName, ok = QInputDialog.getText(self, "Rename", "New label", QLineEdit.Normal, self.buttonWidget.text())
@@ -194,16 +216,20 @@ class ButtonTemplateWidget(TemplateWidget):
     def getDefaultData(self):
         return {"command": 'chset("/someAttr", 1)',
                 "label": "Press me",
+                "color": "",
                 "default": "label"}
 
     def getJsonData(self):
         return {"command": self.buttonCommand,
                 "label": self.buttonWidget.text(),
+                "color": self.buttonColor,
                 "default": "label"}
 
     def setJsonData(self, data):
         self.buttonCommand = data["command"]
         self.buttonWidget.setText(data["label"])
+        self.buttonColor = data.get("color", "")
+        self._updateButtonStyle()
 
 class CheckBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
