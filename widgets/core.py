@@ -1,5 +1,9 @@
 import math
+from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 from ..utils import *
+
+if TYPE_CHECKING:
+    from ..core import Module
 
 # curve functions
 
@@ -92,44 +96,56 @@ def comboBox_setItems(data, items):
 
 # button functions
 
-def runButtonCommand(module, buttonLabel):
-    """Execute button command by label.
+def runButtonCommand(module: 'Module', buttonLabel: str) -> Optional[Dict[str, Any]]:
+    """Execute button command by label, supporting nested buttons in compound attributes.
     
     Args:
         module: Module object containing attributes
         buttonLabel: Label text of the button to execute
     
     Returns:
-        dict: Environment dictionary after execution
+        Optional[dict]: Environment dictionary after execution, or None if not found (though it raises ValueError if not found)
     """
-    lineEditAndButtonTemplate = "lineEditAndButton"
-    supportedTemplates = {"button", lineEditAndButtonTemplate}
+    supportedTemplates = {"button", "lineEditAndButton"}
 
+    def findAndRun(data: Dict[str, Any], template: str) -> Optional[Dict[str, Any]]:
+        """Recursive helper to find and execute a button command."""
+        if template in supportedTemplates:
+            matchesLabel = data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel
+            if not matchesLabel:
+                return
+
+            command = data.get("buttonCommand") or data.get("command", "")
+            if not command:
+                return
+
+            isLineEditAndButton = template == "lineEditAndButton"
+            execContext = {}
+            if isLineEditAndButton:
+                execContext["value"] = smartConversion(data.get("value", ""))
+            
+            ctx = module.executeCode(command, execContext)
+            
+            if isLineEditAndButton:
+                newValue = ctx.get("value", data.get("value", ""))
+                data["value"] = newValue   
+            
+            return ctx
+
+        elif template == "compound":
+            widgets = data.get("widgets", [])
+            templates = data.get("templates", [])
+            
+            for i, (wTemplate, wData) in enumerate(zip(templates, widgets)):
+                ctx = findAndRun(wData, wTemplate)
+                if ctx:
+                    return ctx        
+        
     for attr in module.attributes():
-        template = attr.template()
-        if template not in supportedTemplates:
-            continue
-
         data = attr.localData()
-        matchesLabel = data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel
-        if not matchesLabel:
-            continue
-
-        command = data.get("buttonCommand") or data.get("command", "")
-        if not command:
-            continue
-
-        execContext = {}
-        isLineEditAndButton = template == lineEditAndButtonTemplate
-        if isLineEditAndButton:
-            execContext["value"] = smartConversion(data.get("value", ""))
-
-        ctx = module.executeCode(command, execContext)
-
-        if isLineEditAndButton:
-            data["value"] = ctx.get("value", data.get("value", ""))
-            attr.setData(data)
-
-        return ctx
+        ctx = findAndRun(data, attr.template())
+        if ctx:
+            attr.setLocalData(data)
+            return ctx
     
     raise ValueError(f"Button with label '{buttonLabel}' not found in module '{module.name()}'")    
