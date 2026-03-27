@@ -44,7 +44,7 @@ def replacePairs(pairs: list[tuple[str, str]], text: str) -> str:
 def smartConversion(x: str):
     """Try to parse string as JSON, fallback to string."""
     try:
-        return json.loads(x)
+        return json.loads(str(x))
     except ValueError:
         return str(x)
 
