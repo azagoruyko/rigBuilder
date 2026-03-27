@@ -1675,7 +1675,7 @@ class EditCompountWidgetsDialog(QDialog):
 
     def itemFromWidget(self, w):
         item = QListWidgetItem()
-        item.setIcon(QIcon(QPixmap.grabWidget(w)))
+        item.setIcon(QIcon(w.grab()))
         item.setText(w.template)
         item.setData(Qt.UserRole, w.getJsonData())        
         return item
