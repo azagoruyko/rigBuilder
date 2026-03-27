@@ -119,12 +119,12 @@ def runButtonCommand(module, buttonLabel):
         if not command:
             continue
 
-        ctx = module.context()
+        execContext = {}
         isLineEditAndButton = template == lineEditAndButtonTemplate
         if isLineEditAndButton:
-            ctx["value"] = smartConversion(data.get("value", ""))
+            execContext["value"] = smartConversion(data.get("value", ""))
 
-        exec(command, ctx)
+        ctx = module.executeCode(command, execContext)
 
         if isLineEditAndButton:
             data["value"] = ctx.get("value", data.get("value", ""))
