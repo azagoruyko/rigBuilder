@@ -1488,7 +1488,7 @@ class TreeWidget(QTreeView):
             return
 
         for m in modules:
-            publishModule(m)
+            m.publish()
         
         self.moduleModel.layoutChanged.emit() # refresh display as source might change
 
