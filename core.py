@@ -662,7 +662,6 @@ class Module(object):
         module._name = root.attrib.get("name", "")
         module._uid = root.attrib.get("uid", "")
         module._muted = int(root.attrib.get("muted", 0))
-        module._modified = bool(int(root.attrib.get("modified", 0)))
         module._filePath = root.attrib.get("filePath", "")
         module._runCode = root.findtext("run") or ""
         
@@ -681,6 +680,7 @@ class Module(object):
             for ch in children_el.findall("module"):
                 module.addChild(Module.fromXml(ch))
 
+        module._modified = bool(int(root.attrib.get("modified", 0))) # set modified flag after all children/attributes are added
         return module
 
     def loadedFromPublic(self) -> bool:
