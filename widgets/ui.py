@@ -227,7 +227,7 @@ class ButtonTemplateWidget(TemplateWidget):
 
     def setJsonData(self, data):
         self.buttonCommand = data["command"]
-        self.buttonWidget.setText(data["label"])
+        self.buttonWidget.setText(str(data["label"]))
         self.buttonColor = data.get("color", "")
         self._updateButtonStyle()
 
@@ -976,7 +976,7 @@ class TableTemplateWidget(TemplateWidget):
         self.resizeWidget()
 
     def getDefaultData(self):
-        return {"items": [("a", "1")], "header": ["name", "value"], "default": "items"}
+        return {"items": [["a", "1"]], "header": ["name", "value"], "default": "items"}
 
     def getJsonData(self):
         sortedColumns = sorted([c for c in range(self.tableWidget.columnCount())], key=lambda c: self.tableWidget.visualColumn(c))
@@ -1001,8 +1001,14 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.setHorizontalHeaderLabels(value["header"])
 
         items = value["items"]
+        if type(items) != list:
+            items = [items]
+
         self.tableWidget.setRowCount(len(items))
         for r, row in enumerate(items):
+            if type(row) != list:
+                row = [row]
+
             for c in range(len(value["header"])): # fill each column
                 if c < len(row):
                     data = row[c]
@@ -1063,7 +1069,7 @@ class TextTemplateWidget(TemplateWidget):
 
     def setJsonData(self, data):
         with blockedWidgetContext(self.textWidget) as w:
-            w.setPlainText(data["text"])
+            w.setPlainText(fromSmartConversion(data["text"]))
             w.setFixedHeight(data.get("height", self.getDefaultData()["height"]))
 
 class VectorTemplateWidget(TemplateWidget):
@@ -1161,7 +1167,11 @@ class VectorTemplateWidget(TemplateWidget):
         
         for i in range(self.vectorDim):
             v = value["value"][i] if i < len(value["value"]) else 0.0
-            widget = QLineEdit(str(round(v, self.precision)))
+            try:
+                v = round(v, self.precision)
+            except:
+                v = 0.0
+            widget = QLineEdit(str(v))
             widget.setValidator(validator)
             widget.editingFinished.connect(self.somethingChanged.emit)
             widget.contextMenuEvent = lambda event, w=widget: widgetContextMenu(event, w)
