@@ -574,7 +574,7 @@ class ModuleSelectorWidget(QWidget):
         self.updateSourceWidget = QComboBox()
         self.updateSourceWidget.addItems(["All", "Public", "Private", "None"])
         self.updateSourceWidget.setCurrentIndex({"all": 0, "public": 1, "private": 2, "": 3}[Module.UpdateSource])
-        self.updateSourceWidget.currentIndexChanged.connect(partial(self.updateSource))
+        self.updateSourceWidget.currentIndexChanged.connect(lambda *_: self.updateSource())
 
         self.modulesFromButtonGroup = QButtonGroup(self)
         self.modulesFromPublicRadio = QRadioButton("Public")
@@ -1550,7 +1550,7 @@ class TemplateSelectorDialog(QDialog):
             self.gridLayout.addWidget(w)
 
             selectBtn = QPushButton("✅ Select")
-            selectBtn.clicked.connect(partial(self.selectTemplate, t))
+            selectBtn.clicked.connect(lambda *_: self.selectTemplate(t))
             self.gridLayout.addWidget(selectBtn)
 
 class EditTemplateWidget(QWidget):
@@ -2332,14 +2332,14 @@ class RigBuilderWindow(QFrame):
         self.treeWidget = TreeWidget()
         self.treeWidget.selectionModel().selectionChanged.connect(self._onTreeSelectionChanged)
 
-        self.attributesTabWidget = AttributesTabWidget()
-        self.attributesTabWidget.moduleChanged.connect(partial(self.treeWidget.moduleModel.layoutChanged.emit)) # refresh tree
-        self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
-        self.attributesTabWidget.attributesChanged.connect(lambda: self.codeEditorWidget.updateState())
-
         self.codeEditorWidget = CodeEditorWidget()
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
+
+        self.attributesTabWidget = AttributesTabWidget()
+        self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
+        self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
+        self.attributesTabWidget.attributesChanged.connect(self.codeEditorWidget.updateState)
 
         self.vscodeBtn = QPushButton("📝 Edit in VSCode")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
