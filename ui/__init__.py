@@ -1550,7 +1550,7 @@ class TemplateSelectorDialog(QDialog):
             self.gridLayout.addWidget(w)
 
             selectBtn = QPushButton("✅ Select")
-            selectBtn.clicked.connect(lambda *_: self.selectTemplate(t))
+            selectBtn.clicked.connect(partial(self.selectTemplate, t))
             self.gridLayout.addWidget(selectBtn)
 
 class EditTemplateWidget(QWidget):
