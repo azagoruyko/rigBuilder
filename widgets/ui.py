@@ -248,7 +248,7 @@ class CheckBoxTemplateWidget(TemplateWidget):
 
     def setJsonData(self, value):
         with blockedWidgetContext(self.checkBox) as w:
-            w.setChecked(value["checked"])
+            w.setChecked(True if value["checked"] else False)
 
 class ComboBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
