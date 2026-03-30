@@ -781,7 +781,10 @@ class ModuleModel(QAbstractItemModel):
 
         if role == Qt.DisplayRole or role == Qt.EditRole:
             if column == 0:
-                return module.name()+("*" if module.modified() else "")
+                name = module.name()
+                if role == Qt.DisplayRole and module.modified():
+                    name += "*"
+                return name
 
             elif column == 1:
                 return module.relativePathString().replace("\\", "/") + " "
