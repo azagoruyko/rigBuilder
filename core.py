@@ -46,7 +46,6 @@ class AttributeResolverError(Exception):pass
 class AttributeExpressionError(Exception):pass
 class ModuleNotFoundError(Exception):pass
 class CopyJsonError(Exception):pass
-class ModuleRuntimeError(Exception):pass
 class APIError(Exception):pass
 
 
@@ -936,9 +935,7 @@ class Module(object):
         try:
             exec(replaceAttrPrefix(code), ctx)
         except ExitModuleException:
-            pass            
-        except Exception as e:
-            raise ModuleRuntimeError(f"Module '{self.name()}': {str(e)}") from e
+            pass
         
         return ctx
 

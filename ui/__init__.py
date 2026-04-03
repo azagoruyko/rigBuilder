@@ -2829,8 +2829,7 @@ class RigBuilderWindow(QFrame):
         self.cleanupRun()
 
     def onErrorCallback(self, text: str, tb: str):
-        logger.error(text)
-        printErrorStack()
+        logger.error("\n".join([tb, "Error: {}".format(text)]))
         self.showLog()
         self.cleanupRun()
 

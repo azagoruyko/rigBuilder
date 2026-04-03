@@ -91,9 +91,9 @@ def captureOutput(stream: io.TextIOBase):
     with redirect_stdout(stream), redirect_stderr(stream):
         yield stream
 
-def printErrorStack():
-    """Print formatted error stack trace."""
-    exc_type, exc_value, exc_traceback = sys.exc_info()
+def getErrorStack():
+    """Get formatted error stack trace."""
+    _, _, exc_traceback = sys.exc_info()
 
     tbs = []
     tb = exc_traceback
@@ -102,16 +102,17 @@ def printErrorStack():
         tb = tb.tb_next
 
     skip = True
-    indent = "  "
+    indent = 0
+    out = []
     for tb in tbs:
         if tb.tb_frame.f_code.co_filename == "<string>":
             skip = False
 
         if not skip:
-            print("{}{}, {}, in line {},".format(indent, tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name, tb.tb_lineno))
-            indent += "  "
-    if exc_value:
-        print("Error: {}".format(exc_value))
+            out.append("{}{}, {}, in line {},".format("  " * indent, tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name, tb.tb_lineno))
+            indent += 1
+    
+    return "\n".join(out)
 
 def findOpeningBracketPosition(text: str, offset: int, brackets: str = "{(["):
     """Find position of opening bracket matching the bracket at offset."""

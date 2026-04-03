@@ -5,7 +5,7 @@ import traceback
 import xml.etree.ElementTree as ET
 
 from ..core import Module, APIRegistry
-from ..utils import captureOutput, jsonifyContext
+from ..utils import captureOutput, jsonifyContext, getErrorStack
 
 
 class _StreamCapture(io.TextIOBase):
@@ -51,7 +51,7 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
         root = Module.fromXml(ET.fromstring(moduleXml))  # payload root (sent by the client)
     except Exception as e:
         msg = str(e)
-        tb = traceback.format_exc()
+        tb = getErrorStack()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
         emitFn({"event": "finished", "id": runId})
         return {"ok": False, "error": msg, "traceback": tb, "id": runId}
@@ -74,7 +74,7 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
             module.run(callback=runCallback)
         except Exception as e:
             msg = str(e)
-            tb = traceback.format_exc()
+            tb = getErrorStack()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
             emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
@@ -83,7 +83,7 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
         xmlOut = root.toXml()
     except Exception as e:
         msg = "Failed to serialize root module to XML"
-        tb = traceback.format_exc()
+        tb = getErrorStack()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
         emitFn({"event": "finished", "id": runId})
         return {"ok": False, "error": msg, "traceback": tb, "id": runId}
@@ -104,7 +104,7 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
         root = Module.fromXml(ET.fromstring(moduleXml))
     except Exception as e:
         msg = str(e)
-        tb = traceback.format_exc()
+        tb = getErrorStack()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
         emitFn({"event": "finished", "id": runId})
         return {"ok": False, "error": msg, "traceback": tb, "id": runId}
@@ -124,7 +124,7 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
             module.executeCode(code)
         except Exception as e:
             msg = str(e)
-            tb = traceback.format_exc()
+            tb = getErrorStack()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
             emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
@@ -133,7 +133,7 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
         xmlOut = root.toXml()
     except Exception as e:
         msg = "Failed to serialize root module to XML"
-        tb = traceback.format_exc()
+        tb = getErrorStack()
         emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
         emitFn({"event": "finished", "id": runId})
         return {"ok": False, "error": msg, "traceback": tb, "id": runId}
@@ -153,7 +153,7 @@ def executeCode(code: str, emitFn, runId: str) -> dict:
             exec(code, context)
         except Exception as e:
             msg = str(e)
-            tb = traceback.format_exc()
+            tb = getErrorStack()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
             emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}

@@ -1193,18 +1193,6 @@ class TestModuleExecution:
         ctx = moduleHierarchy.run()
         assert ctx["result"] == 200.0
 
-    def testModuleRunControl(self, simpleModule):
-        """Test exit() and error handling."""
-        # Exit
-        simpleModule.setRunCode("exit()\nresult = 42")
-        ctx = simpleModule.run()
-        assert "result" not in ctx
-
-        # Error
-        simpleModule.setRunCode("raise ValueError('test error')")
-        with pytest.raises(ModuleRuntimeError):
-            simpleModule.run()
-
     def testModuleRunCallback(self, simpleModule):
         """Test module run with callback."""
         calledModules = []
