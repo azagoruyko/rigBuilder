@@ -92,26 +92,32 @@ def captureOutput(stream: io.TextIOBase):
         yield stream
 
 def getErrorStack():
-    """Get formatted error stack trace."""
-    _, _, exc_traceback = sys.exc_info()
+    """Get formatted error stack trace, skipping internal runner frames."""
+    _, _, tb = sys.exc_info()
+    if not tb:
+        return ""
 
-    tbs = []
-    tb = exc_traceback
-    while tb:
-        tbs.append(tb)
-        tb = tb.tb_next
-
+    out = []
     skip = True
     indent = 0
-    out = []
-    for tb in tbs:
-        if tb.tb_frame.f_code.co_filename == "<string>":
+    while tb:
+        f_code = tb.tb_frame.f_code
+        filename = f_code.co_filename
+        
+        # Once we find a non-existent file (usually '<string>' from exec), 
+        # we start including frames. No need to check exists() after that.
+        if skip and not os.path.exists(filename):
             skip = False
 
         if not skip:
-            out.append("{}{}, {}, in line {},".format("  " * indent, tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name, tb.tb_lineno))
+            out.append(f"{'  ' * indent}{filename}, {f_code.co_name}, in line {tb.tb_lineno},")
             indent += 1
+            
+        tb = tb.tb_next
     
+    if not out:
+        return "No stack trace available"
+        
     return "\n".join(out)
 
 def findOpeningBracketPosition(text: str, offset: int, brackets: str = "{(["):
