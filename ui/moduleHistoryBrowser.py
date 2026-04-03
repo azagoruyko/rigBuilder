@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from ..core import getHistoryPath, Module, MODULE_EXT, Settings
+from ..core import getHistoryPath, Module, Settings
 from ..gitrepo import GitRepo
 from ..qt import (
     QCheckBox,
@@ -59,7 +59,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     if not uid:
         return False
 
-    historyFile = os.path.join(getHistoryPath(), uid + MODULE_EXT)
+    historyFile = os.path.join(getHistoryPath(), uid)
     with open(historyFile, "w", encoding="utf-8") as f:
         f.write(module.toXml(keepConnections=False))
 
@@ -133,11 +133,7 @@ def getModuleHistoryEntries(
         rev, dateStr, subject = parts[0], " ".join(parts[1:4]), " ".join(parts[4:])
         files = []
         for line in lines[1:]:
-            if not line.endswith(MODULE_EXT):
-                continue
-
-            uid = line[:-len(MODULE_EXT)]
-            files.append(uid)
+            files.append(line)
 
         entries.append({"rev": rev, "subject": subject, "date": dateStr, "files": files})
     
@@ -273,7 +269,7 @@ class ModuleHistoryWidget(QWidget):
         if not repo:
             return True
 
-        fileName = uid + MODULE_EXT
+        fileName = uid
         if action == "recover":
             err, content = repo("show {}:{}".format(rev, fileName))
             if not err and content:
