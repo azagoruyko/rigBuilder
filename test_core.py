@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, Dict,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
-    ModuleNotFoundError, CopyJsonError, ModuleRuntimeError, APIError,
+    ModuleNotFoundError, CopyJsonError, APIError,
     getUidFromFile, calculateRelativePath, getPrivateModulesPath,
     resolveModuleSpec, printError, printWarning, exitModule,
     APIRegistry, RigBuilderPrivatePath
