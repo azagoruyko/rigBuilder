@@ -2597,7 +2597,6 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Documentation", self.showDocumenation, "F1")
         menu.addSeparator()
         menu.addAction("API Browser", self.openApiBrowser)
-        menu.addAction("Function Browser", self.openFunctionBrowser)
 
         return menu
 
@@ -2778,11 +2777,6 @@ class RigBuilderWindow(QFrame):
     def openApiBrowser(self):
         from .apiBrowser import showApiBrowser
         showApiBrowser(parent=self)
-
-    def openFunctionBrowser(self):
-        from .functionBrowser import showFunctionBrowser
-        browser = showFunctionBrowser(parent=self)
-        browser.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
 
     def _onModuleAdditionRequested(self, module: Module):
         """Handle module addition from external browsers."""
