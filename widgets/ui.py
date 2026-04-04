@@ -137,7 +137,7 @@ class LabelTemplateWidget(TemplateWidget):
         return {"text": self._actualText, "default": "text"}
 
     def setJsonData(self, value):
-        self.setLabelText(value["text"])
+        self.setLabelText(value.get("text", ""))
 
 class ButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -226,8 +226,8 @@ class ButtonTemplateWidget(TemplateWidget):
                 "default": "label"}
 
     def setJsonData(self, data):
-        self.buttonCommand = data["command"]
-        self.buttonWidget.setText(str(data["label"]))
+        self.buttonCommand = data.get("command", "")
+        self.buttonWidget.setText(str(data.get("label", "Button")))
         self.buttonColor = data.get("color", "")
         self._updateButtonStyle()
 
@@ -248,7 +248,7 @@ class CheckBoxTemplateWidget(TemplateWidget):
 
     def setJsonData(self, value):
         with blockedWidgetContext(self.checkBox) as w:
-            w.setChecked(True if value["checked"] else False)
+            w.setChecked(True if value.get("checked", False) else False)
 
 class ComboBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -322,15 +322,16 @@ class ComboBoxTemplateWidget(TemplateWidget):
                 "default": "current"}
 
     def setJsonData(self, value):
-        items = list(value["items"])
+        items = list(value.get("items", []))
+        current = value.get("current", "")
         
-        if value["current"] not in items:
-            items.append(value["current"]) # make sure current is in items
+        if current not in items:
+            items.append(current) # make sure current is in items
 
         self.setItems(items)
 
         with blockedWidgetContext(self.comboBox) as w:
-            w.setCurrentIndex(items.index(value["current"]))
+            w.setCurrentIndex(items.index(current))
 
 class LineEditOptionsDialog(QDialog):
     def __init__(self, **kwargs):
@@ -748,10 +749,14 @@ class ListBoxTemplateWidget(TemplateWidget):
                 "default": "items"}
 
     def setJsonData(self, value):
-        self.setItems(value["items"])
+        self.setItems(value.get("items", []))
 
         with blockedWidgetContext(self.listWidget) as w:
-            for i in value.get("selected", []):
+            for i in range(w.count()):
+                w.item(i).setSelected(False)
+            
+            selected = value.get("selected", [])
+            for i in selected:
                 item = w.item(i)
                 if item:
                     item.setSelected(True)
@@ -831,24 +836,27 @@ class RadioButtonTemplateWidget(TemplateWidget):
                 "default": "current"}
 
     def setJsonData(self, value):
+        items = value.get("items", [])
+        current = value.get("current", 0)
+        
         gridLayout = self.layout()
         self.clearButtons()
 
         self.numColumns = value.get("columns", 2)
         gridLayout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
 
-        for i, item in enumerate(value["items"]):
+        for i, item in enumerate(items):
             button = QRadioButton(item)
             gridLayout.addWidget(button, i//self.numColumns, i%self.numColumns)
 
             self.buttonsGroupWidget.addButton(button)
             self.buttonsGroupWidget.setId(button, i)
 
-        if value["current"] not in range(len(value["items"])):
-            value["current"] = 0
+        if current not in range(len(items)):
+            current = 0
 
         with blockedWidgetContext(self.buttonsGroupWidget) as w:
-            w.buttons()[value["current"]].setChecked(True)
+            w.buttons()[current].setChecked(True)
         self.colorizeButtons()
 
 class TableTemplateWidget(TemplateWidget):
@@ -997,10 +1005,12 @@ class TableTemplateWidget(TemplateWidget):
         return {"items": items, "header": header, "default": "items"}
 
     def setJsonData(self, value):
-        self.tableWidget.setColumnCount(len(value["header"]))
-        self.tableWidget.setHorizontalHeaderLabels(value["header"])
+        header = value.get("header", [])
+        items = value.get("items", [])
+        
+        self.tableWidget.setColumnCount(len(header))
+        self.tableWidget.setHorizontalHeaderLabels(header)
 
-        items = value["items"]
         if type(items) != list:
             items = [items]
 
@@ -1009,7 +1019,7 @@ class TableTemplateWidget(TemplateWidget):
             if type(row) != list:
                 row = [row]
 
-            for c in range(len(value["header"])): # fill each column
+            for c in range(len(header)): # fill each column
                 if c < len(row):
                     data = row[c]
                     item = QTableWidgetItem(fromSmartConversion(data))
@@ -1069,8 +1079,9 @@ class TextTemplateWidget(TemplateWidget):
 
     def setJsonData(self, data):
         with blockedWidgetContext(self.textWidget) as w:
-            w.setPlainText(fromSmartConversion(data["text"]))
-            w.setFixedHeight(data.get("height", self.getDefaultData()["height"]))
+            w.setPlainText(fromSmartConversion(data.get("text", "")))
+            h = data.get("height", self.getDefaultData()["height"])
+            w.setFixedHeight(h)
 
 class VectorTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -1166,7 +1177,8 @@ class VectorTemplateWidget(TemplateWidget):
         validator.setDecimals(self.precision)        
         
         for i in range(self.vectorDim):
-            v = value["value"][i] if i < len(value["value"]) else 0.0
+            value = value.get("value", [])
+            v = value[i] if i < len(value) else 0.0
             try:
                 v = round(v, self.precision)
             except:
@@ -1451,16 +1463,17 @@ class CurveTemplateWidget(TemplateWidget):
         return {"cvs": self.curveView.scene().cvs, "default": "cvs"}
 
     def setJsonData(self, value):
+        cvs = value.get("cvs", [])
         scene = self.curveView.scene()
         scene.clear()
 
-        for i, (x, y) in enumerate(value["cvs"]):
+        for i, (x, y) in enumerate(cvs):
             if i % 3 == 0: # ignore tangents
                 item = CurvePointItem()
                 item.setPos(x * CurveScene.MaxX, y * CurveScene.MaxY)
                 scene.addItem(item)
 
-                if i == 0 or i == len(value["cvs"]) - 1:
+                if i == 0 or i == len(cvs) - 1:
                     item.fixedX = item.pos().x()
 
 class FileSelectorTemplateWidget(TemplateWidget):
@@ -1631,11 +1644,11 @@ class JsonTemplateWidget(TemplateWidget):
                 "default": "data"}
 
     def setJsonData(self, value):
-        self.jsonWidget.setFixedHeight(value["height"])
+        self.jsonWidget.setFixedHeight(value.get("height", 200))
         with blockedWidgetContext(self.jsonWidget) as w:
             w.clear()
-            w.loadFromJsonList(value["data"])
-            w.setReadOnly(value["readonly"])
+            w.loadFromJsonList(value.get("data", []))
+            w.setReadOnly(value.get("readonly", False))
 
 class EditCompountWidgetsDialog(QDialog):
     saved = Signal(list) # [(template, data), ...]
@@ -1757,9 +1770,9 @@ class CompoundTemplateWidget(TemplateWidget):
     def setJsonData(self, value):
         layout = self.layout()
 
-        widgets = value["widgets"]
-        templates = value["templates"]
-        values = value["values"]
+        widgets = value.get("widgets", [])
+        templates = value.get("templates", [])
+        values = value.get("values", [])
 
         clearLayout(layout)
         for i in range(len(widgets)):
