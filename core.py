@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 RigBuilderPath = os.path.dirname(__file__)
 RigBuilderPrivatePath = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
-MODULE_EXT = ".xml"
+MODULE_EXT = ".rb"            # default extension for new/saved modules
+MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
 
 ATTR_PREFIX = "attr_"
 
@@ -24,8 +25,8 @@ def replaceAttrPrefixInverse(code: str) -> str:
     return re.sub(r'{}(\w+)'.format(ATTR_PREFIX), r'@\1', code)
 
 def getUidFromFile(path: str) -> Optional[str]:
-    """Extract UID from XML file."""
-    if path.endswith(MODULE_EXT):
+    """Extract UID from a module file (.rb or .xml)."""
+    if any(path.endswith(ext) for ext in MODULE_EXTS):
         with open(path, "r", encoding="utf-8") as f:
             l = f.readline()  # read first line
         r = re.search("uid=\"(\\w*)\"", l)
@@ -727,7 +728,7 @@ class Module(object):
             else:
                 path = normLoadedPath
 
-        return path.replace(MODULE_EXT, "")
+        return os.path.splitext(path)[0]
 
     def getSavePath(self) -> str:
         """Get path for saving module."""
@@ -838,7 +839,7 @@ class Module(object):
             if os.path.isdir(f):
                 files += Module.listModules(f)
             else:
-                if f.endswith(MODULE_EXT):
+                if any(f.endswith(ext) for ext in MODULE_EXTS):
                     files.append(f)
 
         return files
@@ -971,7 +972,7 @@ class Module(object):
                 dirUids = Module.findUids(fpath)
                 uids.update(dirUids)
 
-            elif fpath.endswith(MODULE_EXT):
+            elif any(fpath.endswith(ext) for ext in MODULE_EXTS):
                 uid = getUidFromFile(fpath)
                 if uid:
                     uids[uid] = fpath
@@ -1004,18 +1005,20 @@ def resolveModuleSpec(spec: str) -> str:
         return ""
     modulePath = Module.PrivateUids.get(spec) or Module.PublicUids.get(spec)
     if not modulePath:
-        specPath = os.path.expandvars(spec)
-        for path in [
-            specPath,
-            specPath + MODULE_EXT,
-            os.path.join(getPrivateModulesPath(), spec),
-            os.path.join(getPrivateModulesPath(), spec + MODULE_EXT),
-            os.path.join(getPublicModulesPath(), spec),
-            os.path.join(getPublicModulesPath(), spec + MODULE_EXT),
-        ]:
+        private, public = getPrivateModulesPath(), getPublicModulesPath()
+        spec = os.path.expandvars(spec)
+
+        specPaths = [
+            root + spec + ext
+            for root in ("", f"{private}/", f"{public}/")
+            for ext in ("",) + MODULE_EXTS
+        ]
+
+        for path in specPaths:
             if os.path.exists(path):
                 modulePath = path
                 break
+
     return os.path.normpath(modulePath) if modulePath else ""
 
 

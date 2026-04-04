@@ -972,7 +972,7 @@ class ModuleModel(QAbstractItemModel):
         if data.hasUrls():
             for url in data.urls():
                 filePath = url.toLocalFile()
-                if filePath and filePath.endswith(MODULE_EXT):
+                if filePath and any(filePath.endswith(ext) for ext in MODULE_EXTS):
                     try:
                         m = Module.loadModule(filePath)
                         self.addModuleAt(m, parent, row)
@@ -1225,7 +1225,7 @@ class TreeWidget(QTreeView):
             self.scrollTo(idx)
 
     def importModule(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", getPrivateModulesPath(), "*.xml")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", getPrivateModulesPath(), "Module files (*.rb *.xml);;All files (*)")
         if not filePath:
             return
 
@@ -1273,7 +1273,7 @@ class TreeWidget(QTreeView):
             outputPath = module.getSavePath()
 
             if not outputPath:
-                outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save "+module.name(), os.path.join(getPrivateModulesPath(), module.name()), "*.xml")
+                outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save "+module.name(), os.path.join(getPrivateModulesPath(), module.name()), "Module files (*.rb *.xml)")
 
             if outputPath:
                 dirname = os.path.dirname(outputPath)
@@ -1306,7 +1306,7 @@ class TreeWidget(QTreeView):
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
             outputDir = os.path.dirname(module.filePath()) or getPrivateModulesPath()
-            outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save as "+module.name(), outputDir + "/" + module.name(), "*.xml")
+            outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save as "+module.name(), outputDir + "/" + module.name(), "Module files (*.rb *.xml)")
 
             if outputPath:
                 try:
@@ -2935,7 +2935,7 @@ def cleanupVscode():
         return
     
     for f in os.listdir(vscodeFolder):
-        if f.endswith(".py") or f.endswith(MODULE_EXT): # remove module files
+        if f.endswith(".py") or any(f.endswith(ext) for ext in MODULE_EXTS): # remove module files
             os.remove(os.path.join(vscodeFolder, f))
 
 # global references
