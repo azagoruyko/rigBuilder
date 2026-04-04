@@ -972,13 +972,28 @@ class ModuleModel(QAbstractItemModel):
         if data.hasUrls():
             for url in data.urls():
                 filePath = url.toLocalFile()
-                if filePath and any(filePath.endswith(ext) for ext in MODULE_EXTS):
+                if not filePath or not os.path.exists(filePath):
+                    continue
+
+                if any(filePath.endswith(ext) for ext in MODULE_EXTS):
                     try:
                         m = Module.loadModule(filePath)
                         self.addModuleAt(m, parent, row)
                         row += 1
                     except Exception:
                         continue
+
+                elif filePath.endswith(".py"):
+                    with open(filePath, "r", encoding="utf-8") as f:
+                        code = f.read()
+
+                    name = os.path.splitext(os.path.basename(filePath))[0]
+                    m = Module()
+                    m.setName(name)
+                    m.setRunCode(code)
+
+                    self.addModuleAt(m, parent, row)
+                    row += 1
             return True
 
         # Internal move is handled by the view/model if we return True and it was a MoveAction,
