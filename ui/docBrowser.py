@@ -3,14 +3,6 @@ from functools import partial
 from ..qt import *
 from ..core import Module
 from .logger import logger
-import markdown
-
-def convertMarkdownToHTML(text: str) -> str:
-    """Convert Markdown to HTML."""
-    return markdown.markdown(
-        text, 
-        extensions=['fenced_code', 'codehilite', 'tables', 'extra', 'sane_lists'], 
-        output_format="html5")
 
 def convertTextToHTML(text: str) -> str:
     """Convert text to HTML."""
@@ -40,11 +32,10 @@ class DocBrowser(QTextBrowser):
             return
 
         if self.module.docFormat() == "markdown":
-            html = convertMarkdownToHTML(self.module.doc())
+            self.browser.setMarkdown(self.module.doc())
         else:
             html = convertTextToHTML(self.module.doc())
-
-        self.setHtml(html)
+            self.browser.setHtml(html)
 
     def _onAnchorClicked(self, url):
         url = QUrl(url)
