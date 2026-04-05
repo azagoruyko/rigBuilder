@@ -4,12 +4,9 @@ from ..qt import *
 from ..core import Module
 from .logger import logger
 
-def convertTextToHTML(text: str) -> str:
-    """Convert text to HTML."""
-    return text.replace("\n", "<br>").replace("\t", "&nbsp;"*4)
 
 class DocBrowser(QTextBrowser):
-    """HTML/Markdown browser for module documentation."""
+    """Markdown browser for module documentation."""
     
     moduleRequested = Signal(str)
 
@@ -18,7 +15,7 @@ class DocBrowser(QTextBrowser):
 
         self.setOpenLinks(False)
         self.anchorClicked.connect(self._onAnchorClicked)
-        self.setPlaceholderText("Double-click to edit. HTML or Markdown supported.")
+        self.setPlaceholderText("Double-click to edit. Markdown supported.")
         self.document().setDefaultStyleSheet("a { color: #55aaee; }")
         
         self.module = None
@@ -31,11 +28,7 @@ class DocBrowser(QTextBrowser):
             self.clear()
             return
 
-        if self.module.docFormat() == "markdown":
-            self.browser.setMarkdown(self.module.doc())
-        else:
-            html = convertTextToHTML(self.module.doc())
-            self.browser.setHtml(html)
+        self.setMarkdown(self.module.doc())
 
     def _onAnchorClicked(self, url):
         url = QUrl(url)
@@ -50,25 +43,6 @@ class DocBrowser(QTextBrowser):
             if spec:
                 self.moduleRequested.emit(spec)
             return
-
-    def contextMenuEvent(self, event):
-        if not self.module:
-            return
-
-        def setDocFormat(format: str):
-            self.module.setDocFormat(format)
-            self.updateDoc()
-
-        menu = QMenu(self)
-        action = menu.addAction("Show as HTML", partial(setDocFormat, "html"))
-        action.setCheckable(True)
-        action.setChecked(self.module.docFormat() == "html")
-
-        action = menu.addAction("Show as Markdown", partial(setDocFormat, "markdown"))
-        action.setCheckable(True)
-        action.setChecked(self.module.docFormat() == "markdown")
-
-        menu.popup(event.globalPos())
 
     def mouseDoubleClickEvent(self, event):
         """Edit source text and save it to module."""

@@ -415,7 +415,6 @@ class Module(object):
         self._name = ""
         self._runCode = ""
         self._doc = ""
-        self._docFormat = "html"
 
         self._parent = None
         self._children = []
@@ -435,7 +434,6 @@ class Module(object):
         module._uid = self._uid
         module._runCode = self._runCode
         module._doc = self._doc
-        module._docFormat = self._docFormat
 
         for a in self._attributes:
             module.addAttribute(a.copy())            
@@ -496,23 +494,12 @@ class Module(object):
         self._modified = True
 
     def doc(self) -> str:
-        """Get module documentation (raw HTML or Markdown depending on docFormat)."""
+        """Get module documentation (implicitly Markdown)."""
         return self._doc
 
     def setDoc(self, doc: str):
-        """Set module documentation (raw HTML or Markdown depending on docFormat)."""
+        """Set module documentation (implicitly Markdown)."""
         self._doc = doc
-        self._modified = True
-
-    def docFormat(self) -> str:
-        """Get documentation format: 'html' or 'markdown'."""
-        return self._docFormat
-
-    def setDocFormat(self, fmt: str):
-        """Set documentation format to 'html' or 'markdown'."""
-        if fmt not in ("html", "markdown"):
-            raise ValueError("docFormat must be 'html' or 'markdown', got: {}".format(fmt))
-        self._docFormat = fmt
         self._modified = True
 
     def root(self) -> 'Module':
@@ -639,7 +626,7 @@ class Module(object):
                                  "</run>"]))
 
         if self._doc:
-            template.append("".join(["<doc format=\"{}\">".format(self._docFormat),
+            template.append("".join(["<doc>",
                                      "<![CDATA[", self._doc, "]]>",
                                      "</doc>"]))
 
@@ -668,7 +655,6 @@ class Module(object):
         doc_el = root.find("doc")
         if doc_el is not None:
             module._doc = doc_el.text or ""
-            module._docFormat = doc_el.attrib.get("format", "html")
 
         attrs_el = root.find("attributes")
         if attrs_el is not None:
@@ -772,7 +758,6 @@ class Module(object):
 
             self._runCode = origModule._runCode
             self._doc = origModule._doc
-            self._docFormat = origModule._docFormat
             self._filePath = origModule._filePath
 
             self._modified = False
