@@ -28,7 +28,7 @@ class DocBrowser(QTextBrowser):
             self.clear()
             return
 
-        self.setMarkdown(self.module.doc())
+        self.browser.setMarkdown(self.module.doc())
 
     def _onAnchorClicked(self, url):
         url = QUrl(url)
