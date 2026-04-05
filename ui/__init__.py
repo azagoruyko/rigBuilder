@@ -16,6 +16,7 @@ from ..qt import *
 from .. import __version__
 from ..core import *
 from .editor import CodeEditorWithNumbersWidget
+from .apiBrowser import ApiBrowserWidget
 from .docBrowser import DocBrowser
 from .moduleHistoryBrowser import ModuleHistoryWidget
 from .diffBrowser import DiffBrowserDialog
@@ -2354,6 +2355,8 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
 
+        self.apiBrowserWidget = ApiBrowserWidget()
+
         self.attributesTabWidget = AttributesTabWidget()
         self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
         self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
@@ -2438,9 +2441,14 @@ class RigBuilderWindow(QFrame):
         self.mainContentSplitter.addWidget(rightWidget)
         self.mainContentSplitter.setSizes([400, 600])
 
+        self.codeAndApiSplitter = WideSplitter(Qt.Horizontal)
+        self.codeAndApiSplitter.addWidget(self.codeWidget)
+        self.codeAndApiSplitter.addWidget(self.apiBrowserWidget)
+        self.codeAndApiSplitter.setSizes([800, 200])
+
         self.workspaceSplitter = WideSplitter(Qt.Vertical)
         self.workspaceSplitter.addWidget(self.mainContentSplitter)
-        self.workspaceSplitter.addWidget(self.codeWidget)
+        self.workspaceSplitter.addWidget(self.codeAndApiSplitter)
         self.workspaceSplitter.addWidget(self.logWidget)
         self.workspaceSplitter.setSizes([400, 0, 0])
 
@@ -2595,8 +2603,6 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Remove all", self.removeAllModules)
 
         menu.addAction("Documentation", self.showDocumenation, "F1")
-        menu.addSeparator()
-        menu.addAction("API Browser", self.openApiBrowser)
 
         return menu
 
@@ -2774,9 +2780,6 @@ class RigBuilderWindow(QFrame):
     def showDocumenation(self):
         subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])
 
-    def openApiBrowser(self):
-        from .apiBrowser import showApiBrowser
-        showApiBrowser(parent=self)
 
     def _onModuleAdditionRequested(self, module: Module):
         """Handle module addition from external browsers."""
