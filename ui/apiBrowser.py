@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Optional
+from typing import Any
 
 from ..core import APIRegistry
 from ..qt import *
 
 def getObjectInfo(name: str, obj: Any) -> tuple[str, str, str, str]:
     """Helper to extract type, header, and docstring for an object."""
+    objType = type(obj)
+    
     if inspect.isclass(obj):
         typeName = "class"
     elif inspect.isroutine(obj):
         typeName = "def"
     else:
-        typeName = type(obj).__name__
+        typeName = objType.__name__
     
     sigParams = ""
     if callable(obj):
@@ -25,7 +27,13 @@ def getObjectInfo(name: str, obj: Any) -> tuple[str, str, str, str]:
         except (ValueError, TypeError):
             sigParams = "(...)"
     
-    doc = inspect.getdoc(obj) or ""
+    # Hide docstrings for simple built-ins to reduce noise
+    isSimpleBuiltin = objType.__module__ == "builtins" and not inspect.isroutine(obj) and not inspect.isclass(obj)
+    
+    doc = ""
+    if not isSimpleBuiltin:
+        doc = inspect.getdoc(obj) or ""
+        
     header = f"<span class='keyword'>{typeName}</span> <span class='name'>{name}</span>{sigParams}"
     return typeName, header, doc, sigParams
 
@@ -57,6 +65,19 @@ def getMatchingMembers(obj: Any, filterText: str, displayedTypes: set[int]) -> l
         
     return matchingMembers
 
+class ApiBrowserView(QTextBrowser):
+    """Custom QTextBrowser that handles font scaling with Ctrl + Mouse Wheel."""
+    
+    def wheelEvent(self, event: QWheelEvent):
+        if event.modifiers() == Qt.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self.zoomIn(1)
+            else:
+                self.zoomOut(1)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
 class ApiBrowserWidget(QWidget):
     """Embeddable API browser using QTextBrowser for interactive documentation."""
     
@@ -72,12 +93,11 @@ class ApiBrowserWidget(QWidget):
         self.filterEdit.textChanged.connect(self.refreshContent)
         layout.addWidget(self.filterEdit)
         
-        self.browser = QTextBrowser()
+        self.browser = ApiBrowserView()
         self.browser.setOpenExternalLinks(False)
         self.browser.setReadOnly(True)
         self.browser.setWordWrapMode(QTextOption.NoWrap)
         self.browser.setUndoRedoEnabled(False)
-        # self.browser.anchorClicked.connect(self._onAnchorClicked) # No longer needed
         layout.addWidget(self.browser)
         
         # Initial refresh
@@ -90,14 +110,14 @@ class ApiBrowserWidget(QWidget):
         
         html = [
             "<style>",
-            "body { font-family: 'Segoe UI', sans-serif; color: #abb2bf; background-color: #21252b; line-height: 1.3; font-size: 12px; }",
-            ".entry { margin-bottom: 8px; padding: 4px 8px; background-color: #282c34; border-left: 2px solid #4e5666; }",
-            ".member-entry { margin-bottom: 2px; padding: 2px 8px; margin-left: 20px; border-left: 1px solid #3e4451; background-color: transparent; }",
-            ".header { color: #98c379; font-family: 'Consolas', monospace; font-size: 12px; }",
+            "body { font-family: 'Segoe UI', sans-serif; color: #abb2bf; background-color: #21252b; line-height: 1.3; font-size: 1.0em; }",
+            ".entry { margin-bottom: 0.6em; padding: 0.4em 0.8em; background-color: #282c34; border-left: 2px solid #4e5666; }",
+            ".member-entry { margin-bottom: 0.2em; padding: 0.2em 0.8em; margin-left: 1.5em; border-left: 1px solid #3e4451; background-color: transparent; }",
+            ".header { color: #98c379; font-family: 'Consolas', monospace; font-size: 1em; }",
             ".keyword { color: #c678dd; font-weight: bold; }",
-            ".name { font-weight: bold; color: #d19a66; font-size: 13px; font-family: 'Consolas', monospace; }",
-            ".doc-string { color: #848da1; margin-top: 1px; font-size: 11px; padding-left: 10px; font-style: italic; }",
-            ".no-results { color: #5c6370; text-align: center; margin-top: 30px; font-style: italic; }",
+            ".name { font-weight: bold; color: #d19a66; font-size: 1.1em; font-family: 'Consolas', monospace; }",
+            ".doc-string { color: #848da1; margin-top: 0.1em; font-size: 0.9em; padding-left: 1em; font-style: italic; }",
+            ".no-results { color: #5c6370; text-align: center; margin-top: 3em; font-style: italic; }",
             "</style>",
             "<body>",
             "<h3>API Registry</h3>"
