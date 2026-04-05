@@ -704,7 +704,7 @@ class Module(object):
 
         path = ""
         if self.loadedFromPublic() or self.loadedFromPrivate():
-            path = self.relativePath()
+            path = self.relativePath().replace("\\", "/")
         else:
             normLoadedPath = self._filePath.replace("\\", "/")
             items = normLoadedPath.split("/")
