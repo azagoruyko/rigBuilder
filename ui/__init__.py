@@ -2768,6 +2768,11 @@ class RigBuilderWindow(QFrame):
 
         path = os.path.normpath(path)
         currentXml = module.toXml()
+
+        if not os.path.exists(path):
+            QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(path))
+            return
+
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             originalXml = f.read()
 
