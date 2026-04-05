@@ -1,4 +1,4 @@
-<module name="example" muted="0" uid="f094f3d47efe4680b27c3d06b05f4ca6" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\example.xml">
+<module name="example" muted="0" uid="f094f3d47efe4680b27c3d06b05f4ca6" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\example.rb">
 <run><![CDATA[import time
 print("lineAttr:", @lineAttr, type(@lineAttr))
 
@@ -17,11 +17,11 @@ ch = module.child("child") # or module.child(0)
 ch.run()
 
 ]]></run>
-<doc format="html"><![CDATA[<h3>Example docs</h3>
+<doc><![CDATA[## Example docs
 
 You can use links here
-<a href="https://github.com/azagoruyko/rigBuilder/wiki/Documentation">Rig Builder docs</a>
-<a href="module:example">Open example module</a>
+- [Rig Builder docs](https://github.com/azagoruyko/rigBuilder/wiki/Documentation)
+- [Open example module](module:example)
 ]]></doc>
 <attributes>
 <attr name="" template="button" category="General" connect="" modified="0"><![CDATA[{"command": "# you can set json data directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})\n\n# or with ch/chset\nchset(\"/out_lst\", [\"a\", \"b\", \"c\"])\n\n# or even with @ syntax\n@set_slider(10)", "label": "Press me", "color": "#176f1a", "default": "label"}]]></attr>
