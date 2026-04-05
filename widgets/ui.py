@@ -136,8 +136,8 @@ class LabelTemplateWidget(TemplateWidget):
     def getJsonData(self):
         return {"text": self._actualText, "default": "text"}
 
-    def setJsonData(self, value):
-        self.setLabelText(value.get("text", ""))
+    def setJsonData(self, data):
+        self.setLabelText(data.get("text", ""))
 
 class ButtonTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -246,9 +246,9 @@ class CheckBoxTemplateWidget(TemplateWidget):
     def getJsonData(self):
         return {"checked": self.checkBox.isChecked(), "default": "checked"}
 
-    def setJsonData(self, value):
+    def setJsonData(self, data):
         with blockedWidgetContext(self.checkBox) as w:
-            w.setChecked(True if value.get("checked", False) else False)
+            w.setChecked(True if data.get("checked", False) else False)
 
 class ComboBoxTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
@@ -321,9 +321,9 @@ class ComboBoxTemplateWidget(TemplateWidget):
                 "current": smartConversion(self.comboBox.currentText()),
                 "default": "current"}
 
-    def setJsonData(self, value):
-        items = list(value.get("items", []))
-        current = value.get("current", "")
+    def setJsonData(self, data):
+        items = list(data.get("items", []))
+        current = data.get("current", "")
         
         if current not in items:
             items.append(current) # make sure current is in items
@@ -748,14 +748,14 @@ class ListBoxTemplateWidget(TemplateWidget):
                 "selected": [self.listWidget.row(item) for item in self.listWidget.selectedItems()],
                 "default": "items"}
 
-    def setJsonData(self, value):
-        self.setItems(value.get("items", []))
+    def setJsonData(self, data):
+        self.setItems(data.get("items", []))
 
         with blockedWidgetContext(self.listWidget) as w:
             for i in range(w.count()):
                 w.item(i).setSelected(False)
             
-            selected = value.get("selected", [])
+            selected = data.get("selected", [])
             for i in selected:
                 item = w.item(i)
                 if item:
@@ -835,14 +835,14 @@ class RadioButtonTemplateWidget(TemplateWidget):
                 "columns": self.numColumns,
                 "default": "current"}
 
-    def setJsonData(self, value):
-        items = value.get("items", [])
-        current = value.get("current", 0)
+    def setJsonData(self, data):
+        items = data.get("items", [])
+        current = data.get("current", 0)
         
         gridLayout = self.layout()
         self.clearButtons()
 
-        self.numColumns = value.get("columns", 2)
+        self.numColumns = data.get("columns", 2)
         gridLayout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
 
         for i, item in enumerate(items):
@@ -1004,9 +1004,9 @@ class TableTemplateWidget(TemplateWidget):
 
         return {"items": items, "header": header, "default": "items"}
 
-    def setJsonData(self, value):
-        header = value.get("header", [])
-        items = value.get("items", [])
+    def setJsonData(self, data):
+        header = data.get("header", [])
+        items = data.get("items", [])
         
         self.tableWidget.setColumnCount(len(header))
         self.tableWidget.setHorizontalHeaderLabels(header)
@@ -1021,9 +1021,9 @@ class TableTemplateWidget(TemplateWidget):
 
             for c in range(len(header)): # fill each column
                 if c < len(row):
-                    data = row[c]
-                    item = QTableWidgetItem(fromSmartConversion(data))
-                    item.setForeground(jsonColor(data))
+                    d = row[c]
+                    item = QTableWidgetItem(fromSmartConversion(d))
+                    item.setForeground(jsonColor(d))
                 else:
                     item = QTableWidgetItem()
                 self.tableWidget.setItem(r, c, item)
@@ -1149,7 +1149,7 @@ class VectorTemplateWidget(TemplateWidget):
                 "precision": self.precision,
                 "columns": self.numColumns}
 
-    def setJsonData(self, value):
+    def setJsonData(self, data):
         def widgetContextMenu(event, w):            
             stdMenu = w.createStandardContextMenu()
             stdMenu.addSeparator()
@@ -1167,18 +1167,18 @@ class VectorTemplateWidget(TemplateWidget):
         layout = self.layout()
         clearLayout(layout)
 
-        self.numColumns = value.get("columns", self.numColumns)
+        self.numColumns = data.get("columns", self.numColumns)
         layout.setDefaultPositioning(self.numColumns, Qt.Horizontal)
 
-        self.vectorDim = value.get("dimension", self.vectorDim)
-        self.precision = value.get("precision", self.precision)
+        self.vectorDim = data.get("dimension", self.vectorDim)
+        self.precision = data.get("precision", self.precision)
 
         validator = QDoubleValidator()
         validator.setDecimals(self.precision)        
         
+        values = data.get("value", [])
         for i in range(self.vectorDim):
-            value = value.get("value", [])
-            v = value[i] if i < len(value) else 0.0
+            v = values[i] if i < len(values) else 0.0
             try:
                 v = round(v, self.precision)
             except:
@@ -1462,8 +1462,8 @@ class CurveTemplateWidget(TemplateWidget):
     def getJsonData(self):
         return {"cvs": self.curveView.scene().cvs, "default": "cvs"}
 
-    def setJsonData(self, value):
-        cvs = value.get("cvs", [])
+    def setJsonData(self, data):
+        cvs = data.get("cvs", [])
         scene = self.curveView.scene()
         scene.clear()
 
@@ -1643,12 +1643,12 @@ class JsonTemplateWidget(TemplateWidget):
                 "readonly": self.jsonWidget.isReadOnly(),
                 "default": "data"}
 
-    def setJsonData(self, value):
-        self.jsonWidget.setFixedHeight(value.get("height", 200))
+    def setJsonData(self, data):
+        self.jsonWidget.setFixedHeight(data.get("height", 200))
         with blockedWidgetContext(self.jsonWidget) as w:
             w.clear()
-            w.loadFromJsonList(value.get("data", []))
-            w.setReadOnly(value.get("readonly", False))
+            w.loadFromJsonList(data.get("data", []))
+            w.setReadOnly(data.get("readonly", False))
 
 class EditCompountWidgetsDialog(QDialog):
     saved = Signal(list) # [(template, data), ...]
@@ -1767,12 +1767,12 @@ class CompoundTemplateWidget(TemplateWidget):
             widgets.append(d)
         return {"templates": templates, "widgets": widgets, "values": values, "default": "values"}
 
-    def setJsonData(self, value):
+    def setJsonData(self, data):
         layout = self.layout()
 
-        widgets = value.get("widgets", [])
-        templates = value.get("templates", [])
-        values = value.get("values", [])
+        widgets = data.get("widgets", [])
+        templates = data.get("templates", [])
+        values = data.get("values", [])
 
         clearLayout(layout)
         for i in range(len(widgets)):
