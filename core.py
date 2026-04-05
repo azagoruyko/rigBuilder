@@ -609,17 +609,17 @@ class Module(object):
                 ch._clearModificationFlag(recursive=False, modules=False, attributes=attributes)
     
     def ch(self, path: str, key: Optional[str] = None) -> Any:
-        """Get attribute value by path."""
+        """Get an attribute's value or dictionary key by path."""
         attr = self.findAttributeByPath(path)
         return attr.get(key)
     
     def chdata(self, path: str) -> Dict[str, Any]:
-        """Get attribute data by path."""
+        """Get the underlying data dictionary of an attribute."""
         attr = self.findAttributeByPath(path)
         return attr.data() # actual read-only copy
     
     def chset(self, path: str, value: Any, key: Optional[str] = None):
-        """Set attribute value by path."""
+        """Set an attribute's value or dictionary key by path."""
         attr = self.findAttributeByPath(path)
         attr.set(value, key)       
 
@@ -1052,27 +1052,27 @@ Module.updateUidsCache()
 # API
 
 def printError(msg: str):
-    """Print error message and raise RuntimeError."""
+    """Raise a RuntimeError and stop execution."""
     raise RuntimeError(msg)
 
 def printWarning(msg: str):
-    """Print warning message."""
+    """Print a warning message to the log."""
     print("Warning: "+msg)
 
 def exitModule():
-    """Exit current module execution."""
+    """Immediately stop the current module's execution."""
     raise ExitModuleException()
 
 def beginProgress(text: str, count: int, updatePercent: float = 0.01):
-    """Start progress bar."""
+    """Initialize and display the main progress bar."""
     pass
 
 def stepProgress(value: int, text: str = None):
-    """Update progress bar."""
+    """Update the progress bar to a specific value."""
     pass
 
 def endProgress():
-    """End progress bar."""
+    """Close and hide the progress bar."""
     pass
 
 # overridden in module.run

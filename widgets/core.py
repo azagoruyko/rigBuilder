@@ -7,7 +7,10 @@ if TYPE_CHECKING:
 
 # curve functions
 
-def listLerp(lst1, lst2, w):    
+def listLerp(lst1: list[float], lst2: list[float], w: float) -> list[float]:    
+    """Linearly interpolate between two lists of numbers.
+    Useful for color or position interpolation.
+    """
     return [p1*(1-w) + p2*w for p1, p2 in zip(lst1, lst2)]
 
 def evaluateBezier(p1, p2, p3, p4, param): # De Casteljau's algorithm
@@ -72,40 +75,45 @@ def normalizedPoint(p, minX, maxX, minY, maxY):
     y = (p[1] - minY) / (maxY - minY)
     return [x, y]
     
-def curve_evaluate(data, param, *, epsilon=1e-3):
+def curve_evaluate(data: dict, param: float, *, epsilon: float = 1e-3) -> list[float]:
+    """Evaluate a bezier curve at the given 0-1 parameter."""
     return evaluateBezierCurve(data["cvs"], param, epsilon=epsilon)
 
-def curve_evaluateFromX(data, param, *, epsilon=1e-3): 
-    return evaluateBezierCurveFromX(data["cvs"], param, epsilon=epsilon)
+def curve_evaluateFromX(data: dict, x: float, *, epsilon: float = 1e-3) -> list[float]: 
+    """Evaluate a bezier curve at a specific X coordinate.
+    
+    Useful when one axis represents time or a sorted parameter.
+    """
+    return evaluateBezierCurveFromX(data["cvs"], x, epsilon=epsilon)
 
 # listBox functions
 
-def listBox_setSelected(data, indices):
+def listBox_setSelected(data: dict, indices: list[int]):
+    """Set the selected indices in a list box widget's data.
+    """
     data["selected"] = indices
 
-def listBox_selected(data):
+def listBox_selected(data: dict) -> list[str]:
+    """Get the list of currently selected item labels in the list box.
+    """
     return [data["items"][idx] for idx in data["selected"] if idx < len(data["items"])]    
 
 # comboBox functions
 
-def comboBox_items(data):
+def comboBox_items(data: dict) -> list[str]:
+    """Get the available items from a combo box widget's data.
+    """
     return data["items"]
 
-def comboBox_setItems(data, items):
+def comboBox_setItems(data: dict, items: list[str]):
+    """Replace all items in a combo box widget's data.
+    """
     data["items"] = items
 
 # button functions
 
 def runButtonCommand(module: 'Module', buttonLabel: str) -> Optional[Dict[str, Any]]:
-    """Execute button command by label, supporting nested buttons in compound attributes.
-    
-    Args:
-        module: Module object containing attributes
-        buttonLabel: Label text of the button to execute
-    
-    Returns:
-        Optional[dict]: Environment dictionary after execution, or None if not found (though it raises ValueError if not found)
-    """
+    """Execute module button command by label."""
     supportedTemplates = {"button", "lineEditAndButton"}
 
     def findAndRun(data: Dict[str, Any], template: str) -> Optional[Dict[str, Any]]:
