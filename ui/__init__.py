@@ -780,12 +780,12 @@ class ModuleModel(QAbstractItemModel):
         module = index.internalPointer()
         column = index.column()
 
-        if role == Qt.DisplayRole or role == Qt.EditRole:
+        if role == Qt.DisplayRole:
             if column == 0:
                 name = module.name()
-                if role == Qt.DisplayRole and module.modified():
-                    name += "*"
-                return name
+                if module.modified():
+                    return name + "*"
+                return name + " "
 
             elif column == 1:
                 return module.relativePathString().replace("\\", "/") + " "
@@ -798,6 +798,11 @@ class ModuleModel(QAbstractItemModel):
 
             elif column == 3:
                 return module.uid()[:8]
+
+        elif role == Qt.EditRole:
+            if column == 0:
+                return module.name()
+            return "n/a"
 
         elif role == Qt.ForegroundRole:
             if column == 0:
