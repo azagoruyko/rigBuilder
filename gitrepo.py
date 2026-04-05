@@ -75,12 +75,16 @@ class GitRepo:
             "stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE,
             "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
             "shell": False,
         }
         if _startupinfo is not None:
             kwargs["startupinfo"] = _startupinfo
+        
         args = shlex.split(cmd)
         result = subprocess.run(["git"] + args, **kwargs)
+        
         out = (result.stdout or "").strip()
         err = (result.stderr or "").strip() if result.returncode != 0 else ""
         return err, out
@@ -96,7 +100,9 @@ class GitRepo:
         files = [os.path.relpath(os.fspath(f), workDir) for f in files]
 
         if files:
-            err, out = self("add " + " ".join(files))
+            # Quote files to handle spaces in paths
+            filesStr = " ".join(['"{}"'.format(f.replace('"', '\\"')) for f in files])
+            err, out = self("add " + filesStr)
             if err and not err.startswith("warning:"):
                 print(err)
                 return err, out
@@ -105,7 +111,8 @@ class GitRepo:
             _, prevMessage = self("log -1 --pretty=%B")
             message = "\n\n".join([message, prevMessage])
 
-        msgArgs = ['-m "{}"'.format(m) for m in message.split("\n")]
+        # Use multiple -m flags and quote content to handle spaces and special characters
+        msgArgs = ['-m "{}"'.format(m.replace('"', '\\"')) for m in message.split("\n")]
         return self("commit " + " ".join(msgArgs))
 
     def __repr__(self) -> str:
