@@ -990,8 +990,6 @@ APIRegistry.register("fromSmartConversion", fromSmartConversion)
 
 APIRegistry.register("curve_evaluate", widgets_core.curve_evaluate) # data based
 APIRegistry.register("curve_evaluateFromX", widgets_core.curve_evaluateFromX)
-APIRegistry.register("listBox_selected", widgets_core.listBox_selected)
-APIRegistry.register("listBox_setSelected", widgets_core.listBox_setSelected)
 APIRegistry.register("comboBox_items", widgets_core.comboBox_items)
 APIRegistry.register("comboBox_setItems", widgets_core.comboBox_setItems)
 

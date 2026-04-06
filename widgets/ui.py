@@ -741,26 +741,13 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()  
 
     def getDefaultData(self):
-        return {"items": ["a", "b"], "current":0, "selected":[], "default": "items"}
+        return {"items": ["a", "b"], "current":0, "default": "items"}
 
     def getJsonData(self):
-        return {"items": self.getItems(),
-                "selected": [self.listWidget.row(item) for item in self.listWidget.selectedItems()],
-                "default": "items"}
+        return {"items": self.getItems(), "default": "items"}
 
     def setJsonData(self, data):
         self.setItems(data.get("items", []))
-
-        with blockedWidgetContext(self.listWidget) as w:
-            for i in range(w.count()):
-                w.item(i).setSelected(False)
-            
-            selected = data.get("selected", [])
-            for i in selected:
-                item = w.item(i)
-                if item:
-                    item.setSelected(True)
-
         self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):

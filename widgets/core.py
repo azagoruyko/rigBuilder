@@ -86,18 +86,6 @@ def curve_evaluateFromX(data: dict, x: float, *, epsilon: float = 1e-3) -> list[
     """
     return evaluateBezierCurveFromX(data["cvs"], x, epsilon=epsilon)
 
-# listBox functions
-
-def listBox_setSelected(data: dict, indices: list[int]):
-    """Set the selected indices in a list box widget's data.
-    """
-    data["selected"] = indices
-
-def listBox_selected(data: dict) -> list[str]:
-    """Get the list of currently selected item labels in the list box.
-    """
-    return [data["items"][idx] for idx in data["selected"] if idx < len(data["items"])]    
-
 # comboBox functions
 
 def comboBox_items(data: dict) -> list[str]:
