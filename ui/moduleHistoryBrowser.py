@@ -187,25 +187,6 @@ def buildHistoryHtml(filterText: str = "") -> str:
 
 # --- UI ---
 
-def showCommitMessageDialog(parent) -> Tuple[bool, str]:
-    """Show optional commit message dialog before save. Returns (accepted, message)."""
-    dlg = QDialog(parent)
-    dlg.setWindowTitle("Save module")
-    layout = QVBoxLayout(dlg)
-    layout.addWidget(QLabel("Commit message (optional):"))
-    lineEdit = QLineEdit()
-    lineEdit.setPlaceholderText("e.g. update myModule.xml")
-    layout.addWidget(lineEdit)
-    bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-    bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
-    bbox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
-    bbox.accepted.connect(dlg.accept)
-    bbox.rejected.connect(dlg.reject)
-    layout.addWidget(bbox)
-    accepted = dlg.exec_() == QDialog.Accepted
-    return (accepted, lineEdit.text().strip() if accepted else "")
-
-
 class ModuleHistoryWidget(QWidget):
     """Widget with filter and text browser showing module history (git log). Emits linkClicked(url) for link handling."""
 
@@ -327,9 +308,32 @@ class ModuleHistoryWidget(QWidget):
                 "Squash failed: {}".format(errMsg),
             )
 
-    def showCommitMessageDialog(self):
-        """Show commit message dialog. Returns (accepted, message)."""
-        return showCommitMessageDialog(self)
+    def showCommitMessageDialog(self, description: str = "") -> Tuple[bool, str]:
+        """Show optional commit message dialog before save."""
+        dlg = QDialog(self)
+        dlg.resize(400, 100)
+        dlg.setWindowTitle("Save?")
+        dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
+        
+        layout = QVBoxLayout(dlg)
+        
+        if description:
+            lbl = QLabel(description)
+            lbl.setWordWrap(True)
+            layout.addWidget(lbl)
+        
+        layout.addWidget(QLabel("Commit message (optional):"))
+        lineEdit = QLineEdit()
+        lineEdit.setPlaceholderText("e.g. add cool new feature")
+        layout.addWidget(lineEdit)
+            
+        bbox = QDialogButtonBox(QDialogButtonBox.Ok)
+        bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
+        bbox.accepted.connect(dlg.accept)
+        layout.addWidget(bbox)
+        
+        dlg.exec()
+        return (True, lineEdit.text().strip())
 
     def updateModuleHistory(self):
         """Update the module history widget with the latest history."""
