@@ -244,7 +244,7 @@ class ModuleHistoryWidget(QWidget):
 
     def _onTrackHistoryToggled(self, state):
         """Update in-memory track history setting; persisted when workspace is saved."""
-        Settings["trackHistory"] = state == Qt.Checked
+        Settings["trackHistory"] = self.isHistoryTrackingEnabled()
 
     def handleHistoryLink(self, url) -> bool:
         """
