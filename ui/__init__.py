@@ -1181,7 +1181,7 @@ class TreeWidget(QTreeView):
         commitMessage = ""
 
         # Build list for description
-        desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), m.relativePath()) for m, p, _ in saveData])
+        desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), m.relativePath() or p) for m, p, _ in saveData])
 
         if historyEnabled:
             modulesToSave = [m for m, _, _ in saveData]
