@@ -983,6 +983,26 @@ class TreeWidget(QTreeView):
             option.palette.setBrush(QPalette.Highlight, self.palette().highlight())
         super().drawRow(painter, option, index)
 
+    def wheelEvent(self, event: QWheelEvent):
+        ctrl = event.modifiers() & Qt.ControlModifier
+
+        if ctrl:
+            delta = event.angleDelta().y()
+            if delta == 0:
+                return
+                
+            d = delta / abs(delta)
+            font = self.font()
+            sz = clamp(fontSize(font) + d, 6, 20)
+            setFontSize(font, sz)
+            self.setFont(font)
+            
+            # Scale indentation proportionally
+            self.setIndentation(sz * 1.5)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
     def contextMenuEvent(self, event: QContextMenuEvent):
         mainWindow.menu().popup(event.globalPos())
 

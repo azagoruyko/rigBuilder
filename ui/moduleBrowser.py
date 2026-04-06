@@ -14,6 +14,8 @@ from ..qt import *
 from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager
 from .logger import logger
 from .fileTracker import DirectoryWatcher
+from .utils import fontSize, setFontSize
+from ..utils import clamp
 
 _DOC_CACHE: Dict[str, Tuple[float, str]] = {} # path: (mtime, content)
 
@@ -122,7 +124,6 @@ class ModuleBrowserTree(QTreeWidget):
     def openModulesFolder(self):
         folderPath = getModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
-
     def viewportEvent(self, event: QEvent) -> bool:
         if event.type() == QEvent.ToolTip:
             item = self.itemAt(event.pos())
@@ -141,6 +142,26 @@ class ModuleBrowserTree(QTreeWidget):
                     QToolTip.showText(event.globalPos(), "No documentation", self)
                 return True
         return super().viewportEvent(event)
+
+    def wheelEvent(self, event: QWheelEvent):
+        ctrl = event.modifiers() & Qt.ControlModifier
+
+        if ctrl:
+            delta = event.angleDelta().y()
+            if delta == 0:
+                return
+                
+            d = delta / abs(delta)
+            font = self.font()
+            sz = clamp(fontSize(font) + d, 6, 20)
+            setFontSize(font, sz)
+            self.setFont(font)
+            
+            # Scale indentation proportionally
+            self.setIndentation(sz * 1.5)
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
 
 class ModuleBrowser(QWidget):
