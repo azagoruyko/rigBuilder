@@ -8,7 +8,7 @@
 
 It provides a visual, module-based workflow for building character rigs and pipeline tools by assembling reusable building blocks.
 
-<img width="1373" height="1008" alt="Screenshot 2026-03-25 174827" src="https://github.com/user-attachments/assets/5e936582-9e2c-4c58-a5cb-7fcadd00b12c" />
+<img width="1297" height="991" alt="Screenshot 2026-04-06 165901" src="https://github.com/user-attachments/assets/04cb6619-4d76-4a9f-90d8-de4905e53c79" />
 
 ---
 
