@@ -1,4 +1,4 @@
-<module name="autoTangent" muted="0" uid="fe8646386e674920b0dfd829b30e6736" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\AutoTangents.rb">
+<module name="autoTangent" muted="0" uid="fe8646386e674920b0dfd829b30e6736">
 <run><![CDATA[import pymel.core as pm
 import maya.cmds as cmds
 import math
@@ -152,10 +152,8 @@ This script automates the adjustment of keyframe tangents on Maya animation curv
 - Apply consistent tangent settings across multiple curves without manual per-key adjustments.
 - Integrate into pipelines where smooth animation curves are required for high‑quality motion capture or procedural animation.]]></doc>
 <attributes>
-<attr name="flatten" template="checkBox" category="General" connect="" modified="0"><![CDATA[{"default": "checked", "checked": false}]]></attr>
-<attr name="selected" template="radioButton" category="General" connect="" modified="0"><![CDATA[{"current": 1, "items": ["Keys", "Curves"], "columns": 2, "default": "current"}]]></attr>
-<attr name="soft" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "max": "1", "validator": 2, "value": 0.0, "min": "0", "buttonEnabled": false}]]></attr>
+<attr name="flatten" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": false}]]></attr>
+<attr name="selected" template="radioButton" category="General" connect=""><![CDATA[{"current": 1, "items": ["Keys", "Curves"], "columns": 2, "default": "current"}]]></attr>
+<attr name="soft" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "max": "1", "validator": 2, "value": 0.0, "min": "0", "buttonEnabled": false}]]></attr>
 </attributes>
-<children>
-</children>
 </module>

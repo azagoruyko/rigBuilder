@@ -1,4 +1,4 @@
-<module name="bindMode" muted="0" uid="c7ae99e054f94721afc9256cf449e180" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\BindMode.rb">
+<module name="bindMode" muted="0" uid="c7ae99e054f94721afc9256cf449e180">
 <run><![CDATA[import pymel.core as pm
 
 joints = [pm.PyNode(j) for j in @joints]
@@ -41,10 +41,8 @@ The script synchronizes joint inverse world matrices with the pre‑bind matrice
 - Restoring independent joint control by storing current matrices in unbind mode.  
 - Precision control of skin binding state for animation rigging workflows.]]></doc>
 <attributes>
-<attr name="" template="label" category="General" connect="" modified="0"><![CDATA[{"text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> with Unbind mode.<br>\n2. Change joints position and press <b>Run</b> with Bind mode.<br>\n</html>", "default": "text"}]]></attr>
-<attr name="mode" template="radioButton" category="General" connect="" modified="0"><![CDATA[{"items": ["Bind", "Unbind"], "current": 0, "columns": 3, "default": "current"}]]></attr>
-<attr name="joints" template="listBox" category="General" connect="" modified="0"><![CDATA[{"items": ["pelvis"], "selected": [], "default": "items"}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<html>\nHow to use: <br>\n1. Set joints and press <b>Run</b> with Unbind mode.<br>\n2. Change joints position and press <b>Run</b> with Bind mode.<br>\n</html>", "default": "text"}]]></attr>
+<attr name="mode" template="radioButton" category="General" connect=""><![CDATA[{"items": ["Bind", "Unbind"], "current": 0, "columns": 3, "default": "current"}]]></attr>
+<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"items": ["pelvis"], "selected": [], "default": "items"}]]></attr>
 </attributes>
-<children>
-</children>
 </module>

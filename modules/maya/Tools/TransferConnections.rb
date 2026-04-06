@@ -1,4 +1,4 @@
-<module name="transferConnections" muted="0" uid="af899998ea1544a8a63825cbd28d84e9" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\TransferConnections.rb">
+<module name="transferConnections" muted="0" uid="af899998ea1544a8a63825cbd28d84e9">
 <run><![CDATA[import pymel.core as pm
 import json
 
@@ -48,11 +48,9 @@ The utility replicates an attribute connection graph from one Maya node to anoth
 - Automating duplication of complex connection networks in animation pipelines.
 - Resetting or rerouting connections during rig refactoring or retargeting processes.]]></doc>
 <attributes>
-<attr name="src" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "root_joint"}]]></attr>
-<attr name="dest" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "joint1"}]]></attr>
-<attr name="inputs" template="checkBox" category="General" connect="" modified="0"><![CDATA[{"default": "checked", "checked": true}]]></attr>
-<attr name="outputs" template="checkBox" category="General" connect="" modified="0"><![CDATA[{"default": "checked", "checked": true}]]></attr>
+<attr name="src" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "root_joint"}]]></attr>
+<attr name="dest" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "joint1"}]]></attr>
+<attr name="inputs" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>
+<attr name="outputs" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>
 </attributes>
-<children>
-</children>
 </module>

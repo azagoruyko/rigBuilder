@@ -1,4 +1,4 @@
-<module name="convertSkinTool" muted="0" uid="c7568f79334f48238ef02aacbae45fbe" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\ConvertSkinTool.rb">
+<module name="convertSkinTool" muted="0" uid="c7568f79334f48238ef02aacbae45fbe">
 <run><![CDATA[# The script moves joints and uses the current deformer to sample skin weights per joint.
 
 import maya.api.OpenMaya as om
@@ -49,10 +49,8 @@ The script calculates initial skin‐cluster weights for a skinned mesh by measu
 - Behavior verification by observing how small joint translations affect vertex positions.  
 - Batch processing of multiple joints to set initial weight values before fine‑tuning.]]></doc>
 <attributes>
-<attr name="" template="label" category="General" connect="" modified="0"><![CDATA[{"text": "Make sure <b>skinGeo</b> has both skinCluster\nand a custom deformer. <u>Disable skinCluster!</u>", "default": "text"}]]></attr>
-<attr name="skinGeo" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"value": "pCube1", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "buttonEnabled": true, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
-<attr name="joints" template="listBox" category="General" connect="" modified="0"><![CDATA[{"items": ["joint1", "joint2", "joint3", "joint4"], "default": "items"}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"text": "Make sure <b>skinGeo</b> has both skinCluster\nand a custom deformer. <u>Disable skinCluster!</u>", "default": "text"}]]></attr>
+<attr name="skinGeo" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "pCube1", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "buttonEnabled": true, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
+<attr name="joints" template="listBox" category="General" connect=""><![CDATA[{"items": ["joint1", "joint2", "joint3", "joint4"], "default": "items"}]]></attr>
 </attributes>
-<children>
-</children>
 </module>

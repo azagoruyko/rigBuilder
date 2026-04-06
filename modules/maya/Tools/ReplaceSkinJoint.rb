@@ -1,4 +1,4 @@
-<module name="replaceSkinJoint" muted="0" uid="b7606eb6a4484ca2a9131f7f9290d458" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\ReplaceSkinJoint.rb">
+<module name="replaceSkinJoint" muted="0" uid="b7606eb6a4484ca2a9131f7f9290d458">
 <run><![CDATA[import pymel.core as pm
 
 sourceJoint = pm.PyNode(@sourceJoint)
@@ -26,10 +26,8 @@ The script copies weight manager connections from a source joint to a destinatio
 - Automating the locking of weight node influence to prevent unintended modifications.
 - Aligning weight pre‑matrices for consistent behavior across different rig sections.]]></doc>
 <attributes>
-<attr name="sourceJoint" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "joint1"}]]></attr>
-<attr name="destinationJoint" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "joint2"}]]></attr>
-<attr name="updatePreMatrix" template="checkBox" category="General" connect="" modified="0"><![CDATA[{"default": "checked", "checked": true}]]></attr>
+<attr name="sourceJoint" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "joint1"}]]></attr>
+<attr name="destinationJoint" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "joint2"}]]></attr>
+<attr name="updatePreMatrix" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": true}]]></attr>
 </attributes>
-<children>
-</children>
 </module>

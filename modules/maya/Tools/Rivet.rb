@@ -1,4 +1,4 @@
-<module name="rivet" muted="0" uid="88e30aae9d5745fcb70ee99e215ea28d" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\Rivet.rb">
+<module name="rivet" muted="0" uid="88e30aae9d5745fcb70ee99e215ea28d">
 <run><![CDATA[import pymel.core as pm
 
 class Rivet():
@@ -111,9 +111,7 @@ The script builds a class that creates a locator positioned at the intersection 
 - Generate a local reference frame on a mesh surface for deformation rigs
 - Automate locator placement for snapping or constraint operations in a Maya scene]]></doc>
 <attributes>
-<attr name="" template="label" category="General" connect="" modified="0"><![CDATA[{"default": "text", "text": "Select two mesh edges and <b>Run</b>."}]]></attr>
-<attr name="name" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "value": "test", "buttonEnabled": false}]]></attr>
+<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "Select two mesh edges and <b>Run</b>."}]]></attr>
+<attr name="name" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "value": "test", "buttonEnabled": false}]]></attr>
 </attributes>
-<children>
-</children>
 </module>

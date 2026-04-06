@@ -1,4 +1,4 @@
-<module name="setMaxInfluences" muted="0" uid="ba683572a8564671832cbe81d0fc0b8c" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\SetMaxInfluences.rb">
+<module name="setMaxInfluences" muted="0" uid="ba683572a8564671832cbe81d0fc0b8c">
 <run><![CDATA[import pymel.core as pm
 
 def setMaxInfluences(geo, maxinf=4):
@@ -54,9 +54,7 @@ The script trims skin‑influence weights on a selected geometry to keep each ve
 - Enforcing a fixed maximum number of influences for compatibility with certain game engines.  
 - Auditing and cleaning up character rigs during pipeline reviews.]]></doc>
 <attributes>
-<attr name="geo" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "Cat_geo"}]]></attr>
-<attr name="maxInf" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "max": "10", "validator": 1, "value": 4, "min": "2", "buttonEnabled": false}]]></attr>
+<attr name="geo" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "value": "Cat_geo"}]]></attr>
+<attr name="maxInf" template="lineEditAndButton" category="General" connect=""><![CDATA[{"default": "value", "max": "10", "validator": 1, "value": 4, "min": "2", "buttonEnabled": false}]]></attr>
 </attributes>
-<children>
-</children>
 </module>
