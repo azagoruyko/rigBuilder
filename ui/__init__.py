@@ -1142,7 +1142,7 @@ class TreeWidget(QTreeView):
             outputPath = None
             
             if not forceDialog:
-                outputPath = module.savingPath()
+                outputPath = module.referenceFile()
 
             if not outputPath:
                 initialPath = os.path.join(getModulesPath(), module.name())

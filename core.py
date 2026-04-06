@@ -683,10 +683,6 @@ class Module(object):
                 path = normLoadedPath
 
         return os.path.splitext(path)[0]
-
-    def savingPath(self) -> str:
-        """Get path for saving module."""
-        return UidManager.resolve(self._uid)
         
     def embed(self):
         """Embed module by clearing UID."""

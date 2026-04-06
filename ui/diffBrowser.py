@@ -17,7 +17,7 @@ def calculateModulesDiff(modules: List[Module]) -> str:
     """Calculate unified diffs for a list of modules against their disk state."""
     diffTexts = []
     for m in modules:
-        filePath = m.filePath()
+        filePath = m.referenceFile()
         if filePath and os.path.exists(filePath):
             try:
                 with open(filePath, "r", encoding="utf-8") as f:
