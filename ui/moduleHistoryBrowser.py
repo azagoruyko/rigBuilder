@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from ..core import getHistoryPath, Module, Settings
+from ..core import getHistoryPath, Module, Settings, UidManager
 from ..gitrepo import GitRepo
 from ..qt import (
     QCheckBox,
@@ -179,7 +179,7 @@ def buildHistoryHtml(filterText: str = "") -> str:
             timePart = dateTimeParts[1] if len(dateTimeParts) > 1 else ""
             for uid in entry["files"]:
                 if subject.startswith("Squashed history"):
-                    filePath = Module.PrivateUids.get(uid) or Module.PublicUids.get(uid) or "Unknown"
+                    filePath = UidManager.get(uid) or "Unknown"
                     fileName = os.path.splitext(os.path.basename(filePath))[0]
                     label = f"<span class='file'>{escape(fileName)}</span> <span class='message'>(squashed)</span>"
                 elif ": " in subject:
