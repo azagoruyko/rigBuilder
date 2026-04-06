@@ -1134,8 +1134,6 @@ class TreeWidget(QTreeView):
         if not modules:
             return
 
-        Module.updateUidsCache()
-
         msg = "\n".join([m.name() for m in modules])
         if QMessageBox.question(self.window(), "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return

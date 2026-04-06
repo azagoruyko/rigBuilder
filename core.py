@@ -714,6 +714,8 @@ class Module(object):
 
         self._filePath = os.path.normpath(fileName)
 
+        Module.updateUidsCache()
+
     @staticmethod
     def loadFromFile(fileName: str) -> 'Module':
         """Load module from XML file."""
