@@ -193,7 +193,7 @@ class Attribute(object):
             return copyJson(self._data[self._data["default"]])
     
     def _setDefaultValue(self, value: Any):
-        """Set default value in attribute data. Does not mark modified (preserved by update)."""
+        """Set default value in attribute data."""
         if "default" in self._data:
             newValue = copyJson(value)
             if newValue != self._defaultValue():
@@ -207,6 +207,7 @@ class Attribute(object):
     def localData(self) -> Dict[str, Any]:
         """Get copy of local data without pulling from connections."""
         return copyJson(self._data)
+        
     def setLocalData(self, newData: Dict[str, Any]):
         """Set local data without pushing to connections."""
         self._data = newData
