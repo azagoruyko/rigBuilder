@@ -13,6 +13,7 @@ import markdown
 from ..qt import *
 from ..core import Module, getPublicModulesPath, getPrivateModulesPath, Settings
 from .logger import logger
+from .fileTracker import DirectoryWatcher
 
 _DOC_CACHE: Dict[str, Tuple[float, str]] = {} # path: (mtime, content)
 
@@ -202,7 +203,20 @@ class ModuleBrowser(QWidget):
         layout.addWidget(self.treeWidget)
         layout.addLayout(controlsLayout)
 
+        self._setupAutoReloadWatcher()
         self.refreshModules()
+
+    def _setupAutoReloadWatcher(self):
+        """Setup the modules auto-reload watcher."""
+        watchRoots = [getModulesPath()]
+        self.modulesAutoReloadWatcher = DirectoryWatcher(
+            watchRoots,
+            filePatterns=["*" + ext for ext in MODULE_EXTS],
+            debounceMs=700,
+            recursive=True,
+            parent=self)
+
+        self.modulesAutoReloadWatcher.somethingChanged.connect(self.refreshModules)
 
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""

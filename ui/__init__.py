@@ -2176,6 +2176,7 @@ class RigBuilderWindow(QFrame):
         rightWidgetLayout.addWidget(self.runBtn)
 
         self.moduleBrowser = ModuleBrowser()
+        self.moduleBrowser.modulesAutoReloadWatcher.somethingChanged.connect(self.treeWidget.refreshModuleTree)
 
         self.leftSplitter = WideSplitter(Qt.Vertical, 8)
         self.leftSplitter.addWidget(self.treeWidget)
@@ -2210,7 +2211,6 @@ class RigBuilderWindow(QFrame):
         layout.addWidget(self.workspaceSplitter)
         layout.addWidget(self.progressBarWidget)
 
-        self.setupModulesAutoReloadWatcher()
         centerWindow(self)
 
     def _onModuleExecutionRequested(self, code: str):
@@ -2226,22 +2226,6 @@ class RigBuilderWindow(QFrame):
         if idx.isValid():
             self.treeWidget.replaceModule(idx, newModule)
             self.attributesTabWidget.updateTabs(newModule)
-
-    def setupModulesAutoReloadWatcher(self):
-        """Setup the modules auto-reload watcher."""
-        def onModulesReloaded():
-            Module.updateUidsCache()
-            self.moduleBrowser.applyMask()
-
-        watchRoots = [getPublicModulesPath(), getPrivateModulesPath()]
-        self.modulesAutoReloadWatcher = DirectoryWatcher(
-            watchRoots,
-            filePatterns=["*.xml"],
-            debounceMs=700,
-            recursive=True,
-            parent=self)
-
-        self.modulesAutoReloadWatcher.somethingChanged.connect(onModulesReloaded)
 
     def _refreshHostCombo(self):
         """Repopulate the host dropdown from hosts.json."""
