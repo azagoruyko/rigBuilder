@@ -9,9 +9,9 @@ from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, Dict,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, APIError,
-    getUidFromFile, calculateRelativePath, getPrivateModulesPath,
-    resolveModuleSpec, printError, printWarning, exitModule,
-    APIRegistry, RigBuilderPrivatePath
+    calculateRelativePath, getModulesPath,
+    printError, printWarning, exitModule,
+    APIRegistry, RigBuilderPrivatePath, UidManager
 )
 from rigBuilder.utils import copyJson
 
@@ -61,8 +61,8 @@ def cleanAPIRegistry():
 @pytest.fixture
 def tempDir():
     """Create temporary directory in local modules folder for realistic caching."""
-    # Create temp dir in private modules folder
-    tmpdir = tempfile.mkdtemp(prefix="test_", dir=RigBuilderPrivatePath + "/modules")
+    # Create temp dir in modules folder
+    tmpdir = tempfile.mkdtemp(prefix="test_", dir=getModulesPath())
 
     yield tmpdir
 
@@ -70,7 +70,7 @@ def tempDir():
     shutil.rmtree(tmpdir, ignore_errors=True)
 
     # Update cache to remove deleted directory
-    Module.updateUidsCache()
+    UidManager.update()
 
 
 @pytest.fixture
@@ -717,7 +717,7 @@ class TestModuleFileOperations:
         # Save
         simpleModule.saveToFile(filePath)
         assert os.path.exists(filePath)
-        assert resolveModuleSpec(simpleModule.uid()) == os.path.normpath(filePath)
+        assert UidManager.resolve(simpleModule.uid()) == os.path.normpath(filePath)
         assert simpleModule.uid() != ""
 
         # Load
@@ -734,33 +734,7 @@ class TestModuleFileOperations:
         simpleModule.saveToFile(filePath, newUid=True)
         assert simpleModule.uid() != oldUid
 
-    def testModulePublishAndSavePath(self, simpleModule, tempDir, monkeypatch):
-        """Test module publishing and savingPath logic."""
-        # Mock publicModulesPath in Settings
-        publicDir = os.path.join(tempDir, "public")
-        os.makedirs(publicDir, exist_ok=True)
-        
-        from rigBuilder.core import Settings
-        monkeypatch.setitem(Settings, "publicModulesPath", publicDir)
-        
-        # Save to private
-        privateFile = os.path.join(getPrivateModulesPath(), "myMod.xml")
-        simpleModule.saveToFile(privateFile)
-        assert simpleModule.loadedFromPrivate() is True
-        
-        # Check save path (should be same as current if already in private)
-        assert os.path.normpath(simpleModule.savingPath()) == os.path.normpath(privateFile)
-        
-        # Publish
-        publicFile = simpleModule.publish()
-        assert publicFile is not None
-        assert os.path.exists(publicFile)
-        assert simpleModule.loadedFromPublic() is True
-        assert not os.path.exists(privateFile)
-        
-        # Save path for public module should point to private equivalent
-        savePath = simpleModule.savingPath()
-        assert os.path.normpath(savePath) == os.path.normpath(privateFile)
+    # No longer needed: public/private separation removed
 
     def testLoadModuleByPath(self, simpleModule, tempDir):
         """Test loading module by various path formats."""
@@ -772,7 +746,7 @@ class TestModuleFileOperations:
         assert loaded.name() == simpleModule.name()
 
         # Get UID from file
-        uid = getUidFromFile(filePath)
+        uid = UidManager.getUidFromFile(filePath)
         assert uid == simpleModule.uid()
 
     def testLoadModuleWithUpdateTrue(self, tempDir):
@@ -786,11 +760,11 @@ class TestModuleFileOperations:
         childPath = os.path.join(tempDir, "child.xml")
         child.saveToFile(childPath)
         parent.saveToFile(parentPath)
-        Module.updateUidsCache()
+        UidManager.update()
 
         child.setRunCode("modified_run")
         child.saveToFile(childPath)
-        Module.updateUidsCache()
+        UidManager.update()
 
         loaded = Module.loadModule(parentPath, update=True)
         assert loaded.findChild("child").runCode() == "modified_run"
@@ -806,11 +780,11 @@ class TestModuleFileOperations:
         childPath = os.path.join(tempDir, "child.xml")
         child.saveToFile(childPath)
         parent.saveToFile(parentPath)
-        Module.updateUidsCache()
+        UidManager.update()
 
         child.setRunCode("modified_run")
         child.saveToFile(childPath)
-        Module.updateUidsCache()
+        UidManager.update()
 
         loaded = Module.loadModule(parentPath, update=False)
         assert loaded.findChild("child").runCode() == "original_run"
@@ -862,7 +836,7 @@ class TestModuleFileOperations:
         v2.addAttribute(attr2_v2)
         v2._uid = loaded.uid()  # Same UID
         v2.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Update
         loaded.update()
@@ -893,7 +867,7 @@ class TestModuleFileOperations:
         v2.addAttribute(attr1_v2)
         v2._uid = loaded.uid()  # Same UID
         v2.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Update
         loaded.update()
@@ -912,7 +886,7 @@ class TestModuleFileOperations:
 
         filePath = os.path.join(tempDir, "original.xml")
         original.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Load and add connection/expression
         loaded = Module.loadModule(filePath)
@@ -949,7 +923,7 @@ class TestModuleFileOperations:
         v2.setRunCode("new_code = 2")
         v2._uid = loaded.uid()
         v2.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Update
         loaded.update()
@@ -967,7 +941,7 @@ class TestModuleFileOperations:
 
         filePath = os.path.join(tempDir, "parent.xml")
         parent.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Load and modify
         loaded = Module.loadModule(filePath)
@@ -980,7 +954,7 @@ class TestModuleFileOperations:
         parentV2.addChild(child2)
         parentV2._uid = loaded.uid()
         parentV2.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Update
         loaded.update()
@@ -1023,7 +997,7 @@ class TestModuleFileOperations:
         v2.addAttribute(attr1_v2)
         v2._uid = loaded.uid()
         v2.saveToFile(filePath)
-        Module.updateUidsCache()  # Update cache from disk
+        UidManager.update()  # Update cache from disk
 
         # Update
         loaded.update()
@@ -1033,22 +1007,22 @@ class TestModuleFileOperations:
         assert updatedAttr.template() == "int"
         assert updatedAttr.get() == 5  # Value from reference, not preserved
 
-    def testGetUidFromFileWithoutUid(self, tempDir):
-        """Test getUidFromFile with XML file without UID."""
+    def testUidManagerGetUidFromFileWithoutUid(self, tempDir):
+        """Test UidManager.getUidFromFile with XML file without UID."""
         filePath = os.path.join(tempDir, "no_uid.xml")
         with open(filePath, "w") as f:
             f.write("<module name=\"test\"><run></run><attributes></attributes><children></children></module>")
 
-        uid = getUidFromFile(filePath)
+        uid = UidManager.getUidFromFile(filePath)
         assert uid is None
 
     def testGetUidFromNonXmlFile(self, tempDir):
-        """Test getUidFromFile with non-XML file."""
+        """Test UidManager.getUidFromFile with non-XML file."""
         filePath = os.path.join(tempDir, "not_xml.txt")
         with open(filePath, "w") as f:
             f.write("This is not an XML file")
 
-        uid = getUidFromFile(filePath)
+        uid = UidManager.getUidFromFile(filePath)
         assert uid is None
 
     def testModuleUpdateWithNoChildren(self):
@@ -1605,44 +1579,43 @@ class TestPathAndSettings:
         result = calculateRelativePath(path, root)
         assert result == os.path.normpath(path)
 
-    def testGetPrivateModulesPath(self):
-        """getPrivateModulesPath returns normalized path under RigBuilderPrivatePath."""
-        expected = os.path.normpath(os.path.join(RigBuilderPrivatePath, "modules"))
-        assert getPrivateModulesPath() == expected
+    def testGetModulesPath(self):
+        """getModulesPath returns a valid path."""
+        assert os.path.exists(getModulesPath())
 
-    def testResolveModuleSpec_empty(self):
+    def testUidManagerResolve_empty(self):
         """Empty spec should return empty string."""
-        assert resolveModuleSpec("") == ""
+        assert UidManager.resolve("") == ""
 
-    def testResolveModuleSpec_byUidAndPathVariants(self, tempDir):
-        """resolveModuleSpec should resolve by uid and path variants."""
+    def testUidManagerResolve_byUidAndPathVariants(self, tempDir):
+        """UidManager.resolve should resolve by uid and path variants."""
         # Create and save module in local modules path
         module = createModule("resolveTest")
         filePath = os.path.join(tempDir, "resolveTest.xml")
         module.saveToFile(filePath)
-        Module.updateUidsCache()
+        UidManager.update()
 
         uid = module.uid()
-        assert uid in Module.PrivateUids
+        assert uid in UidManager.uids()
 
         # By UID
-        resolvedByUid = resolveModuleSpec(uid)
+        resolvedByUid = UidManager.resolve(uid)
         assert os.path.normpath(resolvedByUid) == os.path.normpath(filePath)
 
         # By full path without extension
         noExt = filePath[:-4]
-        resolvedNoExt = resolveModuleSpec(noExt)
+        resolvedNoExt = UidManager.resolve(noExt)
         assert os.path.normpath(resolvedNoExt) == os.path.normpath(filePath)
 
-        # By relative name under private modules root
-        relName = os.path.relpath(filePath, getPrivateModulesPath())
-        # Use name without extension relative to local modules path
+        # By relative name under modules root
+        relName = os.path.relpath(filePath, getModulesPath())
+        # Use name without extension relative to modules path
         relNameNoExt = relName[:-4]
-        resolvedRel = resolveModuleSpec(relNameNoExt)
+        resolvedRel = UidManager.resolve(relNameNoExt)
         assert os.path.normpath(resolvedRel) == os.path.normpath(filePath)
 
-    def testResolveModuleSpec_withEnvVar(self, tempDir, monkeypatch):
-        """resolveModuleSpec should expand environment variables."""
+    def testUidManagerResolve_withEnvVar(self, tempDir, monkeypatch):
+        """UidManager.resolve should expand environment variables."""
         module = createModule("envResolve")
         filePath = os.path.join(tempDir, "envResolve.xml")
         module.saveToFile(filePath)
@@ -1652,7 +1625,7 @@ class TestPathAndSettings:
         monkeypatch.setenv(envVarName, filePath)
         spec = "${}".format(envVarName)
 
-        resolved = resolveModuleSpec(spec)
+        resolved = UidManager.resolve(spec)
         assert os.path.normpath(resolved) == os.path.normpath(filePath)
 
 class TestAPIRegistryMetaclass:

@@ -10,7 +10,7 @@ import logging
 import fnmatch
 import xml.etree.ElementTree as ET
 from functools import partial
-from typing import Callable, Optional, List, Tuple
+from typing import Callable, Optional, List, Tuple, Dict, Union, Any, TYPE_CHECKING
 
 from ..qt import *
 from .. import __version__
@@ -42,7 +42,10 @@ class AttributesWidget(QWidget):
         self.module = module
         self.category = category
 
-        self.attributes = []
+        self._attributes = []
+        self._muted = False
+
+        self.attr = AttrsWrapper(self) # attributes accessor
         self._attributeAndWidgets = [] # [attribute, nameWidget, templateWidget]
 
         self.updateAttributes()
@@ -475,6 +478,57 @@ class AttributesTabWidget(QTabWidget):
             self._attributesWidget.updateWidgetStyles()
 
 
+class ModuleTracker(QObject):
+    """
+    Handles tracking of module files on disk.
+    Loads and caches original module definitions by UID and monitors file changes.
+    """
+    moduleChanged = Signal(str) # uid
+
+    def __init__(self, parent: Optional[QObject] = None):
+        super().__init__(parent)
+        self._cache: Dict[str, Module] = {}
+        self._watcher = QFileSystemWatcher(self)
+        self._watcher.fileChanged.connect(self._onFileChanged)
+
+    def getModule(self, uid: str) -> Optional[Module]:
+        """Get the cached reference module by UID, loading it if necessary."""
+        if not uid:
+            return None
+            
+        if uid not in self._cache:
+            self.loadModule(uid)
+            
+        return self._cache.get(uid)
+
+    def loadModule(self, uid: str):
+        """Load module from disk and add its file to the watcher."""
+        path = UidManager.resolve(uid)
+        if not path or not os.path.exists(path):
+            return
+
+        try:
+            # We use loadFromFile to get the raw content from disk
+            refModule = Module.loadFromFile(path)
+            self._cache[uid] = refModule
+            
+            # Start watching the file for changes if not already watched
+            if path not in self._watcher.files():
+                self._watcher.addPath(path)
+        except Exception as e:
+            logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
+
+    def _onFileChanged(self, path: str):
+        """Handle file change event from QFileSystemWatcher."""
+        uid = UidManager.getUidFromFile(path)
+        if uid and uid in self._cache:
+            self.loadModule(uid)
+            self.moduleChanged.emit(uid)
+
+    def refresh(self):
+        """Force-reload all cached reference modules."""
+        for uid in list(self._cache.keys()):
+            self.loadModule(uid)
 
 
 class ModuleModel(QAbstractItemModel):
@@ -486,6 +540,9 @@ class ModuleModel(QAbstractItemModel):
         super().__init__(parent)
         self._rootModule = rootModule or Module()
         self._draggedModules = [] # Temporary storage for internal drag and drop
+        
+        self.moduleTracker = ModuleTracker(self)
+        self.moduleTracker.moduleChanged.connect(self._onModuleTrackerChanged)
 
     def rootModule(self) -> Module:
         return self._rootModule
@@ -544,7 +601,7 @@ class ModuleModel(QAbstractItemModel):
         return len(parentModule.children())
 
     def columnCount(self, parent=QModelIndex()):
-        return 4 # Name, Path, Source, UID
+        return 3 # Name, Path, UID
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -555,18 +612,17 @@ class ModuleModel(QAbstractItemModel):
 
         if role == Qt.DisplayRole:
             if column == 0:
-                return module.name() + " "
+                icon = ""
+                if module.referenceFile():
+                    icon = "📦 "
+                elif self.isInsideReferenceModule(module) is not None:
+                    icon = "🔒 "
+                return icon + module.name() + " "
 
             elif column == 1:
                 return module.relativePathString().replace("\\", "/") + " "
 
             elif column == 2:
-                source = ""
-                if module.loadedFromPrivate(): source = "private"
-                elif module.loadedFromPublic(): source = "public"
-                return source + " "
-
-            elif column == 3:
                 return module.uid()[:8]
 
         elif role == Qt.EditRole:
@@ -577,26 +633,22 @@ class ModuleModel(QAbstractItemModel):
         elif role == Qt.ForegroundRole:
             if column == 0:
                 isParentMuted = False
-                isParentReferenced = False
                 p = module.parent()
                 while p:
                     isParentMuted = isParentMuted or p.muted()
-                    isParentReferenced = isParentReferenced or p.uid()
                     p = p.parent()
                 
                 color = QColor(200, 200, 200)
-                if isParentReferenced: color = QColor(140, 140, 180)
-                if module.muted() or isParentMuted: color = QColor(100, 100, 100)
+                if module.muted() or isParentMuted: 
+                    color = QColor(100, 100, 100)
+                elif self.isInsideReferenceModule(module) is not None:
+                    color = QColor(230, 230, 100) # Yellow for reference modules
                 return color
 
             elif column == 1:
                 return QColor(125, 125, 125)
 
             elif column == 2:
-                if module.loadedFromPrivate(): return QColor(120, 220, 120)
-                return QColor(120, 120, 120)
-
-            elif column == 3:
                 return QColor(125, 125, 170)
 
         elif role == Qt.BackgroundRole:
@@ -608,12 +660,6 @@ class ModuleModel(QAbstractItemModel):
                 if p and len([ch for ch in p.children() if ch.name() == module.name()]) > 1:
                     return QColor(170, 50, 50)
         
-        elif role == Qt.FontRole:
-            if column == 1:
-                font = QFont()
-                font.setItalic(True)
-                return font
-
         return None
 
     def setData(self, index, value, role=Qt.EditRole):
@@ -654,13 +700,17 @@ class ModuleModel(QAbstractItemModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return ["Name", "Path", "Source", "UID"][section]
+            return ["Name", "Path", "UID"][section]
         return None
 
     def flags(self, index):
         if not index.isValid():
             return Qt.ItemIsDropEnabled
-        return Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
+        
+        module = index.internalPointer()
+        f = Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
+        
+        return f | Qt.ItemIsEditable
 
     # Helpers for structural changes
     def addModuleAt(self, module: Module, parentIndex: QModelIndex = QModelIndex(), row: int = -1):
@@ -772,44 +822,80 @@ class ModuleModel(QAbstractItemModel):
                     row += 1
             return True
 
-        # Internal move is handled by the view/model if we return True and it was a MoveAction,
-        # but since we are using custom Module tree, we should handle it ourselves if needed.
-        # Actually, if we use InternalMove in the view, it calls removeRows/insertRows.        
-        
         # If it's internal move (reordering)
         if data.hasFormat("application/x-rigbuilder-module-internal"):
             if not self._draggedModules:
                 return False
 
-            for m in self._draggedModules:
+            # Sort dragged modules by current parent and row to make moves predictable
+            sortedModules = list(self._draggedModules)
+            if action == Qt.MoveAction:
+                # When moving, sort by reverse row to handle parent shifts better if needed,
+                # but for simplicity, let's just use original order and check validity.
+                pass
+
+            for m in sortedModules:
                 oldParent = m.parent() or self._rootModule
-                oldRow = oldParent.children().index(m)
+                try:
+                    oldRow = oldParent.children().index(m)
+                except ValueError:
+                    continue
                 
-                # Adjust target row if moving within same parent
-                targetRow = row
-                if oldParent == parentModule and oldRow < targetRow:
-                    targetRow -= 1
-
-                # Prevent moving into itself
-                temp = parentModule
-                while temp:
-                    if temp == m: return False
-                    temp = temp.parent()
-
                 oldParentIdx = self.indexForModule(oldParent) if oldParent != self._rootModule else QModelIndex()
                 
-                self.beginMoveRows(oldParentIdx, oldRow, oldRow, parent, row)
-                oldParent.removeChild(m)
-                parentModule.insertChild(targetRow, m)
-                self.endMoveRows()
-                
-                if targetRow <= row: row += 1
+                # Prevent moving into itself
+                temp = parentModule
+                isRecursive = False
+                while temp:
+                    if temp == m:
+                        isRecursive = True
+                        break
+                    temp = temp.parent()
+                if isRecursive: continue
+
+                targetRow = row
+                if oldParent == parentModule and oldRow < row:
+                    targetRow -= 1
+
+                # Use beginMoveRows and check its return value
+                # Documentation: destinationChild is the index where the rows will be placed
+                # before any items are removed.
+                if self.beginMoveRows(oldParentIdx, oldRow, oldRow, parent, row):
+                    try:
+                        oldParent.removeChild(m)
+                        parentModule.insertChild(targetRow, m)
+                    finally:
+                        self.endMoveRows()
+                    
+                    # Update row for the next item in multi-selection 
+                    row = targetRow + 1
             
             self._draggedModules = []
             return True
         
-        return False
+    def isInsideReferenceModule(self, module: Module) -> Optional[Module]:
+        """Recursive helper to find the reference counterpart (source definition) of a module."""
+        uid = module.uid()
+        if uid:
+            return self.moduleTracker.getModule(uid)
 
+        # If not a root UID, try searching in parent's reference counterpart
+        parent = module.parent()
+        if parent:
+            parentRef = self.isInsideReferenceModule(parent)
+            if parentRef:
+                return parentRef.findChild(module.name())
+        
+        return None
+
+    def _onModuleTrackerChanged(self, uid: str):
+        """Handle signal from ModuleTracker when a tracked file changes."""
+        self.layoutChanged.emit() # Refresh all
+
+    def refreshReferences(self):
+        """Force-reload all cached reference modules via the tracker."""
+        self.moduleTracker.refresh()
+        self.layoutChanged.emit()
 
     def replaceModule(self, index: QModelIndex, newModule: Module):
         """Replace a module instance at the given index with a new one."""
@@ -1016,11 +1102,10 @@ class TreeWidget(QTreeView):
             self.scrollTo(idx)
 
     def importModule(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", getPrivateModulesPath(), "Module files (*.rb *.xml);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", getModulesPath(), "Module files (*.rb *.xml);;All files (*)")
         if not filePath:
             return
 
-        Module.updateUidsCache()
         try:
             m = Module.loadModule(filePath)
             self.moduleModel.addModuleAt(m)
@@ -1029,7 +1114,7 @@ class TreeWidget(QTreeView):
             self.window().showLog()
 
     def importScript(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", getPrivateModulesPath(), "Python (*.py);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", getModulesPath(), "Python (*.py);;All files (*)")
         if not filePath:
             return
 
@@ -1060,7 +1145,7 @@ class TreeWidget(QTreeView):
                 outputPath = module.savingPath()
 
             if not outputPath:
-                initialPath = os.path.join(getPrivateModulesPath(), module.name())
+                initialPath = os.path.join(getModulesPath(), module.name())
                 title = "Save as " + module.name() if forceDialog else "Save " + module.name()
                 outputPath, _ = QFileDialog.getSaveFileName(self.window(), title, initialPath, "Module files (*.rb *.xml)")
 
@@ -1120,25 +1205,17 @@ class TreeWidget(QTreeView):
             module.embed()
             self.moduleModel.dataChanged.emit(idx, idx)
 
-    def updateModule(self):
-        modules = self.selectedModules()
-        if not modules:
-            return
-
-        msg = "\n".join([m.name() for m in modules])
-        if QMessageBox.question(self.window(), "Rig Builder", "Update modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
-            return
-
-        selectedIndices = self.selectionModel().selectedRows()
-        for idx in selectedIndices:
-            module = self.moduleModel.getModule(idx)
-            if not module.uid():
-                QMessageBox.warning(self.window(), "Rig Builder", "Can't update module '{}': no uid".format(module.name()))
-                continue
-
-            module.update()
-            # Since update() changes many things, emit layoutChanged or reset the model
-            self.moduleModel.layoutChanged.emit()
+    def refreshModuleTree(self):
+        """Automatically refresh the entire tree from disk while preserving state."""
+        state = self._getTreeState()
+        
+        self.moduleModel.refreshReferences() # Update disk cache
+        
+        self.moduleModel.beginResetModel()
+        self.moduleModel.rootModule().update()
+        self.moduleModel.endResetModel()
+        
+        self._setTreeState(state)
 
     def muteModule(self):
         selectedIndices = self.selectionModel().selectedRows()
@@ -1260,20 +1337,6 @@ class TreeWidget(QTreeView):
         for idx in sortedIndices:
             self.moduleModel.removeModule(idx)
 
-    def publishModule(self):
-        """Publish selected modules."""
-        modules = self.selectedModules()
-        if not modules:
-            return
-
-        msg = "\n".join([m.name() for m in modules])
-        if QMessageBox.question(self.window(), "Rig Builder", "Publish modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
-            return
-
-        for m in modules:
-            m.publish()
-        
-        self.moduleModel.layoutChanged.emit() # refresh display as source might change
 
     def addModule(self, module: "Module") -> "Module":
         """Adds top level module."""
@@ -2079,7 +2142,6 @@ class RigBuilderWindow(QFrame):
 
     def __init__(self):
         super().__init__()
-        self.modulesAutoReloadWatcher = None
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 700)
@@ -2307,7 +2369,6 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModules, "Ctrl+S")
         menu.addAction("Save as", partial(self.treeWidget.saveModules, forceDialog=True, generateNewUids=True))
-        menu.addAction("Publish", self.treeWidget.publishModule, "Ctrl+P")
         menu.addSeparator()
 
         menu.addAction("Locate file", self.locateModuleFile)
@@ -2322,11 +2383,9 @@ class RigBuilderWindow(QFrame):
 
         diffMenu = menu.addMenu("Diff")
         diffMenu.addAction("vs File", self.diffModule, "Alt+D")
-        diffMenu.addAction("vs Public", partial(self.diffModule, reference="public"), "Ctrl+Alt+D")
 
-        menu.addAction("Update", self.treeWidget.updateModule, "Ctrl+U")
         menu.addAction("Embed", self.treeWidget.embedModule)
-
+        
         menu.addSeparator()
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
@@ -2491,7 +2550,7 @@ class RigBuilderWindow(QFrame):
         if not module:
             return
 
-        path = module.referenceFile(source=reference) if reference else resolveModuleSpec(module.uid())
+        path = UidManager.resolve(reference) if reference else UidManager.resolve(module.uid())
         if not path:
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file")
             return
@@ -2527,7 +2586,7 @@ class RigBuilderWindow(QFrame):
 
     def locateModuleFile(self):
         for module in self.treeWidget.selectedModules():
-            path = resolveModuleSpec(module.uid())
+            path = UidManager.resolve(module.uid())
             if module and os.path.exists(path):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(path)))
 

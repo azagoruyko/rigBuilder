@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Tuple
 import markdown
 
 from ..qt import *
-from ..core import Module, getPublicModulesPath, getPrivateModulesPath, Settings
+from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager
 from .logger import logger
 from .fileTracker import DirectoryWatcher
 
@@ -108,11 +108,8 @@ class ModuleBrowserTree(QTreeWidget):
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
-        menu.addAction("Open public folder", self.openPublicModulesFolder)
-        menu.addAction("Open private folder", self.openPrivateModulesFolder)
-        menu.addSeparator()
-        menu.addAction("Set public modules folder...", self.parent().browsePublicModulesPath)
-        menu.addAction("Reset public modules folder", self.parent().resetPublicModulesPath)
+        menu.addAction("Set modules folder...", self.parent().browseModulesPath)
+        menu.addAction("Reset modules folder", self.parent().resetModulesPath)
         menu.addSeparator()
         menu.addAction("Refresh", self.parent().refreshModules)
         menu.popup(event.globalPos())
@@ -122,12 +119,8 @@ class ModuleBrowserTree(QTreeWidget):
             if item.childCount() == 0:
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
-    def openPublicModulesFolder(self):
-        folderPath = getPublicModulesPath()
-        subprocess.call("explorer \"{}\"".format(folderPath))
-
-    def openPrivateModulesFolder(self):
-        folderPath = getPrivateModulesPath()
+    def openModulesFolder(self):
+        folderPath = getModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
 
     def viewportEvent(self, event: QEvent) -> bool:
@@ -162,19 +155,6 @@ class ModuleBrowser(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
-        self.updateSourceWidget = QComboBox()
-        self.updateSourceWidget.addItems(["All", "Public", "Private", "None"])
-        self.updateSourceWidget.setCurrentIndex({"all": 0, "public": 1, "private": 2, "": 3}[Module.UpdateSource])
-        self.updateSourceWidget.currentIndexChanged.connect(lambda *_: self.updateSource())
-
-        self.modulesFromButtonGroup = QButtonGroup(self)
-        self.modulesFromPublicRadio = QRadioButton("Public")
-        self.modulesFromPrivateRadio = QRadioButton("Private")
-        self.modulesFromButtonGroup.addButton(self.modulesFromPublicRadio, 0)
-        self.modulesFromButtonGroup.addButton(self.modulesFromPrivateRadio, 1)
-        self.modulesFromPublicRadio.setChecked(True)
-        self.modulesFromButtonGroup.buttonClicked.connect(self.applyMask)
-
         self.maskWidget = QLineEdit()
         self.maskWidget.setPlaceholderText("Filter modules...")
         self.maskWidget.textChanged.connect(self.applyMask)
@@ -192,16 +172,7 @@ class ModuleBrowser(QWidget):
 
         self.treeWidget = ModuleBrowserTree()
 
-        controlsLayout = QHBoxLayout()
-        controlsLayout.addWidget(QLabel("Modules from"))
-        controlsLayout.addWidget(self.modulesFromPublicRadio)
-        controlsLayout.addWidget(self.modulesFromPrivateRadio)
-        controlsLayout.addStretch()
-        controlsLayout.addWidget(QLabel("Update source"))
-        controlsLayout.addWidget(self.updateSourceWidget)
-
         layout.addWidget(self.treeWidget)
-        layout.addLayout(controlsLayout)
 
         self._setupAutoReloadWatcher()
         self.refreshModules()
@@ -220,30 +191,22 @@ class ModuleBrowser(QWidget):
 
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""
-        Module.updateUidsCache()
+        UidManager.update()
         self.applyMask()
 
-    def updateSource(self):
-        updateSource = self.updateSourceWidget.currentIndex()
-        UpdateSourceFromInt = {0: "all", 1: "public", 2: "private", 3: ""}
-        Module.UpdateSource = UpdateSourceFromInt[updateSource]
 
-    def browsePublicModulesPath(self):
-        current = getPublicModulesPath()
-        folder = QFileDialog.getExistingDirectory(self, "Public modules folder", current)
+    def browseModulesPath(self):
+        current = getModulesPath()
+        folder = QFileDialog.getExistingDirectory(self, "Modules folder", current)
         if folder:
-            Settings["publicModulesPath"] = folder
-            Module.updateUidsCache()
+            Settings["modulesPath"] = folder
+            UidManager.update()
             self.applyMask()
 
-    def resetPublicModulesPath(self):
-        Settings["publicModulesPath"] = ""
-        Module.updateUidsCache()
+    def resetModulesPath(self):
+        Settings["modulesPath"] = ""
+        UidManager.update()
         self.applyMask()
-
-    def getModulesRootDirectory(self) -> str:
-        modulesFrom = self.modulesFromButtonGroup.checkedId()
-        return getPublicModulesPath() if modulesFrom == 0 else getPrivateModulesPath()
 
     def _onMaskTextChanged(self, text: str):
         self.clearFilterButton.setVisible(bool(text))
@@ -256,10 +219,8 @@ class ModuleBrowser(QWidget):
                 if text == ch.text(column):
                     return ch
 
-        modulesFrom = self.modulesFromButtonGroup.checkedId()
-        modulesDirectory = self.getModulesRootDirectory()
-        modules = list(Module.PublicUids.values()) if modulesFrom == 0 else list(Module.PrivateUids.values())
-        modules = sorted(modules)
+        modulesDirectory = getModulesPath()
+        modules = sorted(UidManager.uids().values())
 
         self.treeWidget.clear()
 

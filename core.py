@@ -24,14 +24,75 @@ def replaceAttrPrefix(code: str) -> str:
 def replaceAttrPrefixInverse(code: str) -> str:
     return re.sub(r'{}(\w+)'.format(ATTR_PREFIX), r'@\1', code)
 
-def getUidFromFile(path: str) -> Optional[str]:
-    """Extract UID from a module file (.rb or .xml)."""
-    if any(path.endswith(ext) for ext in MODULE_EXTS):
-        with open(path, "r", encoding="utf-8") as f:
-            l = f.readline()  # read first line
-        r = re.search("uid=\"(\\w*)\"", l)
-        if r:
-            return r.group(1)
+class UidManager:
+    _uids: Dict[str, str] = {}
+
+    @classmethod
+    def update(cls):
+        """Update cached UIDs from modules directory."""
+        cls._uids = cls.findUids(getModulesPath())
+
+    @classmethod
+    def get(cls, uid: str) -> Optional[str]:
+        """Get file path by UID."""
+        return cls._uids.get(uid)
+
+    @classmethod
+    def uids(cls) -> Dict[str, str]:
+        """Get all cached UIDs."""
+        return cls._uids
+
+    @classmethod
+    def resolve(cls, spec: str) -> str:
+        """Resolve spec (path or uid) to module file path, or empty string if not found."""
+        if not spec:
+            return ""
+            
+        modulePath = cls.get(spec)
+        if not modulePath:
+            root = getModulesPath()
+            spec = os.path.expandvars(spec)
+
+            specPaths = [
+                root + spec + ext
+                for root in ("", f"{root}/")
+                for ext in ("",) + MODULE_EXTS
+            ]
+
+            for path in specPaths:
+                if os.path.exists(path):
+                    modulePath = path
+                    break
+
+        return os.path.normpath(modulePath) if modulePath else ""
+
+    @staticmethod
+    def getUidFromFile(path: str) -> Optional[str]:
+        """Extract UID from a module file (.rb or .xml)."""
+        if any(path.endswith(ext) for ext in MODULE_EXTS):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    l = f.readline()  # read first line
+                r = re.search("uid=\"(\\w*)\"", l)
+                if r:
+                    return r.group(1)
+            except Exception:
+                pass
+        return None
+
+    @classmethod
+    def findUids(cls, path: str) -> Dict[str, str]:
+        """Find all UIDs and their file paths in directory."""
+        uids = {}
+        for fpath in sorted(glob.iglob(path + "/*")):
+            if os.path.isdir(fpath):
+                uids.update(cls.findUids(fpath))
+            elif any(fpath.endswith(ext) for ext in MODULE_EXTS):
+                uid = cls.getUidFromFile(fpath)
+                if uid:
+                    uids[uid] = fpath
+        return uids
+
 
 def calculateRelativePath(path: str, root: str) -> str:
     """Calculate relative path from root directory."""
@@ -360,10 +421,7 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
         return json.dumps(self._attr.data())
 
 class Module(object):
-    UpdateSource = "all" # all, public, private, (empty)
 
-    PrivateUids = {}
-    PublicUids = {}
 
     glob = Dict() # global memory
 
@@ -587,39 +645,30 @@ class Module(object):
 
         return module
 
-    def loadedFromPublic(self) -> bool:
-        """Check if module was loaded from public path."""
-        return self._uid in Module.PublicUids
+    def loadedFromStore(self) -> bool:
+        """Check if module was loaded from the modules store."""
+        return self._uid in UidManager.uids()
 
-    def loadedFromPrivate(self) -> bool:
-        """Check if module was loaded from private path."""        
-        return self._uid in Module.PrivateUids
-
-    def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
-        """Get reference file path based on source preference."""
-        private = Module.PrivateUids.get(self._uid)
-        public = Module.PublicUids.get(self._uid)
-        path = {"all": private or public, "public": public, "private": private, "":""}.get(source or Module.UpdateSource)
-        return path
+    def referenceFile(self) -> Optional[str]:
+        """Get reference file path."""
+        return UidManager.get(self._uid)
 
     def relativePath(self) -> str:
         """Get relative path from modules directory."""
-        path = resolveModuleSpec(self._uid)
-        if self.loadedFromPublic():
-            return calculateRelativePath(path, getPublicModulesPath())
-        elif self.loadedFromPrivate():
-            return calculateRelativePath(path, getPrivateModulesPath())
+        path = UidManager.resolve(self._uid)
+        if self.loadedFromStore():
+            return calculateRelativePath(path, getModulesPath())
         else:
             return path
 
     def relativePathString(self) -> str:
         """Get display string for relative path."""
-        filePath = resolveModuleSpec(self._uid)
+        filePath = UidManager.resolve(self._uid)
         if not filePath:
             return ""
 
         path = ""
-        if self.loadedFromPublic() or self.loadedFromPrivate():
+        if self.loadedFromStore():
             path = self.relativePath().replace("\\", "/")
         else:
             normLoadedPath = filePath.replace("\\", "/")
@@ -634,13 +683,7 @@ class Module(object):
 
     def savingPath(self) -> str:
         """Get path for saving module."""
-        path = resolveModuleSpec(self._uid)
-        if self.loadedFromPublic():
-            relativePath = os.path.relpath(path, getPublicModulesPath())
-            return os.path.join(getPrivateModulesPath(), relativePath)
-
-        else: # private or somewhere else
-            return path
+        return UidManager.resolve(self._uid)
         
     def embed(self):
         """Embed module by clearing UID."""
@@ -648,51 +691,35 @@ class Module(object):
 
     def update(self):
         """Update module from reference file."""
-        origPath = self.referenceFile()
-        if origPath:
-            origModule = Module.loadFromFile(origPath)
-            
-            attributes = []
-            for origAttr in origModule._attributes:
-                foundAttr = self.findAttribute(origAttr._name)
-                if origAttr._name and foundAttr and foundAttr._template == origAttr._template: # skip empty named attrs, use first found
-                    origAttr._setDefaultValue(foundAttr._defaultValue()) # keep attribute value
-                    origAttr._connect = foundAttr._connect
-                    origAttr._expression = foundAttr._expression
-                    
-                attributes.append(origAttr)
+        refPath = self.referenceFile()
+        if refPath:
+            refModule = Module.loadFromFile(refPath)
 
-            self._attributes = []
-            for a in attributes:
-                self.addAttribute(a)
+            # Update attributes
+            origAttrs = {a._name: a for a in self._attributes}
+            self._attributes.clear()
 
-            self._children = []
-            for ch in origModule._children:
+            for origAttr in refModule._attributes:
+                foundAttr = origAttrs.get(origAttr._name)
+                if foundAttr:
+                    if origAttr._name and foundAttr._template == origAttr._template: # shallow update
+                        origAttr._setDefaultValue(foundAttr._defaultValue()) 
+                        origAttr._connect = foundAttr._connect
+                        origAttr._expression = foundAttr._expression
+
+                self.addAttribute(origAttr)
+
+            # Update children
+            self._children.clear()
+
+            for ch in refModule._children:
                 self.addChild(ch)
 
-            self._runCode = origModule._runCode
-            self._doc = origModule._doc
+            self._runCode = refModule._runCode
+            self._doc = refModule._doc
 
         for ch in self._children:
             ch.update()
-
-    def publish(self) -> Optional[str]:
-        """Save module to public path and remove private copy."""
-        if self.loadedFromPrivate():
-            savePath = os.path.join(getPublicModulesPath(), self.relativePath())
-            if not os.path.exists(os.path.dirname(savePath)):
-                os.makedirs(os.path.dirname(savePath))
-
-            oldPath = resolveModuleSpec(self._uid)
-            self.saveToFile(savePath)
-            try:
-                os.unlink(oldPath) # remove private file
-            except OSError:
-                pass  # file might already be deleted
-
-            Module.PublicUids[self._uid] = savePath
-            Module.PrivateUids.pop(self._uid, None) # remove from private uids
-            return savePath
 
     def saveToFile(self, fileName: str, *, newUid: bool = False):
         """Save module to file."""
@@ -702,7 +729,7 @@ class Module(object):
         with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
             f.write(self.toXml(keepConnections=False))  # don't keep outer connections
 
-        Module.updateUidsCache()
+        UidManager.update()
 
     @staticmethod
     def loadFromFile(fileName: str) -> 'Module':
@@ -715,7 +742,7 @@ class Module(object):
     @staticmethod
     def loadModule(spec: str, *, update: bool = True) -> 'Module': # spec can be full path, relative path or uid
         """Load module by spec (path, relative path, or UID)."""
-        modulePath = resolveModuleSpec(spec)
+        modulePath = UidManager.resolve(spec)
         if not modulePath:
             raise ModuleNotFoundError("Module '{}' not found".format(spec))
 
@@ -849,42 +876,16 @@ class Module(object):
 
         return ctx
 
-    @staticmethod
-    def updateUidsCache():
-        """Update cached UIDs from private and public directories."""
-        Module.PublicUids = Module.findUids(getPublicModulesPath())
-        Module.PrivateUids = Module.findUids(getPrivateModulesPath())
 
-    @staticmethod
-    def findUids(path: str) -> Dict[str, str]:
-        """Find all UIDs and their file paths in directory."""
-        uids = {}
-
-        for fpath in sorted(glob.iglob(path+"/*")):
-            if os.path.isdir(fpath):
-                dirUids = Module.findUids(fpath)
-                uids.update(dirUids)
-
-            elif any(fpath.endswith(ext) for ext in MODULE_EXTS):
-                uid = getUidFromFile(fpath)
-                if uid:
-                    uids[uid] = fpath
-
-        return uids
-
-def getPrivateModulesPath() -> str:
-    """Return the private modules root directory, normalized."""
-    privateModulesRoot = os.path.join(RigBuilderPrivatePath, "modules")
-    return os.path.normpath(privateModulesRoot)
-
-def getPublicModulesPath() -> str:
-    """Return the public modules root directory, normalized."""
-    path = Settings.get("publicModulesPath") or ""
+def getModulesPath() -> str:
+    """Return the modules root directory, normalized."""
+    path = Settings.get("modulesPath") or ""
     if path:
         return os.path.normpath(path)
 
-    defaultPublicRoot = os.path.join(RigBuilderPath, "modules")
-    return os.path.normpath(defaultPublicRoot)
+    defaultRoot = os.path.join(RigBuilderPath, "modules")
+    return os.path.normpath(defaultRoot)
+
 
 
 def getHistoryPath() -> str:
@@ -892,27 +893,6 @@ def getHistoryPath() -> str:
     return os.path.normpath(os.path.join(RigBuilderPrivatePath, "history"))
 
 
-def resolveModuleSpec(spec: str) -> str:
-    """Resolve spec (path or uid) to module file path, or empty string if not found."""
-    if not spec:
-        return ""
-    modulePath = Module.PrivateUids.get(spec) or Module.PublicUids.get(spec)
-    if not modulePath:
-        private, public = getPrivateModulesPath(), getPublicModulesPath()
-        spec = os.path.expandvars(spec)
-
-        specPaths = [
-            root + spec + ext
-            for root in ("", f"{private}/", f"{public}/")
-            for ext in ("",) + MODULE_EXTS
-        ]
-
-        for path in specPaths:
-            if os.path.exists(path):
-                modulePath = path
-                break
-
-    return os.path.normpath(modulePath) if modulePath else ""
 
 
 # Initialize directories and settings
@@ -921,7 +901,7 @@ settingsFile = os.path.join(RigBuilderPrivatePath, "settings.json")
 
 Settings = {
     "vscode": "code",
-    "publicModulesPath": "",
+    "modulesPath": "",
     "trackHistory": True
 }
 
@@ -937,10 +917,10 @@ def saveSettings():
     with open(settingsFile, "w") as f:
         json.dump(Settings, f, indent=4)
         
-os.makedirs(getPrivateModulesPath(), exist_ok=True)
+os.makedirs(getModulesPath(), exist_ok=True)
 os.makedirs(getHistoryPath(), exist_ok=True)
 
-Module.updateUidsCache()
+UidManager.update()
 
 # API
 
