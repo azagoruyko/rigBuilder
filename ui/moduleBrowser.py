@@ -61,7 +61,7 @@ class ModuleBrowserTree(QTreeWidget):
     def _collectDraggedModulePaths(self) -> List[str]:
         modulePaths = []
         for item in self.selectedItems():
-            filePath = getattr(item, "filePath", "")
+            filePath = item.filePath
             if filePath:
                 modulePaths.append(filePath)
         return modulePaths
@@ -132,7 +132,7 @@ class ModuleBrowserTree(QTreeWidget):
     def viewportEvent(self, event: QEvent) -> bool:
         if event.type() == QEvent.ToolTip:
             item = self.itemAt(event.pos())
-            if item and getattr(item, "filePath", ""):
+            if item and item.filePath:
                 doc = getDocFromFile(item.filePath)
                 if doc:
                     tooltip = markdown.markdown(
