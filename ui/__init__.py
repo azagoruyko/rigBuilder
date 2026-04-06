@@ -2388,8 +2388,7 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
         menu.addSeparator()
 
-        diffMenu = menu.addMenu("Diff")
-        diffMenu.addAction("vs File", self.diffModule, "Alt+D")
+        menu.addAction("Diff vs File", self.diffModule, "Alt+D")
 
         menu.addAction("Embed", self.treeWidget.embedModule)
         
