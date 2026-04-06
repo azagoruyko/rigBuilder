@@ -28,6 +28,7 @@ At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
 ## ✨ Key Features
 
 - **📦 Unified module storage** — Automatically manages and discovers modules in a single library, simplifying versioning and sharing. No more manual public/private folder management.
+- **🔄 Auto-Sync Architecture** — Automatically synchronizes the modules with their files on disk.
 - **📜 Module history** — Built-in, git-backed history browser for all module changes. Track every save, view diffs, and restore versions instantly.
 - **🖥️ DCC Agnostic** — RigBuilder communicates with **Maya**, **Blender**, **Unreal Engine**, or any other Python-capable host.
 - **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted rig building, documentation generation, and script refactoring without leaving the app.
@@ -63,7 +64,8 @@ To enable Local AI Assistance, install Ollama and sign in to get access to cloud
 
    > Models ending in `-cloud` (like `gpt-oss:20b-cloud`) can be used instantly without pulling them to your local machine, as long as you are signed in.
    >
-   > 💡 **Tip**: You can change the default AI model (for things like diff summaries) by editing the `ollamaModel` field in `~/rigBuilder/settings.json`.
+   > [!TIP]
+   > The default AI model can be customized via the `ollamaModel` key in your `~/rigBuilder/settings.json` file.
 
 ### 3. Launch
 
