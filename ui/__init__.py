@@ -1044,72 +1044,63 @@ class TreeWidget(QTreeView):
         newIdx = self.moduleModel.addModuleAt(m)
         self.setCurrentIndex(newIdx)
 
-    def saveModule(self):
+    def saveModules(self, forceDialog: bool = False, generateNewUids: bool = False):
         selectedIndices = self.selectionModel().selectedRows()
         if not selectedIndices:
             return
 
-        modules = self.selectedModules()
-        msg = "\n".join(["{} -> {}".format(m.name(), m.getSavePath() or "N/A") for m in modules])
+        saveData = [] # List of (module, outputPath, index)
 
-        if QMessageBox.question(self.window(), "Rig Builder", "Save modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
-            return
-
-        shouldCommit, commitMessage = False, ""
-        if self.window().moduleHistoryWidget.isHistoryTrackingEnabled():
-            shouldCommit, commitMessage = self.window().moduleHistoryWidget.showCommitMessageDialog()
-
+        # 1. Collect target paths and show file dialogs if needed
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
-            outputPath = module.getSavePath()
+            outputPath = None
+            
+            if not forceDialog:
+                outputPath = module.savingPath()
 
             if not outputPath:
-                outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save "+module.name(), os.path.join(getPrivateModulesPath(), module.name()), "Module files (*.rb *.xml)")
+                initialPath = os.path.join(getPrivateModulesPath(), module.name())
+                title = "Save as " + module.name() if forceDialog else "Save " + module.name()
+                outputPath, _ = QFileDialog.getSaveFileName(self.window(), title, initialPath, "Module files (*.rb *.xml)")
 
             if outputPath:
-                dirname = os.path.dirname(outputPath)
-                if not os.path.exists(dirname):
-                    os.makedirs(dirname)
+                saveData.append((module, outputPath, idx))
 
-                try:
-                    module.saveToFile(outputPath)
-                except Exception as e:
-                    QMessageBox.critical(self.window(), "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
-                else:
-                    if shouldCommit:
-                        if not moduleHistoryBrowser.recordModuleSave(module, commitMessage):
-                            QMessageBox.critical(self.window(), "Rig Builder", "Can't save history for '{}'".format(module.name()))
-                    
-                    self.moduleModel.dataChanged.emit(idx, idx) # refresh display
-                    self.window().attributesTabWidget.updateWidgetStyles()
-
-        self.window().moduleHistoryWidget.updateModuleHistory()
-
-    def saveAsModule(self):
-        selectedIndices = self.selectionModel().selectedRows()
-        if not selectedIndices:
+        if not saveData:
             return
 
-        shouldCommit, commitMessage = False, ""
-        if self.window().moduleHistoryWidget.isHistoryTrackingEnabled():
-            shouldCommit, commitMessage = self.window().moduleHistoryWidget.showCommitMessageDialog()
+        # 2. Confirmation / Commit message
+        historyWidget = self.window().moduleHistoryWidget
+        historyEnabled = historyWidget.isHistoryTrackingEnabled()
+        commitMessage = ""
 
-        for idx in selectedIndices:
-            module = self.moduleModel.getModule(idx)
-            outputDir = os.path.dirname(module.filePath()) or getPrivateModulesPath()
-            outputPath, _ = QFileDialog.getSaveFileName(self.window(), "Save as "+module.name(), outputDir + "/" + module.name(), "Module files (*.rb *.xml)")
+        # Build list for description
+        desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), p) for m, p, _ in saveData])
 
-            if outputPath:
-                try:
-                    module.saveToFile(outputPath, newUid=True)
-                except Exception as e:
-                    QMessageBox.critical(self.window(), "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
-                else:
-                    if shouldCommit:
-                        moduleHistoryBrowser.recordModuleSave(module, commitMessage)
-                        
-                    self.moduleModel.dataChanged.emit(idx, idx) # refresh display
-                    self.window().attributesTabWidget.updateWidgetStyles()
+        if historyEnabled:
+            _, commitMessage = historyWidget.showCommitMessageDialog(desc)
+        else:
+            if QMessageBox.question(self.window(), "Rig Builder", desc, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+                return
+
+        # 3. Perform the actual save
+        for module, outputPath, idx in saveData:
+            dirname = os.path.dirname(outputPath)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+
+            try:
+                module.saveToFile(outputPath, newUid=generateNewUids)
+            except Exception as e:
+                QMessageBox.critical(self.window(), "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
+            else:
+                if historyEnabled:
+                    if not moduleHistoryBrowser.recordModuleSave(module, commitMessage):
+                        QMessageBox.critical(self.window(), "Rig Builder", "Can't save history for '{}'".format(module.name()))
+                
+                self.moduleModel.dataChanged.emit(idx, idx) # refresh display
+                self.window().attributesTabWidget.updateWidgetStyles()
 
         self.window().moduleHistoryWidget.updateModuleHistory()
 
@@ -2330,8 +2321,8 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Import", self.treeWidget.importModule, "Ctrl+I")
         menu.addAction("Import script", self.treeWidget.importScript)
         menu.addSeparator()
-        menu.addAction("Save", self.treeWidget.saveModule, "Ctrl+S")
-        menu.addAction("Save as", self.treeWidget.saveAsModule)
+        menu.addAction("Save", self.treeWidget.saveModules, "Ctrl+S")
+        menu.addAction("Save as", partial(self.treeWidget.saveModules, forceDialog=True, generateNewUids=True))
         menu.addAction("Publish", self.treeWidget.publishModule, "Ctrl+P")
         menu.addSeparator()
 
@@ -2516,7 +2507,7 @@ class RigBuilderWindow(QFrame):
         if not module:
             return
 
-        path = module.referenceFile(source=reference) if reference else module.filePath()
+        path = module.referenceFile(source=reference) if reference else resolveModuleSpec(module.uid())
         if not path:
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file")
             return
@@ -2552,8 +2543,9 @@ class RigBuilderWindow(QFrame):
 
     def locateModuleFile(self):
         for module in self.treeWidget.selectedModules():
-            if module and os.path.exists(module.filePath()):
-                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(module.filePath())))
+            path = resolveModuleSpec(module.uid())
+            if module and os.path.exists(path):
+                subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(path)))
 
     def _onTreeSelectionChanged(self, selected, deselected):
         module = self.treeWidget.currentModule()

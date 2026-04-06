@@ -378,7 +378,6 @@ class Module(object):
         self._attributes = []
 
         self._muted = False
-        self._filePath = ""
 
         self.attr = AttrsWrapper(self) # attributes accessor
 
@@ -398,7 +397,6 @@ class Module(object):
 
         module._parent = None
 
-        module._filePath = self._filePath
         module._muted = self._muted
         return module
     
@@ -417,10 +415,6 @@ class Module(object):
     def parent(self) -> Optional['Module']:
         """Get parent module in hierarchy."""
         return self._parent
-    
-    def filePath(self) -> str:
-        """Get file path where module was loaded from."""
-        return self._filePath
     
     def muted(self) -> bool:
         """Check if module is muted (won't execute)."""
@@ -541,8 +535,7 @@ class Module(object):
         """Convert module to XML string representation."""
         attrs = [("name", self._name),
                  ("muted", int(self._muted)),
-                 ("uid", self._uid),
-                 ("filePath", self._filePath)]
+                 ("uid", self._uid)]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
         template = ["<module {}>".format(attrsStr)]
@@ -575,7 +568,6 @@ class Module(object):
         module._name = root.attrib.get("name", "")
         module._uid = root.attrib.get("uid", "")
         module._muted = int(root.attrib.get("muted", 0))
-        module._filePath = root.attrib.get("filePath", "")
         module._runCode = root.findtext("run") or ""
         
         doc_el = root.find("doc")
@@ -596,42 +588,40 @@ class Module(object):
 
     def loadedFromPublic(self) -> bool:
         """Check if module was loaded from public path."""
-        filePath = os.path.normpath(self._filePath or "")
-        publicRoot = getPublicModulesPath()
-        return filePath.lower().startswith(publicRoot.lower() + os.sep)
+        return self._uid in Module.PublicUids
 
     def loadedFromPrivate(self) -> bool:
         """Check if module was loaded from private path."""        
-        filePath = os.path.normpath(self._filePath or "")
-        privateRoot = getPrivateModulesPath()
-        return filePath.lower().startswith(privateRoot.lower() + os.sep)
+        return self._uid in Module.PrivateUids
 
     def referenceFile(self, *, source: Optional[str] = None) -> Optional[str]:
         """Get reference file path based on source preference."""
         private = Module.PrivateUids.get(self._uid)
         public = Module.PublicUids.get(self._uid)
-        path = {"all": private or public, "public": public, "private": private, "":self._filePath}.get(source or Module.UpdateSource)
+        path = {"all": private or public, "public": public, "private": private, "":""}.get(source or Module.UpdateSource)
         return path
 
     def relativePath(self) -> str:
         """Get relative path from modules directory."""
+        path = resolveModuleSpec(self._uid)
         if self.loadedFromPublic():
-            return calculateRelativePath(self._filePath, getPublicModulesPath())
+            return calculateRelativePath(path, getPublicModulesPath())
         elif self.loadedFromPrivate():
-            return calculateRelativePath(self._filePath, getPrivateModulesPath())
+            return calculateRelativePath(path, getPrivateModulesPath())
         else:
-            return self._filePath
+            return path
 
-    def relativePathString(self) -> str: # relative loaded path or ../folder/child/module.xml
+    def relativePathString(self) -> str:
         """Get display string for relative path."""
-        if not self._filePath:
+        filePath = resolveModuleSpec(self._uid)
+        if not filePath:
             return ""
 
         path = ""
         if self.loadedFromPublic() or self.loadedFromPrivate():
             path = self.relativePath().replace("\\", "/")
         else:
-            normLoadedPath = self._filePath.replace("\\", "/")
+            normLoadedPath = filePath.replace("\\", "/")
             items = normLoadedPath.split("/")
             MaxPathItems = 3
             if len(items) > MaxPathItems: # c: folder child module.xml
@@ -641,19 +631,19 @@ class Module(object):
 
         return os.path.splitext(path)[0]
 
-    def getSavePath(self) -> str:
+    def savingPath(self) -> str:
         """Get path for saving module."""
+        path = resolveModuleSpec(self._uid)
         if self.loadedFromPublic():
-            relativePath = os.path.relpath(self._filePath, getPublicModulesPath())
+            relativePath = os.path.relpath(path, getPublicModulesPath())
             return os.path.join(getPrivateModulesPath(), relativePath)
 
         else: # private or somewhere else
-            return self._filePath
+            return path
         
     def embed(self):
-        """Embed module by clearing UID and file path."""
+        """Embed module by clearing UID."""
         self._uid = ""
-        self._filePath = ""
 
     def update(self):
         """Update module from reference file."""
@@ -681,19 +671,18 @@ class Module(object):
 
             self._runCode = origModule._runCode
             self._doc = origModule._doc
-            self._filePath = origModule._filePath
 
         for ch in self._children:
             ch.update()
 
-    def publish(self) -> Optional[str]: # save the module on public path, remove from private
+    def publish(self) -> Optional[str]:
         """Save module to public path and remove private copy."""
         if self.loadedFromPrivate():
             savePath = os.path.join(getPublicModulesPath(), self.relativePath())
             if not os.path.exists(os.path.dirname(savePath)):
                 os.makedirs(os.path.dirname(savePath))
 
-            oldPath = self._filePath
+            oldPath = resolveModuleSpec(self._uid)
             self.saveToFile(savePath)
             try:
                 os.unlink(oldPath) # remove private file
@@ -712,8 +701,6 @@ class Module(object):
         with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
             f.write(self.toXml(keepConnections=False))  # don't keep outer connections
 
-        self._filePath = os.path.normpath(fileName)
-
         Module.updateUidsCache()
 
     @staticmethod
@@ -721,7 +708,6 @@ class Module(object):
         """Load module from XML file."""
         with open(fileName, "r", encoding="utf-8") as f:
             m = Module.fromXml(ET.parse(f).getroot())
-        m._filePath = os.path.normpath(fileName)
         m._muted = False
         return m
 

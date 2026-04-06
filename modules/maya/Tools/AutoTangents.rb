@@ -1,4 +1,4 @@
-<module name="autoTangent" muted="0" uid="fe8646386e674920b0dfd829b30e6736">
+<module name="autoTangent" muted="0" uid="fe8646386e674920b0dfd829b30e6736" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\AutoTangents.rb">
 <run><![CDATA[import pymel.core as pm
 import maya.cmds as cmds
 import math
@@ -142,10 +142,19 @@ elif @selected==1:
         autoTangents(pm.PyNode(animCurve))
 
     ]]></run>
+<doc><![CDATA[## Summary
+
+This script automates the adjustment of keyframe tangents on Maya animation curves. It detects extrema keys, calculates slopes before and after each key, and applies spline or flat tangents with blended angles to create smoother transitions. The main `autoTangents` function can be run on the current selection or all active curves, using user flags to control softening or flattening behavior.
+
+## Use cases
+
+- Quickly refine the motion of animation curves by automatically tightening or easing keyframe tangents.
+- Apply consistent tangent settings across multiple curves without manual per-key adjustments.
+- Integrate into pipelines where smooth animation curves are required for high‑quality motion capture or procedural animation.]]></doc>
 <attributes>
-<attr name="flatten" template="checkBox" category="General" connect=""><![CDATA[{"default": "checked", "checked": false}]]></attr>
-<attr name="selected" template="radioButton" category="General" connect=""><![CDATA[{"current": 1, "items": ["Keys", "Curves"], "columns": 2, "default": "current"}]]></attr>
-<attr name="soft" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "max": "1", "validator": 2, "value": 0.0, "min": "0"}]]></attr>
+<attr name="flatten" template="checkBox" category="General" connect="" modified="0"><![CDATA[{"default": "checked", "checked": false}]]></attr>
+<attr name="selected" template="radioButton" category="General" connect="" modified="0"><![CDATA[{"current": 1, "items": ["Keys", "Curves"], "columns": 2, "default": "current"}]]></attr>
+<attr name="soft" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "max": "1", "validator": 2, "value": 0.0, "min": "0", "buttonEnabled": false}]]></attr>
 </attributes>
 <children>
 </children>

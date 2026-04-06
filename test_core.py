@@ -380,7 +380,6 @@ class TestModule:
         assert module.children() == []
         assert module.attributes() == []
         assert module.muted() == False
-        assert module.filePath() == ""
 
     def testModuleProperties(self, simpleModule):
         """Test module property getters/setters."""
@@ -408,14 +407,12 @@ class TestModule:
         assert copy.attributes()[0] is not simpleModule.attributes()[0]
 
     def testEmbedClearsState(self):
-        """embed() should clear uid and filePath."""
+        """embed() should clear uid."""
         module = createModule("test")
         module._uid = "someUid"
-        module._filePath = os.path.join("C:\\", "folder", "module.xml")
 
         module.embed()
         assert module.uid() == ""
-        assert module.filePath() == ""
 
 class TestModuleChildren:
     """Tests for module children management."""
@@ -720,7 +717,7 @@ class TestModuleFileOperations:
         # Save
         simpleModule.saveToFile(filePath)
         assert os.path.exists(filePath)
-        assert simpleModule.filePath() == os.path.normpath(filePath)
+        assert resolveModuleSpec(simpleModule.uid()) == os.path.normpath(filePath)
         assert simpleModule.uid() != ""
 
         # Load
@@ -738,7 +735,7 @@ class TestModuleFileOperations:
         assert simpleModule.uid() != oldUid
 
     def testModulePublishAndSavePath(self, simpleModule, tempDir, monkeypatch):
-        """Test module publishing and getSavePath logic."""
+        """Test module publishing and savingPath logic."""
         # Mock publicModulesPath in Settings
         publicDir = os.path.join(tempDir, "public")
         os.makedirs(publicDir, exist_ok=True)
@@ -752,7 +749,7 @@ class TestModuleFileOperations:
         assert simpleModule.loadedFromPrivate() is True
         
         # Check save path (should be same as current if already in private)
-        assert os.path.normpath(simpleModule.getSavePath()) == os.path.normpath(privateFile)
+        assert os.path.normpath(simpleModule.savingPath()) == os.path.normpath(privateFile)
         
         # Publish
         publicFile = simpleModule.publish()
@@ -762,7 +759,7 @@ class TestModuleFileOperations:
         assert not os.path.exists(privateFile)
         
         # Save path for public module should point to private equivalent
-        savePath = simpleModule.getSavePath()
+        savePath = simpleModule.savingPath()
         assert os.path.normpath(savePath) == os.path.normpath(privateFile)
 
     def testLoadModuleByPath(self, simpleModule, tempDir):

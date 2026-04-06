@@ -1,4 +1,4 @@
-<module name="rivet" muted="0" uid="88e30aae9d5745fcb70ee99e215ea28d">
+<module name="rivet" muted="0" uid="88e30aae9d5745fcb70ee99e215ea28d" modified="0" filePath="C:\Users\azagoruiko\rigBuilder\modules\maya\Tools\Rivet.rb">
 <run><![CDATA[import pymel.core as pm
 
 class Rivet():
@@ -101,9 +101,18 @@ if ls and len(ls)==2:
     rivet.create(e1.node(), e1.index(), e2.index(), None)
 else:
     error("Select two mesh edges")    ]]></run>
+<doc><![CDATA[## Summary
+
+The script builds a class that creates a locator positioned at the intersection of two mesh edges on a Maya surface. It generates a network of nodes: two `curveFromMeshEdge` nodes for each edge, a `loft` node to form a surface between the curves, a `pointOnSurfaceInfo` node to sample a point on that surface, and matrix nodes to drive the locator's transform. When two edges are selected, it automatically constructs this node network and parents/ renames the resulting locator.
+
+## Use cases
+
+- Quickly place a rig control at the midpoint of two mesh edges
+- Generate a local reference frame on a mesh surface for deformation rigs
+- Automate locator placement for snapping or constraint operations in a Maya scene]]></doc>
 <attributes>
-<attr name="" template="label" category="General" connect=""><![CDATA[{"default": "text", "text": "Select two mesh edges and <b>Run</b>."}]]></attr>
-<attr name="name" template="lineEdit" category="General" connect=""><![CDATA[{"default": "value", "value": "test"}]]></attr>
+<attr name="" template="label" category="General" connect="" modified="0"><![CDATA[{"default": "text", "text": "Select two mesh edges and <b>Run</b>."}]]></attr>
+<attr name="name" template="lineEditAndButton" category="General" connect="" modified="0"><![CDATA[{"default": "value", "value": "test", "buttonEnabled": false}]]></attr>
 </attributes>
 <children>
 </children>
