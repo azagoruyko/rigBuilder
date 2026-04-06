@@ -220,76 +220,6 @@ class CommitMessageWorker(QThread):
             self.finished.emit("")
 
 
-def showCommitMessageDialog(parent, diffText: str = "", description: str = "") -> Tuple[bool, str]:
-    """Show optional commit message dialog before save. Returns (accepted, message)."""
-    dlg = QDialog(parent)
-    dlg.resize(600, 100)
-    dlg.setWindowTitle("Save module")
-    layout = QVBoxLayout(dlg)
-    
-    if description:
-        descriptionLabel = QLabel(description)
-        descriptionLabel.setWordWrap(True)
-        layout.addWidget(descriptionLabel)
-        
-        # Add a simple horizontal line
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("margin: 10px 0;")
-        layout.addWidget(line)
-    layout.addWidget(QLabel("Commit message (optional):"))
-
-    hLayout = QHBoxLayout()
-    lineEdit = QLineEdit()
-    lineEdit.setPlaceholderText("e.g. update myModule.xml")
-    hLayout.addWidget(lineEdit)
-
-    genButton = QPushButton("✨ Generate")
-    genButton.setToolTip("Generate commit message from changes using AI")
-    hLayout.addWidget(genButton)
-
-    if not engine.OLLAMA_AVAILABLE or not diffText:
-        genButton.hide()
-
-    layout.addLayout(hLayout)
-
-    # We need to keep a reference to the worker so it doesn't get garbage collected
-    dlg._worker = None
-
-    def onGenerate():
-        genButton.setEnabled(False)
-        genButton.setText("⌛ Generating...")
-        
-        # Create worker without parent so it's not destroyed with the dialog
-        dlg._worker = CommitMessageWorker(diffText)
-        
-        # Keep alive in global list
-        activeWorkers.append(dlg._worker)
-        dlg._worker.finished.connect(lambda: activeWorkers.remove(dlg._worker) if dlg._worker in activeWorkers else None)
-        
-        dlg._worker.finished.connect(onFinished)
-        dlg._worker.start()
-
-    def onFinished(summary: str):
-        genButton.setEnabled(True)
-        genButton.setText("✨ Generate")
-        if summary:
-            lineEdit.setText(summary)
-            lineEdit.setFocus()
-
-    genButton.clicked.connect(onGenerate)
-
-    bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-    bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
-    bbox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
-    bbox.accepted.connect(dlg.accept)
-    bbox.rejected.connect(dlg.reject)
-    layout.addWidget(bbox)
-    accepted = dlg.exec_() == QDialog.Accepted
-    return (accepted, lineEdit.text().strip() if accepted else "")
-
-
 class ModuleHistoryWidget(QWidget):
     """Widget with filter and text browser showing module history (git log). Emits linkClicked(url) for link handling."""
 
@@ -419,7 +349,74 @@ class ModuleHistoryWidget(QWidget):
 
     def showCommitMessageDialog(self, diffText: str = "", description: str = ""):
         """Show commit message dialog. Returns (accepted, message)."""
-        return showCommitMessageDialog(self, diffText=diffText, description=description)
+        dlg = QDialog(self)
+        dlg.resize(600, 100)
+        dlg.setWindowTitle("Save module")
+        layout = QVBoxLayout(dlg)
+        
+        if description:
+            descriptionLabel = QLabel(description)
+            descriptionLabel.setWordWrap(True)
+            descriptionLabel.setStyleSheet("color: #96af8f;")
+            layout.addWidget(descriptionLabel)
+            
+            # Add a simple horizontal line
+            line = QFrame()
+            line.setFrameShape(QFrame.HLine)
+            line.setFrameShadow(QFrame.Sunken)
+            line.setStyleSheet("margin: 10px 0;")
+            layout.addWidget(line)
+        layout.addWidget(QLabel("Commit message (optional):"))
+
+        hLayout = QHBoxLayout()
+        lineEdit = QLineEdit()
+        lineEdit.setPlaceholderText("e.g. update myModule.xml")
+        hLayout.addWidget(lineEdit)
+
+        genButton = QPushButton("✨ Generate")
+        genButton.setToolTip("Generate commit message from changes using AI")
+        hLayout.addWidget(genButton)
+
+        if not engine.OLLAMA_AVAILABLE or not diffText:
+            genButton.hide()
+
+        layout.addLayout(hLayout)
+
+        # We need to keep a reference to the worker so it doesn't get garbage collected
+        dlg._worker = None
+
+        def onGenerate():
+            genButton.setEnabled(False)
+            genButton.setText("⌛ Generating...")
+            
+            # Create worker without parent so it's not destroyed with the dialog
+            dlg._worker = CommitMessageWorker(diffText)
+            
+            # Keep alive in global list
+            activeWorkers.append(dlg._worker)
+            dlg._worker.finished.connect(lambda: activeWorkers.remove(dlg._worker) if dlg._worker in activeWorkers else None)
+            
+            dlg._worker.finished.connect(onFinished)
+            dlg._worker.start()
+
+        def onFinished(summary: str):
+            genButton.setEnabled(True)
+            genButton.setText("✨ Generate")
+            if summary:
+                lineEdit.setText(summary)
+                lineEdit.setFocus()
+
+        genButton.clicked.connect(onGenerate)
+
+        bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
+        bbox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
+        bbox.accepted.connect(dlg.accept)
+        bbox.rejected.connect(dlg.reject)
+        layout.addWidget(bbox)
+        accepted = dlg.exec_() == QDialog.Accepted
+        return (accepted, lineEdit.text().strip() if accepted else "")
+
 
     def updateModuleHistory(self):
         """Update the module history widget with the latest history."""
