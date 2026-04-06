@@ -51,10 +51,11 @@ def getHistoryRepo() -> Optional[GitRepo]:
 # --- Recording saves ---
 
 def recordModuleSave(module: Module, commitMessage: str) -> bool:
-    """Write module XML to history and commit. Message is 'moduleFile: <commitMessage>' or 'moduleFile: update'. Returns True on success."""
+    """Write module to history and commit. Message is 'moduleFile: <commitMessage>' or 'moduleFile: update'. Returns True on success."""
     repo = getHistoryRepo()
     if not repo:
         return False
+
     uid = module.uid()
     if not uid:
         return False
@@ -63,8 +64,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     with open(historyFile, "w", encoding="utf-8") as f:
         f.write(module.toXml(keepConnections=False))
 
-    baseName = os.path.basename(module.getSavePath())
-    message = "{}: {}".format(baseName, commitMessage.strip() or "update")
+    message = "{}: {}".format(module.name(), commitMessage.strip() or "update")
 
     err, _ = repo.commit(message, [historyFile])
     return not err
