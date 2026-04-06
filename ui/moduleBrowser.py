@@ -64,9 +64,10 @@ class ModuleBrowserTree(QTreeWidget):
     def _collectDraggedModulePaths(self) -> List[str]:
         modulePaths = []
         for item in self.selectedItems():
-            filePath = item.filePath
-            if filePath:
-                modulePaths.append(filePath)
+            if hasattr(item, "filePath"):
+                filePath = item.filePath
+                if filePath:
+                    modulePaths.append(filePath)
         return modulePaths
 
     def _startModuleDrag(self):
@@ -118,16 +119,17 @@ class ModuleBrowserTree(QTreeWidget):
 
     def browseModuleDirectory(self):
         for item in self.selectedItems():
-            if item.childCount() == 0:
+            if hasattr(item, "filePath"):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
     def openModulesFolder(self):
         folderPath = getModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
+        
     def viewportEvent(self, event: QEvent) -> bool:
         if event.type() == QEvent.ToolTip:
             item = self.itemAt(event.pos())
-            if item and item.filePath:
+            if item and hasattr(item, "filePath"):
                 doc = getDocFromFile(item.filePath)
                 if doc:
                     tooltip = markdown.markdown(
