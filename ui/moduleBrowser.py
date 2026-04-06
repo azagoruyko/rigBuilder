@@ -6,11 +6,36 @@ import os
 import re
 import time
 import subprocess
-from typing import Optional, List, Dict
+import xml.etree.ElementTree as ET
+from typing import Optional, List, Dict, Tuple
+import markdown
 
 from ..qt import *
 from ..core import Module, getPublicModulesPath, getPrivateModulesPath, Settings
 from .logger import logger
+
+_DOC_CACHE: Dict[str, Tuple[float, str]] = {} # path: (mtime, content)
+
+def getDocFromFile(path: str) -> str:
+    """Fetch doc content from file with caching based on mtime."""
+    mtime = os.path.getmtime(path)
+    if path in _DOC_CACHE:
+        cached_mtime, content = _DOC_CACHE[path]
+        if cached_mtime == mtime:
+            return content
+            
+    content = ""
+    try:
+        tree = ET.parse(path)
+        root = tree.getroot()
+        doc_el = root.find("doc")
+        if doc_el is not None:
+            content = doc_el.text or ""
+    except Exception:
+        pass
+        
+    _DOC_CACHE[path] = (mtime, content)
+    return content
 
 OLD_MODULE_THRESHOLD_DAYS = 7
 
@@ -103,6 +128,25 @@ class ModuleBrowserTree(QTreeWidget):
     def openPrivateModulesFolder(self):
         folderPath = getPrivateModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
+
+    def viewportEvent(self, event: QEvent) -> bool:
+        if event.type() == QEvent.ToolTip:
+            item = self.itemAt(event.pos())
+            if item and getattr(item, "filePath", ""):
+                doc = getDocFromFile(item.filePath)
+                if doc:
+                    tooltip = markdown.markdown(
+                        doc,
+                        extensions=["fenced_code", "tables", "nl2br", "sane_lists", "codehilite", "toc", "extra"],
+                        output_format="html5"
+                    )
+                    if not tooltip.startswith("<html>") and not tooltip.startswith("<!DOCTYPE"):
+                        tooltip = "<html><body>" + tooltip + "</body></html>"
+                    QToolTip.showText(event.globalPos(), tooltip, self)
+                else:
+                    QToolTip.showText(event.globalPos(), "No documentation", self)
+                return True
+        return super().viewportEvent(event)
 
 
 class ModuleBrowser(QWidget):
