@@ -27,10 +27,11 @@ At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
 
 ## ✨ Key Features
 
-- **📦 Module-based assembly** — Define rig steps as XML modules and arrange them in a hierarchy to run the full pipeline from one place.
+- **📦 Unified module storage** — Automatically manages and discovers modules in a single library, simplifying versioning and sharing. No more manual public/private folder management.
 - **📜 Module history** — Built-in, git-backed history browser for all module changes. Track every save, view diffs, and restore versions instantly.
 - **🖥️ DCC Agnostic** — RigBuilder communicates with **Maya**, **Blender**, **Unreal Engine**, or any other Python-capable host.
-- **🤖 AI-Assisted Editing** — Use the **"Edit in VS Code"** button to export modules for external editing inside your favorite VS Code based editor, optimized for AI assistance.
+- **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted rig building, documentation generation, and script refactoring without leaving the app.
+- **📝 Native Markdown docs** — All module documentation is now natively written and rendered in Markdown, providing a modern and clean look for tool descriptions.
 
 ---
 
@@ -46,7 +47,25 @@ cd rigBuilder
 install.bat
 ```
 
-### 2. Launch
+### 2. Ollama AI Setup (Optional)
+
+To enable Local AI Assistance, install Ollama and sign in to get access to cloud models and synchronization features:
+
+1. **Download**: Install from [ollama.com](https://ollama.com/).
+2. **Setup**: Run the installer.
+3. **Login**: Open your terminal and run:
+
+   ```bash
+   ollama signin
+   ```
+
+4. **Pull Models**: `ollama pull your-favorite-model`.
+
+   > Models ending in `-cloud` (like `gpt-oss:20b-cloud`) can be used instantly without pulling them to your local machine, as long as you are signed in.
+   >
+   > 💡 **Tip**: You can change the default AI model (for things like diff summaries) by editing the `ollamaModel` field in `~/rigBuilder/settings.json`.
+
+### 3. Launch
 
 Run RigBuilder using the launch script:
 
@@ -83,7 +102,8 @@ To execute modules inside a host, you must install **`zmq`** (or `pyzmq`) in tha
 - **Python** ≥ 3.9
 - **PySide6** ≥ 6.0.0 (Standalone UI)
 - **pyzmq** ≥ 24.0.0 (Host connectivity)
-- **markdown** ≥ 3.0.0 (Module documentation)
+- **markdown** ≥ 3.1.0 (Module documentation)
+- **ollama** (AI connectivity)
 - **pytest** ≥ 7.0.0 (Testing)
 
 ---
