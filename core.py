@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
 RigBuilderPath = os.path.dirname(__file__)
-RigBuilderPrivatePath = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
-MODULE_EXT = ".rb"            # default extension for new/saved modules
+RigBuilderUserPath = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
+MODULE_EXT = ".rb" # default extension for new/saved modules
 MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
 
 ATTR_PREFIX = "attr_"
@@ -889,14 +889,14 @@ def getModulesPath() -> str:
 
 def getHistoryPath() -> str:
     """Return the history directory for module version history (git-tracked)."""
-    return os.path.normpath(os.path.join(RigBuilderPrivatePath, "history"))
+    return os.path.normpath(os.path.join(RigBuilderUserPath, "history"))
 
 
 
 
 # Initialize directories and settings
-os.makedirs(RigBuilderPrivatePath, exist_ok=True)
-settingsFile = os.path.join(RigBuilderPrivatePath, "settings.json")
+os.makedirs(RigBuilderUserPath, exist_ok=True)
+settingsFile = os.path.join(RigBuilderUserPath, "settings.json")
 
 Settings = {
     "vscode": "code",

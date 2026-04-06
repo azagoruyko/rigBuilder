@@ -3,7 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from typing import List, Protocol
 
-from .core import Module, RigBuilderPrivatePath
+from .core import Module, RigBuilderUserPath
 
 workspaceFilename = "workspace.xml"
 
@@ -30,7 +30,7 @@ def flattenModules(roots: List[Module]) -> List[Module]:
 
 def saveWorkspace(mainWindow: WorkspaceMainWindow) -> None:
     """Save top-level modules to workspace.xml."""
-    path = os.path.join(RigBuilderPrivatePath, workspaceFilename)
+    path = os.path.join(RigBuilderUserPath, workspaceFilename)
     treeWidget = mainWindow.treeWidget
     rootModules = treeWidget.moduleModel.rootModule().children()
     flattenedModules = flattenModules(rootModules)
@@ -62,7 +62,7 @@ def saveWorkspace(mainWindow: WorkspaceMainWindow) -> None:
 
 def loadWorkspace(mainWindow: WorkspaceMainWindow) -> None:
     """Load module tree from workspace.xml."""
-    path = os.path.join(RigBuilderPrivatePath, workspaceFilename)
+    path = os.path.join(RigBuilderUserPath, workspaceFilename)
     if not os.path.exists(path):
         return
 

@@ -1,9 +1,9 @@
 import os
 import json
 from ..qt import *
-from ..core import RigBuilderPrivatePath
+from ..core import RigBuilderUserPath
 
-PRESETS_FILE = os.path.join(RigBuilderPrivatePath, "presets.json")
+PRESETS_FILE = os.path.join(RigBuilderUserPath, "presets.json")
 
 from .utils import centerWindow
 
@@ -27,8 +27,8 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         presets[name] = {"template": template, "data": data}
         
-        if not os.path.exists(RigBuilderPrivatePath):
-            os.makedirs(RigBuilderPrivatePath)
+        if not os.path.exists(RigBuilderUserPath):
+            os.makedirs(RigBuilderUserPath)
             
         with open(PRESETS_FILE, "w") as f:
             json.dump(presets, f, indent=2)

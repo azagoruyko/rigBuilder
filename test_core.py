@@ -11,7 +11,7 @@ from rigBuilder.core import (
     ModuleNotFoundError, CopyJsonError, APIError,
     calculateRelativePath, getModulesPath,
     printError, printWarning, exitModule,
-    APIRegistry, RigBuilderPrivatePath, UidManager
+    APIRegistry, RigBuilderUserPath, UidManager
 )
 from rigBuilder.utils import copyJson
 

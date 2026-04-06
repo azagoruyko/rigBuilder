@@ -2515,8 +2515,8 @@ class RigBuilderWindow(QFrame):
 
         # generate header file
         fileName = module.path().lstrip("/").replace("/", "__")
-        headerFile = os.path.join(RigBuilderPrivatePath, "vscode", "{}_header.py".format(fileName))
-        runCodeFilePath = os.path.join(RigBuilderPrivatePath, "vscode", "{}.py".format(fileName))
+        headerFile = os.path.join(RigBuilderUserPath, "vscode", "{}_header.py".format(fileName))
+        runCodeFilePath = os.path.join(RigBuilderUserPath, "vscode", "{}.py".format(fileName))
 
         headerCode = []
 
@@ -2547,7 +2547,7 @@ class RigBuilderWindow(QFrame):
         startTrackedFileThread(runCodeFilePath, partial(onRunCodeFileChanged, runCodeFilePath, module.uid(), module.path()))
 
         try:
-            subprocess.Popen([Settings["vscode"], RigBuilderPrivatePath+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([Settings["vscode"], RigBuilderUserPath+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -2728,7 +2728,7 @@ def setupVscode():  # path to .vscode folder
         "python.autoComplete.extraPaths": [],
     }
 
-    folder = os.path.join(RigBuilderPrivatePath, "vscode", ".vscode")
+    folder = os.path.join(RigBuilderUserPath, "vscode", ".vscode")
     os.makedirs(folder, exist_ok=True)
     settingsFile = os.path.join(folder, "settings.json")
 
@@ -2743,7 +2743,7 @@ def setupVscode():  # path to .vscode folder
         json.dump(settings, f, indent=4)
 
 def cleanupVscode():
-    vscodeFolder = RigBuilderPrivatePath+"/vscode"
+    vscodeFolder = RigBuilderUserPath+"/vscode"
     if not os.path.exists(vscodeFolder):
         return
     
