@@ -20,7 +20,7 @@ from .apiBrowser import ApiBrowserWidget
 from .docBrowser import DocBrowser
 from .moduleBrowser import ModuleBrowser
 from .moduleHistoryBrowser import ModuleHistoryWidget
-from .diffBrowser import DiffBrowserDialog
+from .diffBrowser import DiffBrowserDialog, calculateModulesDiff
 from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
 from ..utils import *
 from .utils import *
@@ -1164,7 +1164,13 @@ class TreeWidget(QTreeView):
         desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), p) for m, p, _ in saveData])
 
         if historyEnabled:
-            _, commitMessage = historyWidget.showCommitMessageDialog(desc)
+            modulesToSave = [m for m, _, _ in saveData]
+            accepted, commitMessage = historyWidget.showCommitMessageDialog(
+                diffText=calculateModulesDiff(modulesToSave),
+                description=desc
+            )
+            if not accepted:
+                return
         else:
             if QMessageBox.question(self.window(), "Rig Builder", desc, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
@@ -1188,6 +1194,7 @@ class TreeWidget(QTreeView):
                 self.window().attributesTabWidget.updateWidgetStyles()
 
         self.window().moduleHistoryWidget.updateModuleHistory()
+
 
     def embedModule(self):
         modules = self.selectedModules()

@@ -23,15 +23,22 @@ from ..qt import (
     QTextBrowser,
     QUrl,
     QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
     QWidget,
     QTextCursor,
     Signal,
+    QThread,
+    QFrame,
 )
 from .utils import centerWindow
 from .diffBrowser import DiffBrowserDialog
+from .. import ai
+from ..ai import engine
 
 
 # --- Constants ---
+activeWorkers = []
 
 GIT_INSTALL_URL = "https://git-scm.com/downloads"
 HISTORY_LINK_SCHEME = "history"
@@ -171,21 +178,117 @@ def buildHistoryHtml(filterText: str = "") -> str:
             datePart = dateTimeParts[0] if dateTimeParts else ""
             timePart = dateTimeParts[1] if len(dateTimeParts) > 1 else ""
             for uid in entry["files"]:
-                label = subject
                 if subject.startswith("Squashed history"):
                     filePath = Module.PrivateUids.get(uid) or Module.PublicUids.get(uid) or "Unknown"
-                    label = os.path.splitext(os.path.basename(filePath))[0]
+                    fileName = os.path.splitext(os.path.basename(filePath))[0]
+                    label = f"<span class='file'>{escape(fileName)}</span> <span class='message'>(squashed)</span>"
+                elif ": " in subject:
+                    filePart, msgPart = subject.split(": ", 1)
+                    label = f"<span class='file'>{escape(filePart)}</span>: <span class='message'>{escape(msgPart)}</span>"
+                else:
+                    label = f"<span class='message'>{escape(subject)}</span>"
 
                 diffUrl = "{}:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 recoverUrl = "{}:recover:{}:{}".format(HISTORY_LINK_SCHEME, rev, uid)
                 diffLink = "<a href='{}' title='View diff for this commit'>diff</a>".format(diffUrl)
                 recoverLink = " <a href='{}' title='Add module from this revision to the tree'>recover</a>".format(recoverUrl)
-                line = "{}, {}, {} {}{}".format(escape(datePart), escape(timePart), escape(label), diffLink, recoverLink)
+                
+                dateStrFormatted = f"<span class='date'>{escape(datePart)} {escape(timePart)}</span>"
+                line = "{} {} {}{}".format(dateStrFormatted, label, diffLink, recoverLink)
                 parts.append("<p>{}</p>".format(line))
     return "".join(parts)
 
 
 # --- UI ---
+
+
+class CommitMessageWorker(QThread):
+    """Background worker to fetch AI-generated commit message summary."""
+    finished = Signal(str)
+
+    def __init__(self, diffText: str, parent=None):
+        super().__init__(parent)
+        self.diffText = diffText
+
+    def run(self):
+        try:
+            import asyncio
+            summary = asyncio.run(ai.run("diff_summary", self.diffText))
+            self.finished.emit(summary)
+        except Exception as e:
+            print(f"Error summarizing diff for commit: {e}")
+            self.finished.emit("")
+
+
+def showCommitMessageDialog(parent, diffText: str = "", description: str = "") -> Tuple[bool, str]:
+    """Show optional commit message dialog before save. Returns (accepted, message)."""
+    dlg = QDialog(parent)
+    dlg.resize(600, 100)
+    dlg.setWindowTitle("Save module")
+    layout = QVBoxLayout(dlg)
+    
+    if description:
+        descriptionLabel = QLabel(description)
+        descriptionLabel.setWordWrap(True)
+        layout.addWidget(descriptionLabel)
+        
+        # Add a simple horizontal line
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("margin: 10px 0;")
+        layout.addWidget(line)
+    layout.addWidget(QLabel("Commit message (optional):"))
+
+    hLayout = QHBoxLayout()
+    lineEdit = QLineEdit()
+    lineEdit.setPlaceholderText("e.g. update myModule.xml")
+    hLayout.addWidget(lineEdit)
+
+    genButton = QPushButton("✨ Generate")
+    genButton.setToolTip("Generate commit message from changes using AI")
+    hLayout.addWidget(genButton)
+
+    if not engine.OLLAMA_AVAILABLE or not diffText:
+        genButton.hide()
+
+    layout.addLayout(hLayout)
+
+    # We need to keep a reference to the worker so it doesn't get garbage collected
+    dlg._worker = None
+
+    def onGenerate():
+        genButton.setEnabled(False)
+        genButton.setText("⌛ Generating...")
+        
+        # Create worker without parent so it's not destroyed with the dialog
+        dlg._worker = CommitMessageWorker(diffText)
+        
+        # Keep alive in global list
+        activeWorkers.append(dlg._worker)
+        dlg._worker.finished.connect(lambda: activeWorkers.remove(dlg._worker) if dlg._worker in activeWorkers else None)
+        
+        dlg._worker.finished.connect(onFinished)
+        dlg._worker.start()
+
+    def onFinished(summary: str):
+        genButton.setEnabled(True)
+        genButton.setText("✨ Generate")
+        if summary:
+            lineEdit.setText(summary)
+            lineEdit.setFocus()
+
+    genButton.clicked.connect(onGenerate)
+
+    bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
+    bbox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
+    bbox.accepted.connect(dlg.accept)
+    bbox.rejected.connect(dlg.reject)
+    layout.addWidget(bbox)
+    accepted = dlg.exec_() == QDialog.Accepted
+    return (accepted, lineEdit.text().strip() if accepted else "")
+
 
 class ModuleHistoryWidget(QWidget):
     """Widget with filter and text browser showing module history (git log). Emits linkClicked(url) for link handling."""
@@ -209,7 +312,13 @@ class ModuleHistoryWidget(QWidget):
 
         self.textBrowser = QTextBrowser()
         self.textBrowser.setOpenLinks(False)
-        self.textBrowser.document().setDefaultStyleSheet("a { color: #55aaee; }")
+        self.textBrowser.document().setDefaultStyleSheet("""
+            a { color: #55aaee; text-decoration: none; }
+            .file { color: #96af8f; font-weight: bold; }
+            .message { font-style: italic; color: #cccccc; }
+            .date { color: #888888; font-size: 11px; margin-right: 5px; }
+            p { margin: 2px 0; }
+        """)
         self.textBrowser.setContextMenuPolicy(Qt.CustomContextMenu)
         self.textBrowser.customContextMenuRequested.connect(self._onTextBrowserContextMenu)
         self.textBrowser.anchorClicked.connect(self._onAnchorClicked)
@@ -308,32 +417,9 @@ class ModuleHistoryWidget(QWidget):
                 "Squash failed: {}".format(errMsg),
             )
 
-    def showCommitMessageDialog(self, description: str = "") -> Tuple[bool, str]:
-        """Show optional commit message dialog before save."""
-        dlg = QDialog(self)
-        dlg.resize(400, 100)
-        dlg.setWindowTitle("Save?")
-        dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
-        
-        layout = QVBoxLayout(dlg)
-        
-        if description:
-            lbl = QLabel(description)
-            lbl.setWordWrap(True)
-            layout.addWidget(lbl)
-        
-        layout.addWidget(QLabel("Commit message (optional):"))
-        lineEdit = QLineEdit()
-        lineEdit.setPlaceholderText("e.g. add cool new feature")
-        layout.addWidget(lineEdit)
-            
-        bbox = QDialogButtonBox(QDialogButtonBox.Ok)
-        bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
-        bbox.accepted.connect(dlg.accept)
-        layout.addWidget(bbox)
-        
-        dlg.exec()
-        return (True, lineEdit.text().strip())
+    def showCommitMessageDialog(self, diffText: str = "", description: str = ""):
+        """Show commit message dialog. Returns (accepted, message)."""
+        return showCommitMessageDialog(self, diffText=diffText, description=description)
 
     def updateModuleHistory(self):
         """Update the module history widget with the latest history."""

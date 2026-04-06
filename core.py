@@ -902,7 +902,8 @@ settingsFile = os.path.join(RigBuilderPrivatePath, "settings.json")
 Settings = {
     "vscode": "code",
     "modulesPath": "",
-    "trackHistory": True
+    "trackHistory": True,
+    "ollamaModel": "gpt-oss:20b-cloud"
 }
 
 if os.path.exists(settingsFile):
