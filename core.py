@@ -599,22 +599,25 @@ class Module(object):
         attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
         template = ["<module {}>".format(attrsStr)]
 
-        template.append("".join(["<run>",
-                                 "<![CDATA[", self._runCode, "]]>",
-                                 "</run>"]))
+        if self._runCode:
+            template.append("".join(["<run>",
+                                     "<![CDATA[", self._runCode, "]]>",
+                                     "</run>"]))
 
         if self._doc:
             template.append("".join(["<doc>",
                                      "<![CDATA[", self._doc, "]]>",
                                      "</doc>"]))
 
-        template.append("<attributes>")
-        template += [a.toXml(keepConnection=keepConnections) for a in self._attributes]
-        template.append("</attributes>")
+        if self._attributes:
+            template.append("<attributes>")
+            template += [a.toXml(keepConnection=keepConnections) for a in self._attributes]
+            template.append("</attributes>")
 
-        template.append("<children>")
-        template += [ch.toXml(keepConnections=True) for ch in self._children] # keep inner connections
-        template.append("</children>")
+        if self._children:
+            template.append("<children>")
+            template += [ch.toXml(keepConnections=True) for ch in self._children] # keep inner connections
+            template.append("</children>")
 
         template.append("</module>")
 
