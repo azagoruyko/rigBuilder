@@ -247,7 +247,7 @@ class AttributesWidget(QWidget):
         elif attr.expression() and attr.connect(): # both
             style = "TemplateWidget { border: 4px solid rgba(0,0,0,0); background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 rgba(110, 110, 57, 0.25), stop: 1 rgba(99, 32, 148, 0.25)); }"
 
-        nameWidget.setText(attr.name()+("*" if attr.modified() else ""))
+        nameWidget.setText(attr.name())
 
         widget.setStyleSheet(style)
         widget.setToolTip("\n".join(tooltip))
@@ -555,10 +555,7 @@ class ModuleModel(QAbstractItemModel):
 
         if role == Qt.DisplayRole:
             if column == 0:
-                name = module.name()
-                if module.modified():
-                    return name + "*"
-                return name + " "
+                return module.name() + " "
 
             elif column == 1:
                 return module.relativePathString().replace("\\", "/") + " "
@@ -1360,7 +1357,6 @@ class EditTemplateWidget(QWidget):
         self.template = template
         self.attrConnect = ""
         self.attrExpression = ""
-        self.attrModified = False
 
         layout = QHBoxLayout()
         layout.setContentsMargins(0,0,0,0)
@@ -1432,7 +1428,6 @@ class EditTemplateWidget(QWidget):
     def _applyPreset(self, presetData: dict):
         data = presetData["data"]
         self.templateWidget.setJsonData(data)
-        self.attrModified = True
 
     def _saveAsPreset(self):
         name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, self.nameWidget.text())
@@ -1468,7 +1463,6 @@ class EditTemplateWidget(QWidget):
             w.nameWidget.setText(self.nameWidget.text())
             w.attrConnect = self.attrConnect
             w.attrExpression = self.attrExpression
-            w.attrModified = self.attrModified
             self.deleteLater()
 
     def _onUpBtnClicked(self):
@@ -1480,7 +1474,6 @@ class EditTemplateWidget(QWidget):
             w.nameWidget.setText(self.nameWidget.text())
             w.attrConnect = self.attrConnect
             w.attrExpression = self.attrExpression
-            w.attrModified = self.attrModified
             self.deleteLater()
 
 class EditAttributesWidget(QWidget):
@@ -1510,7 +1503,6 @@ class EditAttributesWidget(QWidget):
                 w.templateWidget.setJsonData(a.localData())
                 w.attrConnect = a.connect()
                 w.attrExpression = a.expression()
-                w.attrModified = a.modified()
 
         layout.addWidget(self.placeholderWidget)
         layout.addLayout(self.attributesLayout)
@@ -1736,30 +1728,17 @@ class EditAttributesDialog(QDialog):
 
         origAttrs = list(module.attributes())
         origByName = {a.name(): a for a in origAttrs if a.name()}
-        origModuleModified = module.modified()
 
         newAttrs = self.buildAttributesFromTabs()
         newRunCode = self.tabWidget.tempRunCode
 
         module.removeAttributes()
 
-        anythingChanged = len(origAttrs) != len(newAttrs)
         for a in newAttrs:
             module.addAttribute(a)
-            if not a.name():
-                continue
-
-            orig = origByName.get(a.name())
-            if orig is None or not attrMetaEqual(orig, a) or orig.modified():
-                a._modified = True
-                anythingChanged = True
 
         if module.runCode() != newRunCode:
             module.setRunCode(newRunCode)
-            anythingChanged = True
-
-        if not anythingChanged and not origModuleModified:
-            module._modified = False
 
         self.accept()
 

@@ -124,7 +124,6 @@ class Attribute(object):
         self._template = ""
         self._connect = "" # attribute connection, format: /a/b/c, where c is attr, a/b is a parent relative path
         self._expression = "" # python code
-        self._modified = False
         self._module = None
         self._data = {}
 
@@ -136,7 +135,6 @@ class Attribute(object):
         attr._template = self._template
         attr._connect = self._connect
         attr._expression = self._expression
-        attr._modified = self._modified
         attr._module = self._module
         attr._data = copyJson(self._data)
         return attr
@@ -144,63 +142,47 @@ class Attribute(object):
     def name(self) -> str:
         """Get attribute name."""
         return self._name
-    
     def setName(self, name: str):
-        """Set attribute name and mark as modified."""
+        """Set attribute name."""
         if name != self._name:
             self._name = name
-            self._markModified()
     
     def category(self) -> str:
         """Get attribute category."""
         return self._category
     
     def setCategory(self, category: str):
-        """Set attribute category and mark as modified."""
+        """Set attribute category."""
         if category != self._category:
             self._category = category
-            self._markModified()
     
     def template(self) -> str:
         """Get attribute widget template type."""
         return self._template
     
     def setTemplate(self, template: str):
-        """Set attribute widget template type and mark as modified."""
+        """Set attribute widget template type."""
         if template != self._template:
             self._template = template
-            self._markModified()
     
     def connect(self) -> str:
         """Get attribute connection path."""
         return self._connect
     
     def setConnect(self, connect: str):
-        """Set attribute connection path and mark as modified."""
+        """Set attribute connection path."""
         if connect != self._connect:
             self._connect = connect
-            self._markModified()
     
     def expression(self) -> str:
         """Get attribute Python expression."""
         return self._expression
     
     def setExpression(self, expression: str):
-        """Set attribute Python expression and mark as modified."""
+        """Set attribute Python expression."""
         if expression != self._expression:
             self._expression = expression
-            self._markModified()
     
-    def modified(self) -> bool:
-        """Check if attribute has been modified."""
-        return self._modified
-
-    def _markModified(self):
-        """Mark attribute and parent module as modified."""
-        self._modified = True
-        if self._module:
-            self._module._modified = True
-
     def module(self) -> Optional['Module']:
         """Get parent module that owns this attribute."""
         return self._module
@@ -225,30 +207,9 @@ class Attribute(object):
     def localData(self) -> Dict[str, Any]:
         """Get copy of local data without pulling from connections."""
         return copyJson(self._data)
-    
-    def setLocalData(self, data: Dict[str, Any]):
-        """Set local data without pushing to connections. Marks modified only if change is not solely the default value."""
-        newData = copyJson(data)
-
-        if newData == self._data:
-            return
-            
-        oldData = self._data
-        defaultKey = oldData.get("default") or newData.get("default")
-        
-        onlyDefaultValueChanged = (
-            set(oldData.keys()) == set(newData.keys())
-            and oldData.get("default") == newData.get("default")
-            and all(
-                oldData.get(k) == newData.get(k)
-                for k in oldData
-                if k != defaultKey
-            )
-        )
-
+    def setLocalData(self, newData: Dict[str, Any]):
+        """Set local data without pushing to connections."""
         self._data = newData
-        if not onlyDefaultValueChanged:
-            self._markModified()
     
     def setData(self, data: Dict[str, Any]):
         """Set data and push to connections."""
@@ -292,8 +253,6 @@ class Attribute(object):
         else:
             if self._data.get(key) != valueCopy:
                 self._data[key] = valueCopy
-                if key != self._data.get("default"):
-                    self._markModified()
                 self.push()
 
     def executeExpression(self):
@@ -338,8 +297,7 @@ class Attribute(object):
         attrs = [("name", self._name),
                  ("template", self._template),
                  ("category", self._category),
-                 ("connect", self._connect if keepConnection else ""),
-                 ("modified", int(self._modified))]
+                 ("connect", self._connect if keepConnection else "")]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
 
@@ -358,7 +316,6 @@ class Attribute(object):
         attr._template = root.attrib.get("template", "")
         attr._category = root.attrib.get("category", "")
         attr._connect = root.attrib.get("connect", "")
-        attr._modified = bool(int(root.attrib.get("modified", 0)))
         raw = root.text or "{}"
         attr._data = json.loads(raw) if raw.strip() else {}
         attr._expression = attr._data.pop("_expression", "")
@@ -423,8 +380,6 @@ class Module(object):
         self._muted = False
         self._filePath = ""
 
-        self._modified = False
-
         self.attr = AttrsWrapper(self) # attributes accessor
 
     def copy(self) -> 'Module':
@@ -445,7 +400,6 @@ class Module(object):
 
         module._filePath = self._filePath
         module._muted = self._muted
-        module._modified = self._modified
         return module
     
     def name(self) -> str:
@@ -468,10 +422,6 @@ class Module(object):
         """Get file path where module was loaded from."""
         return self._filePath
     
-    def modified(self) -> bool:
-        """Check if module has been modified."""
-        return self._modified
-    
     def muted(self) -> bool:
         """Check if module is muted (won't execute)."""
         return self._muted
@@ -491,7 +441,6 @@ class Module(object):
     def setRunCode(self, code: str):
         """Set module Python execution code."""
         self._runCode = code
-        self._modified = True
 
     def doc(self) -> str:
         """Get module documentation (implicitly Markdown)."""
@@ -500,7 +449,6 @@ class Module(object):
     def setDoc(self, doc: str):
         """Set module documentation (implicitly Markdown)."""
         self._doc = doc
-        self._modified = True
 
     def root(self) -> 'Module':
         """Get root module in hierarchy."""
@@ -522,7 +470,6 @@ class Module(object):
         """Insert child module at specific index."""
         child._parent = self
         self._children.insert(idx, child)
-        self._modified = True
 
     def addChild(self, child: 'Module'):
         """Add child module at the end."""
@@ -532,14 +479,12 @@ class Module(object):
         """Remove child module from children list."""
         child._parent = None
         self._children.remove(child)
-        self._modified = True
 
     def removeChildren(self):
         """Remove all child modules."""
         for ch in self._children:
             ch._parent = None
         self._children = []
-        self._modified = True
 
     def findChild(self, name: str) -> Optional['Module']:
         """Find child module by name."""
@@ -555,7 +500,6 @@ class Module(object):
         """Insert attribute at specific index."""
         attr._module = self
         self._attributes.insert(idx, attr)
-        self._modified = True
 
     def addAttribute(self, attr: Attribute):
         """Add attribute at the end."""
@@ -565,14 +509,12 @@ class Module(object):
         """Remove attribute from module."""
         attr._module = None
         self._attributes.remove(attr)
-        self._modified = True
 
     def removeAttributes(self):
         """Remove all attributes from module."""
         for a in self._attributes:
             a._module = None
         self._attributes = []
-        self._modified = True
 
     def findAttribute(self, name: str) -> Optional[Attribute]:
         """Find attribute by name."""
@@ -580,21 +522,6 @@ class Module(object):
             if a._name == name:
                 return a
             
-    def _clearModificationFlag(self, *, modules: bool = True, attributes: bool = True, recursive: bool = True):
-        """Clear modification flags for module and its components."""
-        if modules:
-            self._modified = False
-
-        if attributes:
-            for a in self._attributes:
-                a._modified = False     
-
-        for ch in self._children:
-            if not ch._uid:
-                ch._clearModificationFlag(recursive=recursive, modules=modules, attributes=attributes)
-            else:
-                ch._clearModificationFlag(recursive=False, modules=False, attributes=attributes)
-    
     def ch(self, path: str, key: Optional[str] = None) -> Any:
         """Get an attribute's value or dictionary key by path."""
         attr = self.findAttributeByPath(path)
@@ -615,7 +542,6 @@ class Module(object):
         attrs = [("name", self._name),
                  ("muted", int(self._muted)),
                  ("uid", self._uid),
-                 ("modified", int(self._modified)),
                  ("filePath", self._filePath)]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
@@ -666,7 +592,6 @@ class Module(object):
             for ch in children_el.findall("module"):
                 module.addChild(Module.fromXml(ch))
 
-        module._modified = bool(int(root.attrib.get("modified", 0))) # set modified flag after all children/attributes are added
         return module
 
     def loadedFromPublic(self) -> bool:
@@ -729,7 +654,6 @@ class Module(object):
         """Embed module by clearing UID and file path."""
         self._uid = ""
         self._filePath = ""
-        self._modified = True
 
     def update(self):
         """Update module from reference file."""
@@ -745,7 +669,6 @@ class Module(object):
                     origAttr._connect = foundAttr._connect
                     origAttr._expression = foundAttr._expression
                     
-                origAttr._modified = False # clear modification flag              
                 attributes.append(origAttr)
 
             self._attributes = []
@@ -759,8 +682,6 @@ class Module(object):
             self._runCode = origModule._runCode
             self._doc = origModule._doc
             self._filePath = origModule._filePath
-
-            self._modified = False
 
         for ch in self._children:
             ch.update()
@@ -787,8 +708,6 @@ class Module(object):
         """Save module to file."""
         if not self._uid or newUid:
             self._uid = uuid.uuid4().hex
-        
-        self._clearModificationFlag()
         
         with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
             f.write(self.toXml(keepConnections=False))  # don't keep outer connections

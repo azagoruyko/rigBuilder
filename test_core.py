@@ -123,7 +123,6 @@ class TestAttribute:
         assert attr.template() == ""
         assert attr.connect() == ""
         assert attr.expression() == ""
-        assert attr.modified() == False
         assert attr.module() is None
 
     def testAttributeProperties(self, simpleAttribute):
@@ -132,7 +131,6 @@ class TestAttribute:
         assert simpleAttribute.name() == "testAttr"
         simpleAttribute.setName("newName")
         assert simpleAttribute.name() == "newName"
-        assert simpleAttribute.modified() == True
 
         # Category
         simpleAttribute.setCategory("output")
@@ -206,25 +204,6 @@ class TestAttribute:
         # Setting None should work (it's JSON-serializable)
         attr.set(None)
         assert attr.get() is None
-
-    def testAttributeModificationFlags(self):
-        """Test that _modified flag is correctly set based on data changes."""
-        attr = createAttribute("test", "input", "float", 10.0)
-        attr._modified = False
-        
-        # Changing only the default value should NOT mark as modified
-        attr.setLocalData({"default": "value", "value": 20.0})
-        assert attr.modified() is False
-        
-        # Changing other data SHOULD mark as modified
-        attr.setLocalData({"default": "value", "value": 20.0, "other": "data"})
-        assert attr.modified() is True
-
-        # Changing the template/name SHOULD mark as modified
-        attr._modified = False
-        attr.setName("new_name")
-        assert attr.modified() is True
-
 
 class TestAttributeConnections:
     """Tests for attribute connections."""
@@ -402,7 +381,6 @@ class TestModule:
         assert module.attributes() == []
         assert module.muted() == False
         assert module.filePath() == ""
-        assert module.modified() == False
 
     def testModuleProperties(self, simpleModule):
         """Test module property getters/setters."""
@@ -420,7 +398,6 @@ class TestModule:
         # Run code
         simpleModule.setRunCode("print('hello')")
         assert simpleModule.runCode() == "print('hello')"
-        assert simpleModule.modified() == True
 
     def testModuleCopy(self, simpleModule):
         """Test module deep copy."""
@@ -431,36 +408,14 @@ class TestModule:
         assert copy.attributes()[0] is not simpleModule.attributes()[0]
 
     def testEmbedClearsState(self):
-        """embed() should clear uid and filePath and mark module as modified."""
+        """embed() should clear uid and filePath."""
         module = createModule("test")
         module._uid = "someUid"
-        module._modified = False
         module._filePath = os.path.join("C:\\", "folder", "module.xml")
 
         module.embed()
         assert module.uid() == ""
         assert module.filePath() == ""
-        assert module.modified() is True
-
-    def testModuleModificationFlags(self, simpleModule):
-        """Test recursive and non-recursive flag clearing."""
-        child = createModule("child")
-        simpleModule.addChild(child)
-        
-        simpleModule._modified = True
-        child._modified = True
-        
-        # Non-recursive clear (in core.py this still clears direct children if they have no UID)
-        simpleModule._clearModificationFlag(recursive=False)
-        assert simpleModule.modified() is False
-        assert child.modified() is False  # core.py recurses regardless of 'recursive' flag for embedded children
-        
-        # Recursive clear
-        simpleModule._modified = True
-        simpleModule._clearModificationFlag(recursive=True)
-        assert simpleModule.modified() is False
-        assert child.modified() is False
-
 
 class TestModuleChildren:
     """Tests for module children management."""
@@ -474,7 +429,6 @@ class TestModuleChildren:
         simpleModule.addChild(child1)
         assert len(simpleModule.children()) == 1
         assert child1.parent() is simpleModule
-        assert simpleModule.modified() == True
 
         # Insert
         simpleModule.insertChild(0, child2)
@@ -553,7 +507,6 @@ class TestModuleAttributes:
         module.addAttribute(attr1)
         assert len(module.attributes()) == 1
         assert attr1.module() is module
-        assert module.modified() == True
 
         # Insert
         module.insertAttribute(0, attr2)
@@ -572,24 +525,6 @@ class TestModuleAttributes:
         # Remove all
         module.removeAttributes()
         assert len(module.attributes()) == 0
-
-    def testAttributeModificationMarksModule(self):
-        """Internal attribute changes (e.g. name) mark the owning module as modified; default value change does not."""
-        module = createModule("test")
-        attr = createAttribute("input", "input", "float", 5.0)
-        module.addAttribute(attr)
-        module._clearModificationFlag()
-
-        assert module.modified() is False
-        assert attr.modified() is False
-
-        attr.set(10.0)  # default value only – preserved by update, does not mark modified
-        assert attr.modified() is False
-        assert module.modified() is False
-
-        attr.setName("other")  # structural change – would be reset by update, marks modified
-        assert attr.modified() is True
-        assert module.modified() is True
 
     def testEmptyAttributeName(self):
         """Test finding attributes with empty names."""
