@@ -332,7 +332,7 @@ class ModuleHistoryWidget(QWidget):
         if QMessageBox.question(
             self,
             "Squash history",
-            "Squash all commits into one? This flushes the git history.",
+            "Squash all commits into one? This will flatten the git history.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         ) != QMessageBox.Yes:
