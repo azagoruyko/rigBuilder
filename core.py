@@ -911,7 +911,7 @@ if os.path.exists(settingsFile):
         try:
             Settings.update(json.load(f))
         except json.JSONDecodeError:
-            printWarning("Settings file is corrupted. Using default settings.")
+            print("Settings file is corrupted. Using default settings.")
 else:
     with open(settingsFile, "w") as f:
         json.dump(Settings, f, indent=4)
