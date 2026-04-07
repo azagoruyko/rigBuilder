@@ -111,6 +111,7 @@ class ModuleBrowserTree(QTreeWidget):
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
+        menu.addAction("Open modules folder", self.openModulesFolder)
         menu.addAction("Set modules folder...", self.parent().browseModulesPath)
         menu.addAction("Reset modules folder", self.parent().resetModulesPath)
         menu.addSeparator()
@@ -216,7 +217,6 @@ class ModuleBrowser(QWidget):
         """Internal refresh used by startup and auto-reload flows."""
         UidManager.update()
         self.applyMask()
-
 
     def browseModulesPath(self):
         current = getModulesPath()

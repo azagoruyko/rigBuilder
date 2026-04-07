@@ -2399,6 +2399,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
 
         menu.addAction("Locate file", self.locateModuleFile)
+        menu.addAction("Open User folder", self.openUserFolder)
         menu.addAction("View edit history", self.showModuleInHistory, "Ctrl+H")
         menu.addSeparator()
         menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
@@ -2615,6 +2616,9 @@ class RigBuilderWindow(QFrame):
             path = UidManager.resolve(module.uid())
             if module and os.path.exists(path):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(path)))
+
+    def openUserFolder(self):
+        subprocess.call("explorer \"{}\"".format(RigBuilderUserPath))
 
     def _onTreeSelectionChanged(self, selected, deselected):
         module = self.treeWidget.currentModule()
