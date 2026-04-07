@@ -2757,14 +2757,14 @@ def setupVscode():  # path to .vscode folder
     settingsFile = os.path.join(folder, "settings.json")
 
     if os.path.exists(settingsFile):
-        with open(settingsFile, "r") as f:
+        with open(settingsFile, "r", encoding="utf-8") as f:
             settings.update(json.load(f))
 
     context = hostExecutor.executeCode("import sys;hostSysPath=sys.path")
     settings["python.autoComplete.extraPaths"] = context.get("hostSysPath", [])
 
-    with open(settingsFile, "w") as f:
-        json.dump(settings, f, indent=4)
+    with open(settingsFile, "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=4, ensure_ascii=False)
 
 def cleanupVscode():
     vscodeFolder = RigBuilderUserPath+"/vscode"

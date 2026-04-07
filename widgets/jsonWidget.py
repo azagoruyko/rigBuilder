@@ -32,7 +32,7 @@ class EditJsonTextDialog(QDialog):
         self.prettyPrintWidget.toggled.connect(self.prettyPrintToggled)
 
         self.textWidget = QTextEdit()
-        self.textWidget.setPlainText(json.dumps(data))
+        self.textWidget.setPlainText(json.dumps(data, ensure_ascii=False))
         self.textWidget.setReadOnly(readOnly)
         self.textWidget.setTabStopDistance(16)
         self.textWidget.setAcceptRichText(False)
@@ -52,7 +52,7 @@ class EditJsonTextDialog(QDialog):
     def prettyPrintToggled(self, value):
         try:
             data = json.loads(self.textWidget.toPlainText())
-            self.textWidget.setPlainText(json.dumps(data, indent=4 if value else None))
+            self.textWidget.setPlainText(json.dumps(data, indent=4 if value else None, ensure_ascii=False))
         except:
             pass
 
@@ -419,21 +419,21 @@ class JsonWidget(QTreeWidget):
             else:
                 data = self.toJsonList()
 
-            with open(path, "w") as f:
-                json.dump(data, f)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
 
     def loadFromFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Load JSON", "", "JSON (*.json)")
         if path:
             self.clear()
-            with open(path, "r") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 d = json.load(f)
                 self.loadFromJsonList([d])
 
     def importFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import JSON", "", "JSON (*.json)")
         if path:
-            with open(path, "r") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 d = json.load(f)
                 self.loadFromJsonList([d])
 

@@ -907,19 +907,19 @@ Settings = {
 }
 
 if os.path.exists(settingsFile):
-    with open(settingsFile, "r") as f:
+    with open(settingsFile, "r", encoding="utf-8") as f:
         try:
             Settings.update(json.load(f))
         except json.JSONDecodeError:
             print("Settings file is corrupted. Using default settings.")
 else:
-    with open(settingsFile, "w") as f:
-        json.dump(Settings, f, indent=4)
+    with open(settingsFile, "w", encoding="utf-8") as f:
+        json.dump(Settings, f, indent=4, ensure_ascii=False)
 
 def saveSettings():
     """Persist Settings to settings.json."""
-    with open(settingsFile, "w") as f:
-        json.dump(Settings, f, indent=4)
+    with open(settingsFile, "w", encoding="utf-8") as f:
+        json.dump(Settings, f, indent=4, ensure_ascii=False)
         
 os.makedirs(getModulesPath(), exist_ok=True)
 os.makedirs(getHistoryPath(), exist_ok=True)

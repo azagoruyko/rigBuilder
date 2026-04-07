@@ -27,18 +27,18 @@ class ConnectionManager:
         if not os.path.exists(HOSTS_FILE):
             return {}
             
-        with open(HOSTS_FILE, "r") as f:
+        with open(HOSTS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def saveServers(self, entries: dict):
         """Persist the full server dictionary."""
-        with open(HOSTS_FILE, "w") as f:
-            json.dump(entries, f, indent=2)
+        with open(HOSTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(entries, f, indent=2, ensure_ascii=False)
 
     def addServer(self, name: str, host: str, address: str, rep_port: int, pub_port: int):
         """Add a new server entry. Replaces an existing entry with the same name."""
         if os.path.exists(HOSTS_FILE):
-            with open(HOSTS_FILE, "r") as f:
+            with open(HOSTS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             data = {}
@@ -54,7 +54,7 @@ class ConnectionManager:
         if not os.path.exists(HOSTS_FILE):
             return
             
-        with open(HOSTS_FILE, "r") as f:
+        with open(HOSTS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         
         if name in data:
@@ -66,7 +66,7 @@ class ConnectionManager:
         if not os.path.exists(HOSTS_FILE):
             return None
             
-        with open(HOSTS_FILE, "r") as f:
+        with open(HOSTS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             
             entry = data.get(name)

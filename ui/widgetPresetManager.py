@@ -16,7 +16,7 @@ class WidgetPresetManager:
         if not os.path.exists(PRESETS_FILE):
             return {}
         try:
-            with open(PRESETS_FILE, "r") as f:
+            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return {}
@@ -30,8 +30,8 @@ class WidgetPresetManager:
         if not os.path.exists(RigBuilderUserPath):
             os.makedirs(RigBuilderUserPath)
             
-        with open(PRESETS_FILE, "w") as f:
-            json.dump(presets, f, indent=2)
+        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(presets, f, indent=2, ensure_ascii=False)
 
     @staticmethod
     def removePreset(name: str):
@@ -39,8 +39,8 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         if name in presets:
             del presets[name]
-            with open(PRESETS_FILE, "w") as f:
-                json.dump(presets, f, indent=2)
+            with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+                json.dump(presets, f, indent=2, ensure_ascii=False)
 
     @staticmethod
     def renamePreset(oldName: str, newName: str):
@@ -48,8 +48,8 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         if oldName in presets:
             presets[newName] = presets.pop(oldName)
-            with open(PRESETS_FILE, "w") as f:
-                json.dump(presets, f, indent=2)
+            with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+                json.dump(presets, f, indent=2, ensure_ascii=False)
 
 
 class PresetEditorDialog(QDialog):
