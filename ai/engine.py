@@ -5,6 +5,8 @@ import os
 import ollama
 from json_repair import repair_json
 
+from ..core import Settings
+
 def isOllamaAvailable() -> bool:
     """Check if the Ollama server is reachable or the CLI is installed."""
     # Check if CLI is in PATH
@@ -32,10 +34,17 @@ async def chat(messages: list, model: str = DEFAULT_MODEL, format: str = '', tem
     if not OLLAMA_AVAILABLE:
         return ""
 
+    additionalMessages = [
+        {
+            'role': 'system',
+            'content': f'Translate all responses to {Settings.get("aiLanguage", "English")} including headers, titles, etc.'
+        }
+    ]
+
     try:
         response = await ollama.AsyncClient().chat(
             model=model,
-            messages=messages,
+            messages=additionalMessages + messages,
             format=format,
             options={'temperature': temperature}
         )

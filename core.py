@@ -902,7 +902,8 @@ Settings = {
     "vscode": "code",
     "modulesPath": "",
     "trackHistory": True,
-    "ollamaModel": "gpt-oss:20b-cloud"
+    "ollamaModel": "gpt-oss:20b-cloud",
+    "aiLanguage": "English"
 }
 
 if os.path.exists(settingsFile):
