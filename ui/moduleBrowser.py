@@ -223,11 +223,13 @@ class ModuleBrowser(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Modules folder", current)
         if folder:
             Settings["modulesPath"] = folder
+            self.modulesAutoReloadWatcher.setRoots([folder])
             UidManager.update()
             self.applyMask()
 
     def resetModulesPath(self):
         Settings["modulesPath"] = ""
+        self.modulesAutoReloadWatcher.setRoots([getModulesPath()])
         UidManager.update()
         self.applyMask()
 

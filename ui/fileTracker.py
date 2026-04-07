@@ -59,6 +59,11 @@ class DirectoryWatcher(QObject):
 
         self.refreshWatchedPaths()
 
+    def setRoots(self, roots: List[str]):
+        """Update monitored roots and refresh watcher."""
+        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
+        self.refreshWatchedPaths()
+
     def refreshWatchedPaths(self):
         paths = set()
         for root in self.roots:
