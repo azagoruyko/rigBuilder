@@ -22,12 +22,16 @@ At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
 - **🧠 Expressions**: They alter attribute values at time of value resolution.
 - **🖥️ Host Connectivity**: RigBuilder connects to host applications and executes modules inside bringing the result back.
 - **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its API.
+- **💼 Workspaces**: Isolated project environments that encapsulate your module tree, Git-backed history, and tool settings.
+
 
 ---
 
 ## ✨ Key Features
 
+- **💼 Workspace Management** — Organize your work into isolated projects. Seamlessly switch between different rigs or tools while maintaining dedicated module hierarchies and environment settings.
 - **📦 Unified module storage** — Automatically manages and discovers modules in a single library, simplifying versioning and sharing. No more manual public/private folder management.
+
 - **🔄 Auto-Sync Architecture** — Automatically synchronizes the modules with their files on disk.
 - **📜 Module history** — Built-in, git-backed history browser for all module changes. Track every save, view diffs, and restore versions instantly.
 - **🖥️ DCC Agnostic** — RigBuilder communicates with **Maya**, **Blender**, **Unreal Engine**, or any other Python-capable host.
