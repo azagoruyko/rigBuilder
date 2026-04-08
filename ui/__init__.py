@@ -15,6 +15,7 @@ from typing import Callable, Optional, List, Tuple, Dict, Union, Any, TYPE_CHECK
 from ..qt import *
 from .. import __version__
 from ..core import *
+from .workspaceManager import Workspace, WorkspaceWidget
 from .editor import CodeEditorWithNumbersWidget
 from .apiBrowser import ApiBrowserWidget
 from .docBrowser import DocBrowser
@@ -2174,6 +2175,8 @@ class RigBuilderWindow(QFrame):
     def __init__(self):
         super().__init__()
 
+        self._currentWorkspace = None
+
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 700)
 
@@ -2237,8 +2240,12 @@ class RigBuilderWindow(QFrame):
         self.windowPinBtn.clicked.connect(self._onTogglePin)
         self.windowPinBtn.setStyleSheet("QPushButton:checked { background-color: #3e7bd6; border-color: #6ea7ff; color: #ffffff; }")
 
+        self.workspaceWidget = WorkspaceWidget(self)
+
         hostRow = QHBoxLayout()
         hostRow.setContentsMargins(0, 0, 0, 5)
+        hostRow.addWidget(self.workspaceWidget)
+        hostRow.addStretch()
         hostRow.addWidget(self.hostCombo)
         hostRow.addWidget(self.hostConnectBtn)
         hostRow.addWidget(self.hostManageBtn)
@@ -2268,11 +2275,17 @@ class RigBuilderWindow(QFrame):
         rightWidgetLayout.addWidget(self.rightSplitter)
         rightWidgetLayout.addWidget(self.runBtn)
 
+        self.treeContainer = QWidget()
+        self.treeContainer.setLayout(QVBoxLayout())
+        self.treeContainer.layout().setContentsMargins(0, 0, 0, 0)
+        self.treeContainer.layout().addWidget(self.treeWidget)
+
         self.moduleBrowser = ModuleBrowser()
         self.moduleBrowser.modulesAutoReloadWatcher.somethingChanged.connect(self.treeWidget.refreshModuleTree)
+        
 
         self.leftSplitter = WideSplitter(Qt.Vertical, 8)
-        self.leftSplitter.addWidget(self.treeWidget)
+        self.leftSplitter.addWidget(self.treeContainer)
         self.leftSplitter.addWidget(self.moduleBrowser)
         self.leftSplitter.setSizes([300, 200])
 
@@ -2305,6 +2318,8 @@ class RigBuilderWindow(QFrame):
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
+        self.workspaceWidget.workspaceChanged.connect(self.moduleHistoryWidget.updateModuleHistory)
+        self.workspaceWidget.initialize()
 
     def _onModuleExecutionRequested(self, code: str):
         module = self.treeWidget.currentModule()
@@ -2390,6 +2405,12 @@ class RigBuilderWindow(QFrame):
         """Toggle 'Stay on Top' window flag and update opacity."""
         self.setWindowFlag(Qt.WindowStaysOnTopHint, checked)
         self.show()
+
+    def currentWorkspace(self) -> Optional[Workspace]:
+        return self.workspaceWidget.currentWorkspace()
+
+    def setCurrentWorkspace(self, workspace: Workspace):
+        self.workspaceWidget.setCurrentWorkspace(workspace)
 
     def menu(self):
         menu = QMenu(self)

@@ -889,7 +889,16 @@ def getModulesPath() -> str:
 
 def getHistoryPath() -> str:
     """Return the history directory for module version history (git-tracked)."""
+    path = Settings.get("historyPath") or ""
+    if path:
+        return os.path.normpath(path)
+
     return os.path.normpath(os.path.join(RigBuilderUserPath, "history"))
+
+
+def getWorkspacesPath() -> str:
+    """Return the directory where workspace files are stored."""
+    return os.path.normpath(os.path.join(RigBuilderUserPath, "workspaces"))
 
 
 
@@ -901,9 +910,11 @@ settingsFile = os.path.join(RigBuilderUserPath, "settings.json")
 Settings = {
     "vscode": "code",
     "modulesPath": "",
+    "historyPath": "",
     "trackHistory": True,
     "ollamaModel": "gpt-oss:20b-cloud",
-    "aiLanguage": "English"
+    "aiLanguage": "English",
+    "currentWorkspace": ""
 }
 
 if os.path.exists(settingsFile):
@@ -922,7 +933,6 @@ def saveSettings():
         json.dump(Settings, f, indent=4, ensure_ascii=False)
         
 os.makedirs(getModulesPath(), exist_ok=True)
-os.makedirs(getHistoryPath(), exist_ok=True)
 
 UidManager.update()
 
