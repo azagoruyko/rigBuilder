@@ -944,15 +944,13 @@ class TreeWidget(QTreeView):
         self.setIndentation(16)
         self.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
 
+    def clear(self):
+        """Clear the tree by resetting the model."""
+        self.moduleModel.clear()
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MiddleButton:
             self.middlePressPos = event.pos()
-            idx = self.indexAt(event.pos())
-            if idx.isValid():
-                if not (event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)):
-                    self.selectionModel().clearSelection()
-                self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
-                self.setCurrentIndex(idx)
             event.accept()
             return
         super().mousePressEvent(event)
