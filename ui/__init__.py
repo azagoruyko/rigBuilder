@@ -2139,7 +2139,7 @@ class ManageHostsDialog(QDialog):
                 name, entry["host"],
                 entry["address"], entry["rep_port"], entry["pub_port"])
             
-            item = QListWidgetItem(label)
+            item = QListWidgetItem(f"🖥️ {label}")
             item.setData(Qt.UserRole, name)
             self.listWidget.addItem(item)
 
@@ -2328,7 +2328,7 @@ class RigBuilderWindow(QFrame):
         # Sort on UI side
         entries = sorted(connectionManager.servers().items(), key=lambda x: x[0].lower())
         for name, entry in entries:
-            label = "{} ({})".format(name, entry["host"])
+            label = "🖥️ {} ({})".format(name, entry["host"])
             self.hostCombo.addItem(label, userData=name)
 
         self.hostCombo.blockSignals(False)
