@@ -25,5 +25,3 @@ Refactor ModuleBrowserTree to remove the Doc column and implement rich-text tool
 
 **USER INPUT (Diff Patch):**
 {{diff}}
-
-> **DON'T DESCRIBE** modification flags, file paths changes and other redundant information!

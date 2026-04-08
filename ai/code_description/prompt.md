@@ -37,5 +37,3 @@ The script showcases a modular processing workflow and demonstrates various feat
 
 **USER INPUT (Code or Summary):**
 {{input}}
-
-> **DON'T DESCRIBE** modification flags, file paths changes and other redundant information!

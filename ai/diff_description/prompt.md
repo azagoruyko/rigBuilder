@@ -25,5 +25,3 @@ Example of output you should generate. Ignore markdown code block in the output.
 
 **USER INPUT (Diff Patch):**
 {{diff}}
-
-> **DON'T DESCRIBE** modification flags, file paths changes and other redundant information!

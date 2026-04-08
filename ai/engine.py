@@ -37,7 +37,7 @@ async def chat(messages: list, model: str = DEFAULT_MODEL, format: str = '', tem
     additionalMessages = [
         {
             'role': 'system',
-            'content': f'Translate all responses to {Settings.get("aiLanguage", "English")} including headers, titles, etc.'
+            'content': f'Translate all textual output to {Settings.get("aiLanguage", "English")}. Do not translate code!'
         }
     ]
 

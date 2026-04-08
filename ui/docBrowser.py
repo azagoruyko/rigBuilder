@@ -15,13 +15,31 @@ class DocGeneratorWorker(QThread):
     """Background worker to fetch AI-generated documentation."""
     finished = Signal(str)
 
-    def __init__(self, code: str, parent=None):
+    def __init__(self, code: str, childrenDocs: str = "", parent=None):
         super().__init__(parent)
         self.code = code
+        self.childrenDocs = childrenDocs
 
     def run(self):
+        async def _internal():
+            summary = ""
+            # Step 1: Generate doc for the current module code if available
+            if self.code:
+                summary = await ai.run("code_description", self.code)
+            
+            # Step 2: If we have children docs, synthesize them with the module's summary
+            if self.childrenDocs:
+                if summary:
+                    combinedText = f"Module Summary:\n{summary}\n\nChildren Modules Documentation:\n{self.childrenDocs}"
+                else:
+                    combinedText = f"Children Modules Documentation:\n{self.childrenDocs}"
+                
+                summary = await ai.run("summarizer", combinedText)
+            
+            return summary
+
         try:
-            summary = asyncio.run(ai.run("code_description", self.code))
+            summary = asyncio.run(_internal())
             self.finished.emit(summary)
         except Exception as e:
             logger.error(f"Error generating documentation: {e}")
@@ -97,16 +115,25 @@ class DocBrowser(QWidget):
         if not self.module:
             return
 
+        # Prepare children documentation context
+        childrenDocs = []
+        for ch in self.module.children():
+            doc = ch.doc().strip()
+            if doc:
+                childrenDocs.append(f"### {ch.name()}\n{doc}")
+        
+        childrenDocsStr = "\n\n".join(childrenDocs)
+
         code = self.module.runCode()
-        if not code:
-            QMessageBox.warning(self, "Rig Builder", "Module has no run code to analyze.")
+        if not code and not childrenDocsStr:
+            QMessageBox.warning(self, "Rig Builder", "Module has no run code and no children documentation to analyze.")
             return
 
         self.genButton.setEnabled(False)
         self.genButton.setText("⌛ Generating...")
         
         # Create worker without parent so it's not destroyed with the widget
-        self._worker = DocGeneratorWorker(code)
+        self._worker = DocGeneratorWorker(code, childrenDocsStr)
         
         # Keep alive in global list
         activeWorkers.append(self._worker)
