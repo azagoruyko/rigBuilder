@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Tuple
 import markdown
 
 from ..qt import *
-from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager
+from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager, RigBuilderPath, RigBuilderUserPath
 from .logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
@@ -179,6 +179,11 @@ class ModuleBrowser(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
+        self.pathLabel = QLabel()
+        self.pathLabel.setWordWrap(True)
+        self.pathLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.pathLabel.setStyleSheet("color: #AAAAAA; font-style: italic; background-color: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 4px; margin-top: 5px;")
+
         self.maskWidget = QLineEdit()
         self.maskWidget.setPlaceholderText("Filter modules...")
         self.maskWidget.textChanged.connect(self.applyMask)
@@ -197,9 +202,28 @@ class ModuleBrowser(QWidget):
         self.treeWidget = ModuleBrowserTree()
 
         layout.addWidget(self.treeWidget)
+        layout.addWidget(self.pathLabel)
 
         self._setupAutoReloadWatcher()
+        self._updatePathLabel()
         self.refreshModules()
+
+    def _updatePathLabel(self):
+        """Update the path label with the current modules directory."""
+        path = os.path.normpath(getModulesPath())
+        userRoot = os.path.normpath(RigBuilderUserPath)
+        appRoot = os.path.normpath(RigBuilderPath)
+
+        if path.lower().startswith(userRoot.lower()):
+            rel = os.path.relpath(path, userRoot)
+            displayText = "User" if rel == "." else os.path.join("User", rel)
+        elif path.lower().startswith(appRoot.lower()):
+            rel = os.path.relpath(path, appRoot)
+            displayText = "App" if rel == "." else os.path.join("App", rel)
+        else:
+            displayText = path
+
+        self.pathLabel.setText(displayText.replace('\\', '/'))
 
     def _setupAutoReloadWatcher(self):
         """Setup the modules auto-reload watcher."""
@@ -215,6 +239,7 @@ class ModuleBrowser(QWidget):
 
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""
+        self._updatePathLabel()
         UidManager.update()
         self.applyMask()
 
@@ -224,12 +249,14 @@ class ModuleBrowser(QWidget):
         if folder:
             Settings["modulesPath"] = folder
             self.modulesAutoReloadWatcher.setRoots([folder])
+            self._updatePathLabel()
             UidManager.update()
             self.applyMask()
 
     def resetModulesPath(self):
         Settings["modulesPath"] = ""
         self.modulesAutoReloadWatcher.setRoots([getModulesPath()])
+        self._updatePathLabel()
         UidManager.update()
         self.applyMask()
 
