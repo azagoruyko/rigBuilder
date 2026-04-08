@@ -52,14 +52,14 @@ class GitRepo:
     def init(self) -> bool:
         """Ensure repo exists (run git init if needed). Return False if user/email not set in config."""
         # Ensure working directory exists before running any git commands
+        if not self.workingDirectory.exists():
+            self.workingDirectory.mkdir(parents=True, exist_ok=True)
+
         _, user = self("config user.name")
         _, email = self("config user.email")
         if not user or not email:
             print("Set user name and email in .gitconfig")
             return False
-
-        if not self.workingDirectory.exists():
-            self.workingDirectory.mkdir(parents=True, exist_ok=True)
 
         self("init")
 
