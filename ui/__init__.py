@@ -918,6 +918,12 @@ class ModuleModel(QAbstractItemModel):
             child._parent = newModule
         self.endResetModel()
 
+    def clear(self):
+        """Clear all modules from the model."""
+        self.beginResetModel()
+        self._rootModule.removeChildren()
+        self.endResetModel()
+
 class TreeWidget(QTreeView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2595,7 +2601,7 @@ class RigBuilderWindow(QFrame):
         DiffBrowserDialog(originalXml, currentXml, path, "Current", parent=self).exec()
                     
     def removeAllModules(self):
-        if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.treeWidget.clear()
 
     def showDocumenation(self):
