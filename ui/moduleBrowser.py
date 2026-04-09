@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Tuple
 import markdown
 
 from ..qt import *
-from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager, RigBuilderPath, RigBuilderUserPath
+from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from .logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
@@ -211,8 +211,8 @@ class ModuleBrowser(QWidget):
     def _updatePathLabel(self):
         """Update the path label with the current modules directory."""
         path = os.path.normpath(getModulesPath())
-        userRoot = os.path.normpath(RigBuilderUserPath)
-        appRoot = os.path.normpath(RigBuilderPath)
+        userRoot = os.path.normpath(RIG_BUILDER_USER_PATH)
+        appRoot = os.path.normpath(RIG_BUILDER_PATH)
 
         if path.lower().startswith(userRoot.lower()):
             rel = os.path.relpath(path, userRoot)

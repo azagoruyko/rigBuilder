@@ -2118,7 +2118,7 @@ class ManageHostsDialog(QDialog):
             code = HOST_STARTUP_TEMPLATE.format(
                 HostClass=HostClass,
                 host=host,
-                rigBuilderPath=os.path.dirname(RigBuilderPath),
+                RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
                 rep_port=rep,
                 pub_port=pub
             )
@@ -2561,8 +2561,8 @@ class RigBuilderWindow(QFrame):
 
         # generate header file
         fileName = module.path().lstrip("/").replace("/", "__")
-        headerFile = os.path.join(RigBuilderUserPath, "vscode", "{}_header.py".format(fileName))
-        runCodeFilePath = os.path.join(RigBuilderUserPath, "vscode", "{}.py".format(fileName))
+        headerFile = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}_header.py".format(fileName))
+        runCodeFilePath = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
 
         headerCode = []
 
@@ -2593,7 +2593,7 @@ class RigBuilderWindow(QFrame):
         startTrackedFileThread(runCodeFilePath, partial(onRunCodeFileChanged, runCodeFilePath, module.uid(), module.path()))
 
         try:
-            subprocess.Popen([Settings["vscode"], RigBuilderUserPath+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([Settings["vscode"], RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -2643,7 +2643,7 @@ class RigBuilderWindow(QFrame):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(path)))
 
     def openUserFolder(self):
-        subprocess.call("explorer \"{}\"".format(RigBuilderUserPath))
+        subprocess.call("explorer \"{}\"".format(RIG_BUILDER_USER_PATH))
 
     def _onTreeSelectionChanged(self, selected, deselected):
         module = self.treeWidget.currentModule()
@@ -2777,7 +2777,7 @@ def setupVscode():  # path to .vscode folder
         "python.autoComplete.extraPaths": [],
     }
 
-    folder = os.path.join(RigBuilderUserPath, "vscode", ".vscode")
+    folder = os.path.join(RIG_BUILDER_USER_PATH, "vscode", ".vscode")
     os.makedirs(folder, exist_ok=True)
     settingsFile = os.path.join(folder, "settings.json")
 
@@ -2792,7 +2792,7 @@ def setupVscode():  # path to .vscode folder
         json.dump(settings, f, indent=4, ensure_ascii=False)
 
 def cleanupVscode():
-    vscodeFolder = RigBuilderUserPath+"/vscode"
+    vscodeFolder = RIG_BUILDER_USER_PATH+"/vscode"
     if not os.path.exists(vscodeFolder):
         return
     

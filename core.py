@@ -11,8 +11,8 @@ from .widgets import core as widgets_core
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
-RigBuilderPath = os.path.dirname(__file__)
-RigBuilderUserPath = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
+RIG_BUILDER_PATH = os.path.dirname(__file__)
+RIG_BUILDER_USER_PATH = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
 MODULE_EXT = ".rb" # default extension for new/saved modules
 MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
 
@@ -882,7 +882,7 @@ def getModulesPath() -> str:
     if path:
         return os.path.normpath(path)
 
-    defaultRoot = os.path.join(RigBuilderPath, "modules")
+    defaultRoot = os.path.join(RIG_BUILDER_PATH, "modules")
     return os.path.normpath(defaultRoot)
 
 
@@ -893,19 +893,19 @@ def getHistoryPath() -> str:
     if path:
         return os.path.normpath(path)
 
-    return os.path.normpath(os.path.join(RigBuilderUserPath, "history"))
+    return os.path.normpath(os.path.join(RIG_BUILDER_USER_PATH, "history"))
 
 
 def getWorkspacesPath() -> str:
     """Return the directory where workspace files are stored."""
-    return os.path.normpath(os.path.join(RigBuilderUserPath, "workspaces"))
+    return os.path.normpath(os.path.join(RIG_BUILDER_USER_PATH, "workspaces"))
 
 
 
 
 # Initialize directories and settings
-os.makedirs(RigBuilderUserPath, exist_ok=True)
-settingsFile = os.path.join(RigBuilderUserPath, "settings.json")
+os.makedirs(RIG_BUILDER_USER_PATH, exist_ok=True)
+settingsFile = os.path.join(RIG_BUILDER_USER_PATH, "settings.json")
 
 Settings = {
     "vscode": "code",

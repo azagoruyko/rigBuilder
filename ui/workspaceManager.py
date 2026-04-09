@@ -5,7 +5,7 @@ import shutil
 from typing import List, Protocol, Optional
 
 from ..qt import *
-from ..core import Module, RigBuilderUserPath, Settings, getModulesPath, UidManager, getWorkspacesPath, getHistoryPath
+from ..core import Module, RIG_BUILDER_USER_PATH, Settings, getModulesPath, UidManager, getWorkspacesPath, getHistoryPath
 from ..gitrepo import GitRepo
 from ..utils import replaceSpecialChars
 
@@ -30,7 +30,7 @@ def flattenModules(roots: List[Module]) -> List[Module]:
 
 
 def migrateLegacyData():
-    """Migrate legacy history and workspace.xml from RigBuilderUserPath root to the NEW workspaces/default structure."""
+    """Migrate legacy history and workspace.xml from RIG_BUILDER_USER_PATH root to the NEW workspaces/default structure."""
     defaultWorkspaceDir = os.path.join(getWorkspacesPath(), "default")
 
     if os.path.exists(defaultWorkspaceDir):
@@ -38,12 +38,12 @@ def migrateLegacyData():
     
     # Map legacy paths to new workspace paths
     mapping = {
-        os.path.join(RigBuilderUserPath, "history"): os.path.join(defaultWorkspaceDir, "history"),
-        os.path.join(RigBuilderUserPath, "workspace.xml"): os.path.join(defaultWorkspaceDir, "workspace.rbws")
+        os.path.join(RIG_BUILDER_USER_PATH, "history"): os.path.join(defaultWorkspaceDir, "history"),
+        os.path.join(RIG_BUILDER_USER_PATH, "workspace.xml"): os.path.join(defaultWorkspaceDir, "workspace.rbws")
     }
     
     os.makedirs(defaultWorkspaceDir, exist_ok=True)
-    print(f"Migration: detected legacy data at {RigBuilderUserPath}. Migrating to default workspace...")
+    print(f"Migration: detected legacy data at {RIG_BUILDER_USER_PATH}. Migrating to default workspace...")
 
     for src, dst in mapping.items():
         if not os.path.exists(src) or os.path.exists(dst):
@@ -228,10 +228,10 @@ class Workspace:
     def create(folderPath: str = "") -> 'Workspace':
         """Initialize a new workspace folder structure. If folderPath is empty, the default is created."""
         if not folderPath:
-            folderPath = os.path.join(RigBuilderUserPath, "workspaces", "default")
+            folderPath = os.path.join(RIG_BUILDER_USER_PATH, "workspaces", "default")
             isDefault = True
         else:
-            isDefault = os.path.abspath(folderPath) == os.path.abspath(os.path.join(RigBuilderUserPath, "workspaces", "default"))
+            isDefault = os.path.abspath(folderPath) == os.path.abspath(os.path.join(RIG_BUILDER_USER_PATH, "workspaces", "default"))
 
         folderPath = os.path.normpath(folderPath)
         os.makedirs(folderPath, exist_ok=True)

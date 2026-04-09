@@ -14,9 +14,9 @@ from rigBuilder.server.runner import runModule, executeModuleCode, executeCode
 AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"]) # names MUST match the host files in this folder!
 
 HOST_STARTUP_TEMPLATE = """import sys
-rigBuilderPath = r"{rigBuilderPath}"
-if rigBuilderPath not in sys.path:
-    sys.path.append(rigBuilderPath)
+RIG_BUILDER_PATH = r"{RIG_BUILDER_PATH}"
+if RIG_BUILDER_PATH not in sys.path:
+    sys.path.append(RIG_BUILDER_PATH)
 
 from rigBuilder.server.hosts.{host} import {HostClass}
 rigBuilderServer = {HostClass}(rep_port={rep_port}, pub_port={pub_port})
