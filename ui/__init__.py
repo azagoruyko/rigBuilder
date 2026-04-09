@@ -1262,48 +1262,35 @@ class TreeWidget(QTreeView):
             self.moduleModel.dataChanged.emit(idx, idx)
 
     def duplicateModule(self):
-        selectedIndices = self.selectionModel().selectedRows(0)
-        if not selectedIndices:
+        # Sort indices by row descending to avoid index shifting issues during insertion
+        rows = sorted(self.selectionModel().selectedRows(0), key=lambda x: x.row(), reverse=True)
+        if not rows:
             return
 
-        # Duplicate each selected module exactly once.
-        selectedItems = []
-        seenModuleIds = set()
-        for idx in selectedIndices:
+        newIndices = []
+        for idx in rows:
             module = self.moduleModel.getModule(idx)
             if not module:
                 continue
 
-            moduleId = id(module)
-            if moduleId in seenModuleIds:
-                continue
-
-            seenModuleIds.add(moduleId)
+            # Create copy with a unique name
             parentModule = module.parent() or self.moduleModel.rootModule()
-            row = parentModule.children().index(module)
-            selectedItems.append((parentModule, row, module))
+            newModule = module.copy()
+            newModule.setName(findUniqueName(module.name(), {c.name() for c in parentModule.children()}))
 
-        if not selectedItems:
-            return
+            # Insert the new module right after the original one
+            parentIdx = idx.parent()
+            newIdx = self.moduleModel.addModuleAt(newModule, parentIdx, idx.row() + 1)
+            
+            if newIdx.isValid():
+                newIndices.append(newIdx)
+                if parentIdx.isValid():
+                    self.setExpanded(parentIdx, True)
 
-        # Insert bottom-up so earlier inserts do not shift later target rows.
-        selectedItems.sort(key=lambda item: (id(item[0]), item[1]), reverse=True)
-
-        newIndices = []
-        for parentModule, row, sourceModule in selectedItems:
-            newModule = sourceModule.copy()
-            existingNames = {child.name() for child in parentModule.children()}
-            newModule.setName(findUniqueName(sourceModule.name(), existingNames))
-
-            parentIdx = QModelIndex()
-            if parentModule is not self.moduleModel.rootModule():
-                parentIdx = self.moduleModel.indexForModule(parentModule)
-
-            newIndices.append(self.moduleModel.addModuleAt(newModule, parentIdx, row + 1))
-
-        self.selectionModel().clearSelection()
-        for idx in newIndices:
-            if idx.isValid():
+        # Select all newly created modules
+        if newIndices:
+            self.selectionModel().clearSelection()
+            for idx in newIndices:
                 self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
 
     def copyModules(self):
