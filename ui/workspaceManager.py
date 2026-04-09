@@ -5,7 +5,16 @@ import shutil
 from typing import List, Protocol, Optional
 
 from ..qt import *
-from ..core import Module, RIG_BUILDER_USER_PATH, Settings, getModulesPath, UidManager, getWorkspacesPath, getHistoryPath
+from ..settings import (
+    settings, 
+    appState, 
+    RIG_BUILDER_USER_PATH, 
+    RIG_BUILDER_PATH,
+    RIG_BUILDER_WORKSPACES_PATH,
+    Settings,
+    AppState
+)
+from ..core import Module, UidManager
 from ..gitrepo import GitRepo
 from ..utils import replaceSpecialChars
 
@@ -29,42 +38,15 @@ def flattenModules(roots: List[Module]) -> List[Module]:
     return flat
 
 
-def migrateLegacyData():
-    """Migrate legacy history and workspace.xml from RIG_BUILDER_USER_PATH root to the NEW workspaces/default structure."""
-    defaultWorkspaceDir = os.path.join(getWorkspacesPath(), "default")
-
-    if os.path.exists(defaultWorkspaceDir):
-        return
-    
-    # Map legacy paths to new workspace paths
-    mapping = {
-        os.path.join(RIG_BUILDER_USER_PATH, "history"): os.path.join(defaultWorkspaceDir, "history"),
-        os.path.join(RIG_BUILDER_USER_PATH, "workspace.xml"): os.path.join(defaultWorkspaceDir, "workspace.rbws")
-    }
-    
-    os.makedirs(defaultWorkspaceDir, exist_ok=True)
-    print(f"Migration: detected legacy data at {RIG_BUILDER_USER_PATH}. Migrating to default workspace...")
-
-    for src, dst in mapping.items():
-        if not os.path.exists(src) or os.path.exists(dst):
-            print(f"Migration: skipping {os.path.basename(src)}: {os.path.basename(dst)} already exists.")
-            continue
-
-        try:
-            shutil.move(src, dst)
-        except Exception as e:
-            print(f"Migration: failed to move {os.path.basename(src)}: {e}")    
-    
-    print("Migration: complete.")
-
-
 class Workspace:
-    def __init__(self, folderPath: str = "", modulesPath: str = ""):            
+    """Represents a local project workspace with its own modules and settings."""
+    def __init__(self, folderPath: str = ""):            
         self.folderPath = os.path.normpath(folderPath) if folderPath else ""
-        self.modulesPath = modulesPath
+        
         self.modules: List[Module] = []
         self.expanded: List[bool] = []
         self.host: str = ""
+        self.modulesPath: str = ""
 
     @property
     def name(self) -> str:
@@ -78,6 +60,12 @@ class Workspace:
         if not self.folderPath:
             return ""
         return os.path.join(self.folderPath, "workspace.rbws")
+
+    def settingsPath(self) -> str:
+        """Return the absolute path to the workspace settings.json file."""
+        if not self.folderPath:
+            return ""
+        return os.path.join(self.folderPath, "settings.json")
 
     def historyPath(self) -> str:
         """Return the absolute path to the local history directory."""
@@ -101,7 +89,6 @@ class Workspace:
 
         lines = [
             '<workspace>',
-            f'<modulesPath value="{html.escape(self.modulesPath or "", quote=True)}"/>',
         ]
 
         lines.append("<modules>")
@@ -116,11 +103,17 @@ class Workspace:
         if self.host:
             lines.append('<host name="{}"/>'.format(html.escape(self.host, quote=True)))
 
+        if self.modulesPath:
+            lines.append('<modulesPath value="{}"/>'.format(html.escape(self.modulesPath, quote=True)))
+
         lines.append("</workspace>")
 
         os.makedirs(self.folderPath, exist_ok=True)
         with open(self.path(), "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
+        
+        # Save settings to its own JSON file
+        settings.save(self.settingsPath())
 
     @classmethod
     def load(cls, folderPath: str) -> Optional['Workspace']:
@@ -139,11 +132,6 @@ class Workspace:
             return None
 
         workspace = cls(folderPath=folderPath)
-
-        # Settings
-        el = root.find("modulesPath")
-        if el is not None:
-            workspace.modulesPath = el.attrib.get("value", "")
 
         # Modules
         modulesEl = root.find("modules")
@@ -167,28 +155,38 @@ class Workspace:
         if hostEl is not None:
             workspace.host = hostEl.attrib.get("name", "")
 
+        # Modules Path
+        modulesPathEl = root.find("modulesPath")
+        if modulesPathEl is not None:
+            workspace.modulesPath = modulesPathEl.attrib.get("value", "")
+
         return workspace
 
     def activate(self) -> bool:
-        """Core activation: update history path and global settings."""
+        """Core activation: populate runtime Settings from this workspace."""
         if not self.folderPath:
             return False
 
-        # 1. Update Settings paths
-        Settings["currentWorkspace"] = self.folderPath
-        Settings["historyPath"] = self.historyPath()
+        # 1. Update Runtime Settings (Merge order: Code defaults -> Workspace JSON)
+        # Start fresh from code defaults by creating an empty Settings object and merging
+        defaults = Settings()
+        settings.update(defaults.toDict())
         
-        # If modulesPath is empty, it means we use the global default (e.g. for "default" workspace)
-        # However, if it's NOT the default and modulesPath was never set, we might want to default to local.
-        # But usually, it's set during create().
-        Settings["modulesPath"] = self.modulesPath
+        # Load workspace-specific overrides
+        settings.load(self.settingsPath())
+        
+        appState.currentWorkspace = os.path.basename(os.path.normpath(self.folderPath))
+        appState.save()
         
         # 2. Ensure directories and repos exist
-        os.makedirs(self.historyPath(), exist_ok=True)
-        if self.modulesPath and os.path.abspath(self.modulesPath) == os.path.abspath(self.modulesLocalPath()):
+        historyPath = settings.getHistoryPath()
+        os.makedirs(historyPath, exist_ok=True)
+        # Ensure modules directory exists if it's pointing to the local workspace folder
+        activeModulesPath = settings.getModulesPath()
+        if os.path.abspath(activeModulesPath) == os.path.abspath(self.modulesLocalPath()):
              os.makedirs(self.modulesLocalPath(), exist_ok=True)
 
-        repo = GitRepo(self.historyPath())
+        repo = GitRepo(historyPath)
         repo.init()
         
         # 3. Refresh UID Manager
@@ -210,7 +208,7 @@ class Workspace:
     @classmethod
     def list(cls) -> List['Workspace']:
         """List all available workspaces in the standard directory."""
-        root = getWorkspacesPath()
+        root = RIG_BUILDER_WORKSPACES_PATH
         if not os.path.exists(root):
             return []
 
@@ -224,29 +222,31 @@ class Workspace:
         
         return sorted(workspaces, key=lambda x: x.name.lower())
 
-    @staticmethod
-    def create(folderPath: str = "") -> 'Workspace':
-        """Initialize a new workspace folder structure. If folderPath is empty, the default is created."""
-        if not folderPath:
-            folderPath = os.path.join(RIG_BUILDER_USER_PATH, "workspaces", "default")
-            isDefault = True
-        else:
-            isDefault = os.path.abspath(folderPath) == os.path.abspath(os.path.join(RIG_BUILDER_USER_PATH, "workspaces", "default"))
-
-        folderPath = os.path.normpath(folderPath)
+    @classmethod
+    def create(cls, name: str = "default", parentDir: str = "") -> 'Workspace':
+        """Create a new workspace directory structure."""
+        if not parentDir:
+            parentDir = os.path.join(RIG_BUILDER_USER_PATH, "workspaces")
+            
+        folderPath = os.path.join(parentDir, replaceSpecialChars(name))
         os.makedirs(folderPath, exist_ok=True)
         
-        ws = Workspace(folderPath=folderPath)
+        ws = cls(folderPath)
         
-        if isDefault:
-            # Default workspace points to global modules
-            ws.modulesPath = "" 
-        else:
-            # New workspaces point to their local modules folder
-            ws.modulesPath = ws.modulesLocalPath()
-            os.makedirs(ws.modulesPath, exist_ok=True)
-            
+        # Ensure directories and repos exist
         os.makedirs(ws.historyPath(), exist_ok=True)
+        
+        # Initialize local settings.json
+        # Inherit from 'default' workspace if this is not the default workspace itself
+        defaultWsSettings = os.path.join(RIG_BUILDER_USER_PATH, "workspaces", "default", "settings.json")
+        if name != "default" and os.path.exists(defaultWsSettings):
+            template = Settings()
+            template.load(defaultWsSettings)
+            template.save(ws.settingsPath())
+        else:
+            # First time for default, or no default yet: use current live settings (defaults)
+            settings.save(ws.settingsPath())
+        
         ws.save()
         return ws
 
@@ -256,18 +256,22 @@ class WorkspaceManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Workspace Manager")
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(700, 400)
 
+        # 1. Left Panel (Workspace List)
         self.listWidget = QListWidget()
         self.listWidget.itemDoubleClicked.connect(self.accept)
 
-        self.newBtn = QPushButton("✨ New Workspace")
+        self.newBtn = QPushButton("➕")
+        self.newBtn.setAutoDefault(False)
         self.newBtn.clicked.connect(self._onNew)
 
-        self.removeBtn = QPushButton("🗑️ Remove Selected")
+        self.removeBtn = QPushButton("🗑️")
+        self.removeBtn.setAutoDefault(False)
         self.removeBtn.clicked.connect(self._onRemove)
 
-        self.openBtn = QPushButton("📁 Open Folder")
+        self.openBtn = QPushButton("📁")
+        self.openBtn.setAutoDefault(False)
         self.openBtn.clicked.connect(self._onOpenFolder)
 
         btnLayout = QHBoxLayout()
@@ -275,12 +279,63 @@ class WorkspaceManagerDialog(QDialog):
         btnLayout.addWidget(self.removeBtn)
         btnLayout.addWidget(self.openBtn)
 
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Available Workspaces:"))
-        layout.addWidget(self.listWidget)
-        layout.addLayout(btnLayout)
+        listPanel = QWidget()
+        listLayout = QVBoxLayout(listPanel)
+        listLayout.setContentsMargins(0, 0, 0, 0)
+        listLayout.addWidget(QLabel("Available Workspaces:"))
+        listLayout.addWidget(self.listWidget)
+        listLayout.addLayout(btnLayout)
+
+        # 2. Right Panel (Settings)
+        self.settingsGroup = QGroupBox("Workspace Settings")
+        self.settingsGroup.setEnabled(False)
+        self.settingsLayout = QFormLayout(self.settingsGroup)
+
+        self.modulesPathEdit = QLineEdit()
+        self.modulesPathEdit.setPlaceholderText("Path to modules folder (optional)...")
+        self.modulesPathEdit.setToolTip("Directory where workspace-specific modules are stored.\nIf empty, global modules are used.")
+        self.modulesPathEdit.editingFinished.connect(lambda: self._onSettingChanged("modulesPath", self.modulesPathEdit.text()))
+        modulesPathLayout = QHBoxLayout()
+        modulesPathLayout.addWidget(self.modulesPathEdit)
+        self.modulesPathBrowseBtn = QPushButton("...")
+        self.modulesPathBrowseBtn.setAutoDefault(False)
+        self.modulesPathBrowseBtn.setToolTip("Browse for modules directory.")
+        self.modulesPathBrowseBtn.clicked.connect(self._onBrowseModulesPath)
+        modulesPathLayout.addWidget(self.modulesPathBrowseBtn)
+        self.settingsLayout.addRow("Modules Path:", modulesPathLayout)
+
+        self.vscodeEdit = QLineEdit()
+        self.vscodeEdit.setPlaceholderText("e.g., code/cursor/antigravity")
+        self.vscodeEdit.setToolTip("Application or command used to open the workspace in VSCode.")
+        self.vscodeEdit.editingFinished.connect(lambda: self._onSettingChanged("vscode", self.vscodeEdit.text()))
+        self.settingsLayout.addRow("VSCode Command/Path:", self.vscodeEdit)
+
+        self.trackHistoryCheck = QCheckBox("Track History")
+        self.trackHistoryCheck.setToolTip("Enable/Disable local Git history tracking for this workspace.")
+        self.trackHistoryCheck.toggled.connect(lambda checked: self._onSettingChanged("trackHistory", checked))
+        self.settingsLayout.addRow("", self.trackHistoryCheck)
+
+        self.aiLanguageEdit = QLineEdit()
+        self.aiLanguageEdit.setPlaceholderText("e.g., English, Russian...")
+        self.aiLanguageEdit.setToolTip("Language used for AI code generation and documentation.")
+        self.aiLanguageEdit.editingFinished.connect(lambda: self._onSettingChanged("aiLanguage", self.aiLanguageEdit.text()))
+        self.settingsLayout.addRow("AI Language:", self.aiLanguageEdit)
+
+        self.ollamaModelEdit = QLineEdit()
+        self.ollamaModelEdit.setPlaceholderText("e.g., gpt-oss:20b-cloud")
+        self.ollamaModelEdit.setToolTip("The model identifier used for Ollama AI responses.")
+        self.ollamaModelEdit.editingFinished.connect(lambda: self._onSettingChanged("ollamaModel", self.ollamaModelEdit.text()))
+        self.settingsLayout.addRow("Ollama Model:", self.ollamaModelEdit)
+
+        # 3. Main Layout
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.addWidget(listPanel)
+        self.splitter.addWidget(self.settingsGroup)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 2)
         
-        self.setLayout(layout)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.splitter)
         
         self.listWidget.itemSelectionChanged.connect(self._onSelectionChanged)
         self.refresh()
@@ -293,6 +348,64 @@ class WorkspaceManagerDialog(QDialog):
         else:
             self.removeBtn.setEnabled(True)
             self.removeBtn.setToolTip("Completely remove selected workspace folder.")
+        
+        self._refreshSettings(ws)
+
+    def _refreshSettings(self, ws: Optional[Workspace]):
+        if not ws:
+            self.settingsGroup.setEnabled(False)
+            self.settingsGroup.setTitle("Workspace Settings")
+            return
+
+        self.settingsGroup.setEnabled(True)
+        self.settingsGroup.setTitle(f"Settings: {ws.name}")
+        
+        # Load workspace specific settings
+        ws_settings = Settings()
+        ws_settings.load(ws.settingsPath())
+
+        self._blockSettingsSignals = True
+        self.modulesPathEdit.setText(ws_settings.modulesPath)
+        self.vscodeEdit.setText(ws_settings.vscode)
+        self.trackHistoryCheck.setChecked(ws_settings.trackHistory)
+        self.aiLanguageEdit.setText(ws_settings.aiLanguage)
+        self.ollamaModelEdit.setText(ws_settings.ollamaModel)
+        self._blockSettingsSignals = False
+
+    def _onSettingChanged(self, key, value):
+        if getattr(self, "_blockSettingsSignals", False):
+            return
+
+        ws = self.selectedWorkspace()
+        if not ws:
+            return
+
+        # Load, Update, Save
+        ws_settings = Settings()
+        ws_settings.load(ws.settingsPath())
+        if hasattr(ws_settings, key):
+            setattr(ws_settings, key, value)
+        ws_settings.save(ws.settingsPath())
+
+        # If this is the active workspace, update the live settings object too
+        activePath = settings.getCurrentWorkspacePath()
+        if activePath and os.path.abspath(ws.folderPath) == os.path.abspath(activePath):
+            if hasattr(settings, key):
+                setattr(settings, key, value)
+            print(f"Updated active workspace setting '{key}' to '{value}'")
+        else:
+            print(f"Updated workspace '{ws.name}' setting '{key}' to '{value}'")
+
+    def _onBrowseModulesPath(self):
+        ws = self.selectedWorkspace()
+        if not ws:
+            return
+            
+        startDir = self.modulesPathEdit.text() or ws.folderPath or RIG_BUILDER_PATH
+        path = QFileDialog.getExistingDirectory(self, "Select Modules Directory", startDir)
+        if path:
+            self.modulesPathEdit.setText(path)
+            self._onSettingChanged("modulesPath", path)
 
     def refresh(self):
         self.listWidget.clear()
@@ -312,14 +425,15 @@ class WorkspaceManagerDialog(QDialog):
         if not ok or not name:
             return
 
+        name = name.strip()
         name = replaceSpecialChars(name)
-        path = os.path.join(getWorkspacesPath(), name)
-        
-        if os.path.exists(path):
+        path = os.path.join(RIG_BUILDER_WORKSPACES_PATH, name)
+
+        if not name or os.path.exists(path):
             QMessageBox.warning(self, "Workspace Manager", f"Workspace '{name}' already exists.")
             return
 
-        Workspace.create(path)
+        Workspace.create(name)
         self.refresh()
 
     def _onRemove(self):
@@ -383,7 +497,6 @@ class WorkspaceWidget(QWidget):
         ws.modules = rootModules
         ws.expanded = [bool(tree.isExpanded(tree.moduleModel.indexForModule(m))) for m in allModules]
         ws.host = self.mainWindow.hostCombo.currentData() or ""
-        ws.modulesPath = Settings.get("modulesPath", "")
         
         return ws
 
@@ -461,10 +574,10 @@ class WorkspaceWidget(QWidget):
         self._blockSignals = False
 
     def initialize(self) -> Workspace:
-        """Retrieve and activate the last used workspace on startup."""
+        """Restore workspace state on startup."""
         self.refreshWorkspaces()
-
-        lastPath = Settings.get("currentWorkspace", "")
+        appState.load()
+        lastPath = settings.getCurrentWorkspacePath()
         
         workspace = None
         if lastPath:
@@ -477,7 +590,7 @@ class WorkspaceWidget(QWidget):
         workspace.activate()
         
         # Update UI components that depend on settings
-        self.mainWindow.moduleBrowser.modulesAutoReloadWatcher.setRoots([getModulesPath()])
+        self.mainWindow.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.getModulesPath()])
         self.mainWindow.moduleBrowser.refreshModules()
         
         self.fromWorkspace(workspace)
@@ -499,7 +612,7 @@ class WorkspaceWidget(QWidget):
         if workspace:
             workspace.activate()
             # UI Refresh
-            self.mainWindow.moduleBrowser.modulesAutoReloadWatcher.setRoots([getModulesPath()])
+            self.mainWindow.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.getModulesPath()])
             self.mainWindow.moduleBrowser.refreshModules()
             self.fromWorkspace(workspace)
             self.workspaceChanged.emit(workspace)
@@ -524,5 +637,3 @@ class WorkspaceWidget(QWidget):
             ws = self.toWorkspace()
             ws.save()
             print(f"Workspace '{ws.name}' saved")
-
-migrateLegacyData()

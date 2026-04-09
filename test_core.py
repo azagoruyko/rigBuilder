@@ -9,10 +9,11 @@ from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, Dict,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, APIError,
-    calculateRelativePath, getModulesPath,
+    calculateRelativePath,
     printError, printWarning, exitModule,
-    APIRegistry, RIG_BUILDER_USER_PATH, UidManager
+    APIRegistry, UidManager
 )
+from rigBuilder.settings import settings, RIG_BUILDER_USER_PATH
 from rigBuilder.utils import copyJson
 
 
@@ -62,7 +63,7 @@ def cleanAPIRegistry():
 def tempDir():
     """Create temporary directory in local modules folder for realistic caching."""
     # Create temp dir in modules folder
-    tmpdir = tempfile.mkdtemp(prefix="test_", dir=getModulesPath())
+    tmpdir = tempfile.mkdtemp(prefix="test_", dir=settings.getModulesPath())
 
     yield tmpdir
 
@@ -1581,7 +1582,7 @@ class TestPathAndSettings:
 
     def testGetModulesPath(self):
         """getModulesPath returns a valid path."""
-        assert os.path.exists(getModulesPath())
+        assert os.path.exists(settings.getModulesPath())
 
     def testUidManagerResolve_empty(self):
         """Empty spec should return empty string."""
@@ -1608,7 +1609,7 @@ class TestPathAndSettings:
         assert os.path.normpath(resolvedNoExt) == os.path.normpath(filePath)
 
         # By relative name under modules root
-        relName = os.path.relpath(filePath, getModulesPath())
+        relName = os.path.relpath(filePath, settings.getModulesPath())
         # Use name without extension relative to modules path
         relNameNoExt = relName[:-4]
         resolvedRel = UidManager.resolve(relNameNoExt)

@@ -1,9 +1,9 @@
 import os
 import json
 from ..qt import *
-from ..core import RIG_BUILDER_USER_PATH
+from .. import settings
 
-PRESETS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "presets.json")
+PRESETS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "presets.json")
 
 from .utils import centerWindow
 from ..utils import loadJson, saveJson

@@ -11,7 +11,9 @@ from typing import Optional, List, Dict, Tuple
 import markdown
 
 from ..qt import *
-from ..core import Module, getModulesPath, Settings, MODULE_EXTS, UidManager, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..core import Module, MODULE_EXTS, UidManager
+from .. import settings as settings_module
+from ..settings import settings, appState
 from .logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
@@ -124,7 +126,7 @@ class ModuleBrowserTree(QTreeWidget):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
     def openModulesFolder(self):
-        folderPath = getModulesPath()
+        folderPath = settings.getModulesPath()
         subprocess.call("explorer \"{}\"".format(folderPath))
         
     def viewportEvent(self, event: QEvent) -> bool:
@@ -210,9 +212,9 @@ class ModuleBrowser(QWidget):
 
     def _updatePathLabel(self):
         """Update the path label with the current modules directory."""
-        path = os.path.normpath(getModulesPath())
-        userRoot = os.path.normpath(RIG_BUILDER_USER_PATH)
-        appRoot = os.path.normpath(RIG_BUILDER_PATH)
+        path = os.path.normpath(settings.getModulesPath())
+        userRoot = os.path.normpath(settings_module.RIG_BUILDER_USER_PATH)
+        appRoot = os.path.normpath(settings_module.RIG_BUILDER_PATH)
 
         if path.lower().startswith(userRoot.lower()):
             rel = os.path.relpath(path, userRoot)
@@ -227,7 +229,7 @@ class ModuleBrowser(QWidget):
 
     def _setupAutoReloadWatcher(self):
         """Setup the modules auto-reload watcher."""
-        watchRoots = [getModulesPath()]
+        watchRoots = [settings.getModulesPath()]
         self.modulesAutoReloadWatcher = DirectoryWatcher(
             watchRoots,
             filePatterns=["*" + ext for ext in MODULE_EXTS],
@@ -244,18 +246,24 @@ class ModuleBrowser(QWidget):
         self.applyMask()
 
     def browseModulesPath(self):
-        current = getModulesPath()
+        current = settings.getModulesPath()
         folder = QFileDialog.getExistingDirectory(self, "Modules folder", current)
         if folder:
-            Settings["modulesPath"] = folder
+            settings.modulesPath = folder
+            wsPath = settings.getCurrentWorkspacePath()
+            if wsPath:
+                settings.save(os.path.join(wsPath, "settings.json"))
             self.modulesAutoReloadWatcher.setRoots([folder])
             self._updatePathLabel()
             UidManager.update()
             self.applyMask()
 
     def resetModulesPath(self):
-        Settings["modulesPath"] = ""
-        self.modulesAutoReloadWatcher.setRoots([getModulesPath()])
+        settings.modulesPath = ""
+        wsPath = settings.getCurrentWorkspacePath()
+        if wsPath:
+            settings.save(os.path.join(wsPath, "settings.json"))
+        self.modulesAutoReloadWatcher.setRoots([settings.getModulesPath()])
         self._updatePathLabel()
         UidManager.update()
         self.applyMask()
@@ -271,7 +279,7 @@ class ModuleBrowser(QWidget):
                 if text == ch.text(column):
                     return ch
 
-        modulesDirectory = getModulesPath()
+        modulesDirectory = settings.getModulesPath()
         modules = sorted(UidManager.uids().values())
 
         self.treeWidget.clear()

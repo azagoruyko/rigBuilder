@@ -8,10 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
-from ..core import getHistoryPath, Module, Settings, UidManager
+from ..core import Module, UidManager
+from ..settings import settings
 from ..gitrepo import GitRepo
 from ..qt import (
-    QCheckBox,
     QDesktopServices,
     QDialog,
     QLineEdit,
@@ -48,7 +48,7 @@ def getHistoryRepo() -> Optional[GitRepo]:
     """Return GitRepo for history directory, or None if git unavailable or init fails."""
     if not GitRepo.isAvailable():
         return None
-    path = getHistoryPath()
+    path = settings.getHistoryPath()
     repo = GitRepo(path)
     if not GitRepo.exists(path) and not repo.init():
         return None
@@ -67,7 +67,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     if not uid:
         return False
 
-    historyFile = os.path.join(getHistoryPath(), uid)
+    historyFile = os.path.join(settings.getHistoryPath(), uid)
     with open(historyFile, "w", encoding="utf-8") as f:
         f.write(module.toXml(keepConnections=False))
 
@@ -231,10 +231,6 @@ class ModuleHistoryWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.trackHistoryCheckbox = QCheckBox("Track history")
-        self.trackHistoryCheckbox.setChecked(Settings.get("trackHistory", True))
-        self.trackHistoryCheckbox.setToolTip("When unchecked, saves are not committed to git history")
-        self.trackHistoryCheckbox.stateChanged.connect(self._onTrackHistoryToggled)
         self.filterEdit = QLineEdit()
         self.filterEdit.setPlaceholderText("Filter by UID")
         self.filterEdit.setClearButtonEnabled(True)
@@ -255,16 +251,11 @@ class ModuleHistoryWidget(QWidget):
 
         layout.addWidget(self.filterEdit)
         layout.addWidget(self.textBrowser)
-        layout.addWidget(self.trackHistoryCheckbox)
         self.updateModuleHistory()
 
     def isHistoryTrackingEnabled(self) -> bool:
         """Return True if git history tracking is enabled (saves will be committed)."""
-        return self.trackHistoryCheckbox.isChecked()
-
-    def _onTrackHistoryToggled(self, state):
-        """Update in-memory track history setting; persisted when workspace is saved."""
-        Settings["trackHistory"] = self.isHistoryTrackingEnabled()
+        return settings.trackHistory
 
     def handleHistoryLink(self, url) -> bool:
         """
@@ -324,7 +315,7 @@ class ModuleHistoryWidget(QWidget):
         menu.exec_(self.textBrowser.mapToGlobal(pos))
 
     def _onOpenHistoryFolder(self):
-        path = getHistoryPath()
+        path = settings.getHistoryPath()
         if os.path.isdir(path):
             subprocess.call("explorer \"{}\"".format(os.path.normpath(path)))
 

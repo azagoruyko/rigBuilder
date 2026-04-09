@@ -5,7 +5,7 @@ import os
 import ollama
 from json_repair import repair_json
 
-from ..core import Settings
+from ..settings import settings
 
 def isOllamaAvailable() -> bool:
     """Check if the Ollama server is reachable or the CLI is installed."""
@@ -37,7 +37,7 @@ async def chat(messages: list, model: str = DEFAULT_MODEL, format: str = '', tem
     additionalMessages = [
         {
             'role': 'system',
-            'content': f'Translate all textual output to {Settings.get("aiLanguage", "English")}. Do not translate code!'
+            'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
         }
     ]
 

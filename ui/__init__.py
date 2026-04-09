@@ -14,6 +14,7 @@ from typing import Callable, Optional, List, Tuple, Dict, Union, Any, TYPE_CHECK
 
 from ..qt import *
 from .. import __version__
+from .. import settings as settings_module
 from ..core import *
 from .workspaceManager import Workspace, WorkspaceWidget
 from .editor import CodeEditorWithNumbersWidget
@@ -506,6 +507,7 @@ class ModuleTracker(QObject):
         """Load module from disk and add its file to the watcher."""
         path = UidManager.resolve(uid)
         if not path or not os.path.exists(path):
+            self._cache[uid] = None
             return
 
         try:
@@ -517,7 +519,8 @@ class ModuleTracker(QObject):
             if path not in self._watcher.files():
                 self._watcher.addPath(path)
         except Exception as e:
-            logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
+            mainWindow.logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
+            self._cache[uid] = None
 
     def _onFileChanged(self, path: str):
         """Handle file change event from QFileSystemWatcher."""
@@ -531,6 +534,12 @@ class ModuleTracker(QObject):
         for uid in list(self._cache.keys()):
             self.loadModule(uid)
 
+
+    def clearCache(self):
+        """Clear all loaded modules and stop watching files."""
+        self._cache.clear()
+        if self._watcher.files():
+            self._watcher.removePaths(self._watcher.files())
 
 class ModuleModel(QAbstractItemModel):
     """
@@ -922,6 +931,7 @@ class ModuleModel(QAbstractItemModel):
     def clear(self):
         """Clear all modules from the model."""
         self.beginResetModel()
+        self.moduleTracker.clearCache()
         self._rootModule.removeChildren()
         self.endResetModel()
 
@@ -1129,7 +1139,7 @@ class TreeWidget(QTreeView):
             self.scrollTo(idx)
 
     def importModule(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", getModulesPath(), "Module files (*.rb *.xml);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", settings.getModulesPath(), "Module files (*.rb *.xml);;All files (*)")
         if not filePath:
             return
 
@@ -1141,7 +1151,7 @@ class TreeWidget(QTreeView):
             self.window().showLog()
 
     def importScript(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", getModulesPath(), "Python (*.py);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", settings.getModulesPath(), "Python (*.py);;All files (*)")
         if not filePath:
             return
 
@@ -1172,7 +1182,7 @@ class TreeWidget(QTreeView):
                 outputPath = module.referenceFile()
 
             if not outputPath:
-                initialPath = os.path.join(getModulesPath(), module.name())
+                initialPath = os.path.join(settings.getModulesPath(), module.name())
                 title = "Save as " + module.name() if forceDialog else "Save " + module.name()
                 outputPath, _ = QFileDialog.getSaveFileName(self.window(), title, initialPath, "Module files (*.rb *.xml)")
 
@@ -1325,6 +1335,9 @@ class TreeWidget(QTreeView):
             parentIdx = QModelIndex()
             
         parentModule = self.moduleModel.getModule(parentIdx) or self.moduleModel.rootModule()
+
+        if parentIdx.isValid():
+            self.setExpanded(parentIdx, True)
 
         pastedIndices = []
         for module in self.clipboard:
@@ -2107,7 +2120,7 @@ class ManageHostsDialog(QDialog):
             code = HOST_STARTUP_TEMPLATE.format(
                 HostClass=HostClass,
                 host=host,
-                RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
+                RIG_BUILDER_PATH=os.path.dirname(settings_module.RIG_BUILDER_PATH),
                 rep_port=rep,
                 pub_port=pub
             )
@@ -2442,14 +2455,16 @@ class RigBuilderWindow(QFrame):
         menu.exec(self.vscodeBtn.mapToGlobal(pos))
 
     def setVscodeCommand(self):
-        currentCommand = Settings.get("vscode", "vscode.exe")
+        currentCommand = settings.vscode
         message = "VSCode command."
         command, ok = QInputDialog.getText(self, "Rig Builder", message, QLineEdit.Normal, currentCommand)
         if not ok:
             return
 
-        Settings["vscode"] = command.strip()
-        saveSettings()
+        settings.vscode = command.strip()
+        ws = self.currentWorkspace()
+        if ws:
+            settings.save(ws.settingsPath())
 
     def addModule(self, module: Module) -> Optional[Module]:
         """Add a module to the tree and return it."""
@@ -2469,7 +2484,6 @@ class RigBuilderWindow(QFrame):
         except ModuleNotFoundError:
             logger.warning("Module not found: {}".format(spec))
             return
-
         self.treeWidget.addModule(module)
         self.treeWidget.selectModule(module)
 
@@ -2478,8 +2492,8 @@ class RigBuilderWindow(QFrame):
         if not module:
             return         
 
-        if not shutil.which(Settings["vscode"]):
-            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(Settings["vscode"])
+        if not shutil.which(settings.vscode):
+            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(settings.vscode)
             QMessageBox.warning(self,"Editor Error", msg)
             return
    
@@ -2550,8 +2564,8 @@ class RigBuilderWindow(QFrame):
 
         # generate header file
         fileName = module.path().lstrip("/").replace("/", "__")
-        headerFile = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}_header.py".format(fileName))
-        runCodeFilePath = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
+        headerFile = os.path.join(settings_module.RIG_BUILDER_USER_PATH, "vscode", "{}_header.py".format(fileName))
+        runCodeFilePath = os.path.join(settings_module.RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
 
         headerCode = []
 
@@ -2582,7 +2596,7 @@ class RigBuilderWindow(QFrame):
         startTrackedFileThread(runCodeFilePath, partial(onRunCodeFileChanged, runCodeFilePath, module.uid(), module.path()))
 
         try:
-            subprocess.Popen([Settings["vscode"], RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([settings.vscode, settings_module.RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -2632,7 +2646,7 @@ class RigBuilderWindow(QFrame):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(path)))
 
     def openUserFolder(self):
-        subprocess.call("explorer \"{}\"".format(RIG_BUILDER_USER_PATH))
+        subprocess.call("explorer \"{}\"".format(settings_module.RIG_BUILDER_USER_PATH))
 
     def _onTreeSelectionChanged(self, selected, deselected):
         module = self.treeWidget.currentModule()
@@ -2766,22 +2780,20 @@ def setupVscode():  # path to .vscode folder
         "python.autoComplete.extraPaths": [],
     }
 
-    folder = os.path.join(RIG_BUILDER_USER_PATH, "vscode", ".vscode")
+    folder = os.path.join(settings_module.RIG_BUILDER_USER_PATH, "vscode", ".vscode")
     os.makedirs(folder, exist_ok=True)
     settingsFile = os.path.join(folder, "settings.json")
 
     if os.path.exists(settingsFile):
-        with open(settingsFile, "r", encoding="utf-8") as f:
-            settings.update(json.load(f))
+        settings.update(loadJson(settingsFile))
 
     context = hostExecutor.executeCode("import sys;hostSysPath=sys.path")
     settings["python.autoComplete.extraPaths"] = context.get("hostSysPath", [])
 
-    with open(settingsFile, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=4, ensure_ascii=False)
+    saveJson(settingsFile, settings)
 
 def cleanupVscode():
-    vscodeFolder = RIG_BUILDER_USER_PATH+"/vscode"
+    vscodeFolder = settings_module.RIG_BUILDER_USER_PATH+"/vscode"
     if not os.path.exists(vscodeFolder):
         return
     

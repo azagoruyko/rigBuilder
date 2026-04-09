@@ -11,8 +11,8 @@ from .widgets import core as widgets_core
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
-RIG_BUILDER_PATH = os.path.dirname(__file__)
-RIG_BUILDER_USER_PATH = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
+from .settings import settings
+
 MODULE_EXT = ".rb" # default extension for new/saved modules
 MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
 
@@ -30,7 +30,7 @@ class UidManager:
     @classmethod
     def update(cls):
         """Update cached UIDs from modules directory."""
-        cls._uids = cls.findUids(getModulesPath())
+        cls._uids = cls.findUids(settings.getModulesPath())
 
     @classmethod
     def get(cls, uid: str) -> Optional[str]:
@@ -50,7 +50,7 @@ class UidManager:
             
         modulePath = cls.get(spec)
         if not modulePath:
-            root = getModulesPath()
+            root = settings.getModulesPath()
             spec = os.path.expandvars(spec)
 
             specPaths = [
@@ -660,7 +660,7 @@ class Module(object):
         """Get relative path from modules directory."""
         path = UidManager.resolve(self._uid)
         if self.loadedFromStore():
-            return calculateRelativePath(path, getModulesPath())
+            return calculateRelativePath(path, settings.getModulesPath())
         else:
             return path
 
@@ -875,64 +875,7 @@ class Module(object):
 
         return ctx
 
-
-def getModulesPath() -> str:
-    """Return the modules root directory, normalized."""
-    path = Settings.get("modulesPath") or ""
-    if path:
-        return os.path.normpath(path)
-
-    defaultRoot = os.path.join(RIG_BUILDER_PATH, "modules")
-    return os.path.normpath(defaultRoot)
-
-
-
-def getHistoryPath() -> str:
-    """Return the history directory for module version history (git-tracked)."""
-    path = Settings.get("historyPath") or ""
-    if path:
-        return os.path.normpath(path)
-
-    return os.path.normpath(os.path.join(RIG_BUILDER_USER_PATH, "history"))
-
-
-def getWorkspacesPath() -> str:
-    """Return the directory where workspace files are stored."""
-    return os.path.normpath(os.path.join(RIG_BUILDER_USER_PATH, "workspaces"))
-
-
-
-
-# Initialize directories and settings
-os.makedirs(RIG_BUILDER_USER_PATH, exist_ok=True)
-settingsFile = os.path.join(RIG_BUILDER_USER_PATH, "settings.json")
-
-Settings = {
-    "vscode": "code",
-    "modulesPath": "",
-    "historyPath": "",
-    "trackHistory": True,
-    "ollamaModel": "gpt-oss:20b-cloud",
-    "aiLanguage": "English",
-    "currentWorkspace": ""
-}
-
-if os.path.exists(settingsFile):
-    with open(settingsFile, "r", encoding="utf-8") as f:
-        try:
-            Settings.update(json.load(f))
-        except json.JSONDecodeError:
-            print("Settings file is corrupted. Using default settings.")
-else:
-    with open(settingsFile, "w", encoding="utf-8") as f:
-        json.dump(Settings, f, indent=4, ensure_ascii=False)
-
-def saveSettings():
-    """Persist Settings to settings.json."""
-    with open(settingsFile, "w", encoding="utf-8") as f:
-        json.dump(Settings, f, indent=4, ensure_ascii=False)
-        
-os.makedirs(getModulesPath(), exist_ok=True)
+os.makedirs(settings.getModulesPath(), exist_ok=True)
 
 UidManager.update()
 

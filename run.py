@@ -19,7 +19,8 @@ def updatePalette(app: QApplication):
 if __name__ == "__main__":
     app = QApplication([])
 
-    from rigBuilder.ui import mainWindow, saveSettings, cleanupVscode
+    from rigBuilder.ui import mainWindow, cleanupVscode
+    from rigBuilder.settings import settings, appState
     from rigBuilder.ui.utils import applyStylesheet
 
     applyStylesheet(app)
@@ -28,9 +29,9 @@ if __name__ == "__main__":
     mainWindow.show()
 
     def aboutToQuit():
-        """Save workspace and settings (on quit)."""
+        """Save workspace and state (on quit)"""
         mainWindow.workspaceWidget.toWorkspace().save()
-        saveSettings()
+        appState.save()
 
     QApplication.instance().aboutToQuit.connect(aboutToQuit)
     

@@ -4,12 +4,12 @@ import json
 import os
 from typing import Optional
 
-from ..core import RIG_BUILDER_USER_PATH
+from .. import settings
 from . import HostClient
 from ..utils import loadJson, saveJson
 from ..server.hosts.standalone import StandaloneServer
 
-HOSTS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "hosts.json")
+HOSTS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "hosts.json")
 
 class ConnectionManager:
     """Manages the list of saved host servers and the currently active connection."""
