@@ -6,6 +6,7 @@ from ..core import RIG_BUILDER_USER_PATH
 PRESETS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "presets.json")
 
 from .utils import centerWindow
+from ..utils import loadJson, saveJson
 
 class WidgetPresetManager:
     """Manages saving, loading and removing widget presets."""
@@ -13,25 +14,14 @@ class WidgetPresetManager:
     @staticmethod
     def presets() -> dict:
         """Return all saved presets."""
-        if not os.path.exists(PRESETS_FILE):
-            return {}
-        try:
-            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return {}
+        return loadJson(PRESETS_FILE)
 
     @staticmethod
     def savePreset(name: str, template: str, data: dict):
         """Save a new preset or update an existing one."""
         presets = WidgetPresetManager.presets()
         presets[name] = {"template": template, "data": data}
-        
-        if not os.path.exists(RIG_BUILDER_USER_PATH):
-            os.makedirs(RIG_BUILDER_USER_PATH)
-            
-        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-            json.dump(presets, f, indent=2, ensure_ascii=False)
+        saveJson(PRESETS_FILE, presets)
 
     @staticmethod
     def removePreset(name: str):
@@ -39,8 +29,7 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         if name in presets:
             del presets[name]
-            with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-                json.dump(presets, f, indent=2, ensure_ascii=False)
+            saveJson(PRESETS_FILE, presets)
 
     @staticmethod
     def renamePreset(oldName: str, newName: str):
@@ -48,8 +37,7 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         if oldName in presets:
             presets[newName] = presets.pop(oldName)
-            with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-                json.dump(presets, f, indent=2, ensure_ascii=False)
+            saveJson(PRESETS_FILE, presets)
 
 
 class PresetEditorDialog(QDialog):

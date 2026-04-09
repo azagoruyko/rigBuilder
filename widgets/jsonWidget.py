@@ -4,7 +4,7 @@ import json
 import re
 import os
 
-from ..utils import clamp, findUniqueName, SimpleUndo
+from ..utils import clamp, findUniqueName, SimpleUndo, loadJson, saveJson
 from ..ui.utils import getActions, centerWindow, setActionsLocalShortcut, SearchReplaceDialog, JsonColors
 
 RootDirectory = os.path.dirname(__file__)
@@ -419,23 +419,20 @@ class JsonWidget(QTreeWidget):
             else:
                 data = self.toJsonList()
 
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
+            saveJson(path, data)
 
     def loadFromFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Load JSON", "", "JSON (*.json)")
         if path:
             self.clear()
-            with open(path, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                self.loadFromJsonList([d])
+            d = loadJson(path)
+            self.loadFromJsonList([d])
 
     def importFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import JSON", "", "JSON (*.json)")
         if path:
-            with open(path, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                self.loadFromJsonList([d])
+            d = loadJson(path)
+            self.loadFromJsonList([d])
 
     def setRootItem(self, item=None):
         if item and item.jsonType in [item.ListType, item.DictType]:

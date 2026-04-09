@@ -1116,6 +1116,8 @@ class TreeWidget(QTreeView):
              parentIdx = QModelIndex()
         
         newIdx = self.moduleModel.addModuleAt(m, parentIdx)
+        if parentIdx.isValid():
+            self.setExpanded(parentIdx, True)
         self.setCurrentIndex(newIdx)
         self.scrollTo(newIdx)
 

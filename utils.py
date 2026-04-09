@@ -283,3 +283,22 @@ def categorizeFilesByModificationTime(files: List[str], *, daysAgo: int = 1, wee
             categories[weeksKey].append(file)
 
     return categories
+
+def loadJson(path: str) -> dict:
+    """Read a JSON file and return its content as a dictionary."""
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f) or {}
+        except Exception as e:
+            print(f"Error reading JSON from {path}: {e}")
+    return {}
+
+def saveJson(path: str, data: dict):
+    """Write a dictionary to a JSON file (UTF-8)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error writing JSON to {path}: {e}")

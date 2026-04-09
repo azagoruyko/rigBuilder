@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..core import RIG_BUILDER_USER_PATH
 from . import HostClient
+from ..utils import loadJson, saveJson
 from ..server.hosts.standalone import StandaloneServer
 
 HOSTS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "hosts.json")
@@ -24,24 +25,15 @@ class ConnectionManager:
 
     def servers(self) -> dict:
         """Return all saved server entries as a dictionary."""
-        if not os.path.exists(HOSTS_FILE):
-            return {}
-            
-        with open(HOSTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return loadJson(HOSTS_FILE)
 
     def saveServers(self, entries: dict):
         """Persist the full server dictionary."""
-        with open(HOSTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(entries, f, indent=2, ensure_ascii=False)
+        saveJson(HOSTS_FILE, entries)
 
     def addServer(self, name: str, host: str, address: str, rep_port: int, pub_port: int):
         """Add a new server entry. Replaces an existing entry with the same name."""
-        if os.path.exists(HOSTS_FILE):
-            with open(HOSTS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        else:
-            data = {}
+        data = loadJson(HOSTS_FILE)
 
         data[name] = {
             "host": host,
@@ -51,11 +43,7 @@ class ConnectionManager:
 
     def removeServer(self, name: str):
         """Remove a server entry by name."""
-        if not os.path.exists(HOSTS_FILE):
-            return
-            
-        with open(HOSTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = loadJson(HOSTS_FILE)
         
         if name in data:
             del data[name]
@@ -63,17 +51,13 @@ class ConnectionManager:
 
     def findServer(self, name: str) -> dict | None:
         """Return a server entry dict by name, or None if not found."""
-        if not os.path.exists(HOSTS_FILE):
-            return None
-            
-        with open(HOSTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            
-            entry = data.get(name)
-            if entry:
-                result = entry.copy()
-                result["name"] = name
-                return result
+        data = loadJson(HOSTS_FILE)
+        
+        entry = data.get(name)
+        if entry:
+            result = entry.copy()
+            result["name"] = name
+            return result
         return None
 
     # ------------------------------------------------------------------
