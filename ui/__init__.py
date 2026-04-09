@@ -2032,6 +2032,17 @@ class ManageHostsDialog(QDialog):
         self.listWidget = QListWidget()
         layout.addWidget(self.listWidget)
 
+        btnLayout = QHBoxLayout()
+        addBtn = QPushButton("➕")
+        removeBtn = QPushButton("🗑️")
+        btnLayout.addWidget(addBtn)
+        btnLayout.addWidget(removeBtn)
+        btnLayout.addStretch()
+        layout.addLayout(btnLayout)
+
+        addBtn.clicked.connect(self._add)
+        removeBtn.clicked.connect(self._remove)
+
         formLayout = QGridLayout()
         self.nameEdit = QLineEdit(); self.nameEdit.setPlaceholderText("Name (e.g. Maya 2025)")
         self.hostCombo = QComboBox()
@@ -2063,20 +2074,6 @@ class ManageHostsDialog(QDialog):
         
         layout.addLayout(copyLayout)
         layout.addWidget(self.codeEdit)
-
-        btnLayout = QHBoxLayout()
-        addBtn = QPushButton("➕ Add")
-        removeBtn = QPushButton("🗑️ Remove selected")
-        closeBtn = QPushButton("🚪 Close")
-        btnLayout.addWidget(addBtn)
-        btnLayout.addWidget(removeBtn)
-        btnLayout.addStretch()
-        btnLayout.addWidget(closeBtn)
-        layout.addLayout(btnLayout)
-
-        addBtn.clicked.connect(self._add)
-        removeBtn.clicked.connect(self._remove)
-        closeBtn.clicked.connect(self.accept)
 
         self.listWidget.itemSelectionChanged.connect(self._onSelectionChanged)
         self.listWidget.itemDoubleClicked.connect(self._onItemDoubleClicked)
