@@ -114,8 +114,6 @@ class ModuleBrowserTree(QTreeWidget):
         menu = QMenu(self)
         menu.addAction("Locate", self.browseModuleDirectory)
         menu.addAction("Open modules folder", self.openModulesFolder)
-        menu.addAction("Set modules folder...", self.parent().browseModulesPath)
-        menu.addAction("Reset modules folder", self.parent().resetModulesPath)
         menu.addSeparator()
         menu.addAction("Refresh", self.parent().refreshModules)
         menu.popup(event.globalPos())
@@ -241,29 +239,6 @@ class ModuleBrowser(QWidget):
 
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""
-        self._updatePathLabel()
-        UidManager.update()
-        self.applyMask()
-
-    def browseModulesPath(self):
-        current = settings.getModulesPath()
-        folder = QFileDialog.getExistingDirectory(self, "Modules folder", current)
-        if folder:
-            settings.modulesPath = folder
-            wsPath = settings.getCurrentWorkspacePath()
-            if wsPath:
-                settings.save(os.path.join(wsPath, "settings.json"))
-            self.modulesAutoReloadWatcher.setRoots([folder])
-            self._updatePathLabel()
-            UidManager.update()
-            self.applyMask()
-
-    def resetModulesPath(self):
-        settings.modulesPath = ""
-        wsPath = settings.getCurrentWorkspacePath()
-        if wsPath:
-            settings.save(os.path.join(wsPath, "settings.json"))
-        self.modulesAutoReloadWatcher.setRoots([settings.getModulesPath()])
         self._updatePathLabel()
         UidManager.update()
         self.applyMask()
