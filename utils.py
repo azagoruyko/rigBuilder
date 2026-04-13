@@ -3,6 +3,7 @@ import os
 import re
 import json
 import io
+import ast
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime, timedelta
 from typing import List, Any
@@ -253,7 +254,6 @@ class SimpleUndo:
 
             self.undoEnabled = True
 
-
 def categorizeFilesByModificationTime(files: List[str], *, daysAgo: int = 1, weeksAgo: int = 1) -> dict[str, List[str]]:
     """Categorize files by modification time into time-based groups."""
     now = datetime.now()
@@ -292,3 +292,34 @@ def saveJson(path: str, data: dict):
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error writing JSON to {path}: {e}")
+
+def executeWithResult(code: str, globalsDict: dict, localsDict: dict = None) -> Any:
+    """Execute Python code and return the value of the last expression if it's an ast.Expr."""
+    if not code.strip():
+        return None
+
+    try:
+        tree = ast.parse(code)
+    except Exception:
+        # Fallback to standard exec if parsing fails (e.g. syntax error that exec will also catch)
+        exec(code, globalsDict, localsDict)
+        return None
+
+    if not tree.body:
+        return None
+
+    lastNode = tree.body[-1]
+    if isinstance(lastNode, ast.Expr):
+        # Execute everything except the last expression
+        if len(tree.body) > 1:
+            execTree = ast.Module(body=tree.body[:-1], type_ignores=[])
+            exec(compile(execTree, "<string>", "exec"), globalsDict, localsDict)
+
+        # Evaluate the last expression
+        evalTree = ast.Expression(body=lastNode.value)
+        ast.fix_missing_locations(evalTree)
+        return eval(compile(evalTree, "<string>", "eval"), globalsDict, localsDict)
+    else:
+        # Execute the entire block
+        exec(compile(tree, "<string>", "exec"), globalsDict, localsDict)
+        return None

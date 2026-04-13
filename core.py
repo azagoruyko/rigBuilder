@@ -857,14 +857,17 @@ class Module(object):
 
         return ctx
 
-    def executeCode(self, code: str, context: Optional[dict[str, Any]] = None) -> DictExt[str, Any]:
+    def executeCode(self, code: str, context: Optional[dict[str, Any]] = None, executor: Optional[Callable] = None) -> DictExt[str, Any]:
         """Execute code in the context of the module."""
         ctx = DictExt()
         ctx.update(context or {})
         ctx.update(self.context())
         
+        executor = executor or exec
         try:
-            exec(replaceAttrPrefix(code), ctx)
+            result = executor(replaceAttrPrefix(code), ctx)
+            if result is not None:
+                print(repr(result))
         except ExitModuleException:
             pass
         
