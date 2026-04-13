@@ -20,7 +20,7 @@ if __name__ == "__main__":
     app = QApplication([])
 
     from rigBuilder.ui import mainWindow, cleanupVscode
-    from rigBuilder.settings import settings, appState
+    from rigBuilder.settings import appState
     from rigBuilder.ui.utils import applyStylesheet
 
     applyStylesheet(app)
