@@ -870,7 +870,12 @@ class Module(object):
         
         return ctx
 
-    def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> DictExt[str, Any]:
+    def run(
+        self,
+        *,
+        callback: Optional[Callable[['Module'], None]] = None,
+        context: Optional[dict[str, Any]] = None,
+    ) -> DictExt[str, Any]:
         """Execute module code and child modules."""
         if callable(callback):
             callback(self)
@@ -878,11 +883,11 @@ class Module(object):
         for attr in self._attributes:
             attr.pull()
 
-        ctx = self.executeCode(self._runCode)
+        ctx = self.executeCode(self._runCode, context)
 
         for ch in self._children:
             if not ch.muted():
-                ch.run(callback=callback)
+                ch.run(callback=callback, context=context)
 
         return ctx
 
