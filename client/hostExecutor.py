@@ -1,6 +1,6 @@
 from ..client.connectionManager import connectionManager
 from typing import Optional
-from ..qt import QObject, Signal
+from ..qt import QObject, Signal, QApplication, Qt
 from ..core import Module
 from xml.etree import ElementTree as ET
 
@@ -15,11 +15,10 @@ class HostExecutor(QObject):
     stepProgress = Signal(int, str)
     endProgress = Signal()
 
-    def __init__(self, contextKey: str = "global"):
+    def __init__(self):
         super().__init__()
         self._boundConnection = None
         self._isRunning = False
-        self._contextKey = contextKey
 
     def _ensureBoundConnection(self, conn):
         if self._boundConnection is conn:
@@ -83,7 +82,7 @@ class HostExecutor(QObject):
         self._isRunning = False
         self.onFinished.emit()
 
-    def executeCode(self, code: str, contextKey: str = "") -> dict:
+    def executeCode(self, code: str) -> dict:
         """Execute a Python snippet on the host server with JSON-serializable context."""
 
         conn = connectionManager.activeConnection()
@@ -91,9 +90,11 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return {}
 
+        contextKey = "global"
+
         self._ensureBoundConnection(conn)
         self._startRun()
-        reply = conn.executeCode(code, contextKey=self._contextKey)
+        reply = conn.executeCode(code, contextKey=contextKey)
 
         if reply:
             if reply.get("ok"):
@@ -106,7 +107,7 @@ class HostExecutor(QObject):
             self.onError.emit("Error executing code: empty response", "")
             return {}
 
-    def executeModuleCode(self, module: Module, code: str, contextKey: str = "") -> Optional[Module]:
+    def executeModuleCode(self, module: Module, code: str) -> Optional[Module]:
         """Execute a Python snippet on the host server against a module subtree."""
 
         conn = connectionManager.activeConnection()
@@ -118,8 +119,9 @@ class HostExecutor(QObject):
         self._startRun()
         moduleXml = module.toXml()
         modulePath = "."
+        contextKey = "global"
 
-        reply = conn.executeModuleCode(moduleXml, modulePath, code, contextKey=self._contextKey)
+        reply = conn.executeModuleCode(moduleXml, modulePath, code, contextKey=contextKey)
 
         if reply:
             if reply.get("ok"):
@@ -137,7 +139,7 @@ class HostExecutor(QObject):
             self.onError.emit("Error executing module code: empty response", "")
             
 
-    def runModule(self, module: Module, contextKey: str = "") -> Optional[Module]:
+    def runModule(self, module: Module) -> Optional[Module]:
         """Run module on the host server."""
         conn = connectionManager.activeConnection()
 
@@ -145,10 +147,12 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return
 
+        contextKey = "global"
+
         self._ensureBoundConnection(conn)
         self._startRun()
         moduleXml = module.toXml()
-        reply = conn.runModule(moduleXml, ".", contextKey=self._contextKey)
+        reply = conn.runModule(moduleXml, ".", contextKey=contextKey)
 
         if reply:
             if reply.get("ok"):
