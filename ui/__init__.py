@@ -1876,7 +1876,7 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.editorWidget.document().clearUndoRedoStacks()
         self.generateCompletionWords()
 
-        self.editorWidget.preset = id(self.module)
+        self.editorWidget.preset = self.module.path()
         self.editorWidget.loadState()
 
     def generateCompletionWords(self):
@@ -2279,7 +2279,6 @@ class RigBuilderWindow(QFrame):
 
         self.moduleBrowser = ModuleBrowser()
         self.moduleBrowser.modulesAutoReloadWatcher.somethingChanged.connect(self.treeWidget.refreshModuleTree)
-        
 
         self.leftSplitter = WideSplitter(Qt.Vertical, 8)
         self.leftSplitter.addWidget(self.treeContainer)
