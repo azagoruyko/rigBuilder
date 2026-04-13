@@ -5,7 +5,7 @@ import traceback
 import xml.etree.ElementTree as ET
 
 from ..core import Module, APIRegistry
-from ..utils import captureOutput, jsonifyContext, getErrorStack
+from ..utils import captureOutput, jsonifyContext, getErrorStack, executeWithResult
 
 # Persistent execution contexts for interactive (line-by-line) code execution.
 # Keyed by a client-supplied contextKey so variables accumulate across calls.
@@ -142,7 +142,7 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
 
     with captureOutput(capture):
         try:
-            ctx = module.executeCode(code, extraContext)
+            ctx = module.executeCode(code, extraContext, executor=executeWithResult)
         except Exception as e:
             msg = str(e)
             tb = getErrorStack()
@@ -179,7 +179,9 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
 
     with captureOutput(capture):
         try:
-            exec(code, context)
+            result = executeWithResult(code, context)
+            if result is not None:
+                print(repr(result))
         except Exception as e:
             msg = str(e)
             tb = getErrorStack()
