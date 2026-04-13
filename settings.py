@@ -52,17 +52,12 @@ class Settings(BaseConfig):
             return RIG_BUILDER_MODULES_PATH
         
         # Otherwise: use local workspace modules
-        wsPath = self.getCurrentWorkspacePath()
+        wsPath = appState.getCurrentWorkspacePath()
         if wsPath:
             return os.path.normpath(os.path.join(wsPath, "modules"))
             
         return RIG_BUILDER_MODULES_PATH
 
-    def getCurrentWorkspacePath(self) -> str:
-        """Resolve the current workspace name to a full absolute path."""
-        if not appState.currentWorkspace:
-            return ""
-        return os.path.normpath(os.path.join(RIG_BUILDER_WORKSPACES_PATH, appState.currentWorkspace))
 
     def getHistoryPath(self) -> str:
         """Return the history directory for module version history (git-tracked)."""
@@ -70,7 +65,7 @@ class Settings(BaseConfig):
             return os.path.normpath(self.historyPath)
             
         # Fallback to current workspace history if active
-        wsPath = self.getCurrentWorkspacePath()
+        wsPath = appState.getCurrentWorkspacePath()
         if wsPath:
             return os.path.normpath(os.path.join(wsPath, "history"))
 
@@ -81,6 +76,12 @@ class AppState(BaseConfig):
     """Container for volatile machine-specific state."""
     def __init__(self):
         self.currentWorkspace = ""
+
+    def getCurrentWorkspacePath(self) -> str:
+        """Resolve the current workspace name to a full absolute path."""
+        if not self.currentWorkspace:
+            return ""
+        return os.path.normpath(os.path.join(RIG_BUILDER_WORKSPACES_PATH, self.currentWorkspace))
 
     def load(self):
         """Load state from default or specified path."""
