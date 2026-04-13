@@ -6,7 +6,7 @@ import shutil
 import xml.etree.ElementTree as ET
 
 from rigBuilder.core import (
-    Attribute, Module, AttrsWrapper, DataAccessor, Dict,
+    Attribute, Module, AttrsWrapper, DataAccessor, DictExt,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, APIError,
     calculateRelativePath,
@@ -1140,8 +1140,8 @@ class TestHelperClasses:
     """Tests for helper classes."""
 
     def testDict(self):
-        """Test Dict attribute access."""
-        d = Dict()
+        """Test DictExt attribute access."""
+        d = DictExt()
         d["key"] = "value"
         assert d.key == "value"
 
@@ -1292,12 +1292,12 @@ class TestAPIRegistry:
         api1 = APIRegistry.api()
         api2 = APIRegistry.api()
 
-        # Should be different dict instances
+        # Should be different DictExt instances
         assert api1 is not api2
         # But contain same functions
         assert api1["test"] is api2["test"]
 
-        # Modifying returned dict shouldn't affect registry
+        # Modifying returned DictExt shouldn't affect registry
         api1["newFunc"] = lambda: 2
         api3 = APIRegistry.api()
         assert "newFunc" not in api3

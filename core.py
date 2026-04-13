@@ -4,8 +4,8 @@ import glob
 import json
 import uuid
 import xml.etree.ElementTree as ET
-from typing import List, Dict, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson, clamp, smartConversion, fromSmartConversion, Dict
+from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
+from .utils import copyJson, clamp, smartConversion, fromSmartConversion
 from .widgets import core as widgets_core
 
 if TYPE_CHECKING:
@@ -24,8 +24,18 @@ def replaceAttrPrefix(code: str) -> str:
 def replaceAttrPrefixInverse(code: str) -> str:
     return re.sub(r'{}(\w+)'.format(ATTR_PREFIX), r'@\1', code)
 
+class DictExt(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return self.get(name)
+
+    def __setattr__(self, name: str, value: Any):
+        self[name] = value
+
 class UidManager:
-    _uids: Dict[str, str] = {}
+    _uids: dict[str, str] = {}
 
     @classmethod
     def update(cls):
@@ -38,7 +48,7 @@ class UidManager:
         return cls._uids.get(uid)
 
     @classmethod
-    def uids(cls) -> Dict[str, str]:
+    def uids(cls) -> dict[str, str]:
         """Get all cached UIDs."""
         return cls._uids
 
@@ -81,7 +91,7 @@ class UidManager:
         return None
 
     @classmethod
-    def findUids(cls, path: str) -> Dict[str, str]:
+    def findUids(cls, path: str) -> dict[str, str]:
         """Find all UIDs and their file paths in directory."""
         uids = {}
         for fpath in sorted(glob.iglob(path + "/*")):
@@ -131,7 +141,7 @@ class APIRegistryMeta(type):
 class APIRegistry(metaclass=APIRegistryMeta):
     """Registry for functions and objects available to modules at runtime."""
 
-    _objects: Dict[str, Any] = {}
+    _objects: DictExt[str, Any] = {}
 
     @staticmethod
     def clear():
@@ -159,9 +169,9 @@ class APIRegistry(metaclass=APIRegistryMeta):
         del APIRegistry._objects[name]
 
     @staticmethod
-    def api() -> Dict[str, Any]:
+    def api() -> DictExt[str, Any]:
         """Get all registered objects as dictionary for exec()."""
-        return Dict(APIRegistry._objects)
+        return DictExt(APIRegistry._objects)
 
 
 def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit        
@@ -260,20 +270,20 @@ class Attribute(object):
             if newValue != self._defaultValue():
                 self._data[self._data["default"]] = newValue
     
-    def data(self) -> Dict[str, Any]: # return actual read-only copy of all data
+    def data(self) -> DictExt[str, Any]: # return actual read-only copy of all data
         """Get read-only copy of all attribute data."""
         self.pull()
         return copyJson(self._data)
     
-    def localData(self) -> Dict[str, Any]:
+    def localData(self) -> DictExt[str, Any]:
         """Get copy of local data without pulling from connections."""
         return copyJson(self._data)
         
-    def setLocalData(self, newData: Dict[str, Any]):
+    def setLocalData(self, newData: dict[str, Any]):
         """Set local data without pushing to connections."""
         self._data = newData
     
-    def setData(self, data: Dict[str, Any]):
+    def setData(self, data: dict[str, Any]):
         """Set data and push to connections."""
         self.setLocalData(data)
         self.push()
@@ -423,7 +433,7 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
 class Module(object):
 
 
-    glob = Dict() # global memory
+    glob = DictExt() # global memory
 
     def __init__(self):
         self._uid = "" # unique ids are assigned while saving
@@ -580,7 +590,7 @@ class Module(object):
         attr = self.findAttributeByPath(path)
         return attr.get(key)
     
-    def chdata(self, path: str) -> Dict[str, Any]:
+    def chdata(self, path: str) -> DictExt[str, Any]:
         """Get the underlying data dictionary of an attribute."""
         attr = self.findAttributeByPath(path)
         return attr.data() # actual read-only copy
@@ -831,7 +841,7 @@ class Module(object):
 
         return current
 
-    def context(self) -> Dict[str, Any]:        
+    def context(self) -> DictExt[str, Any]:        
         """Get execution environment for module."""
         ctx = APIRegistry.api()
         ctx.update({
@@ -847,9 +857,9 @@ class Module(object):
 
         return ctx
 
-    def executeCode(self, code: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def executeCode(self, code: str, context: Optional[dict[str, Any]] = None) -> DictExt[str, Any]:
         """Execute code in the context of the module."""
-        ctx = {}
+        ctx = DictExt()
         ctx.update(context or {})
         ctx.update(self.context())
         
@@ -860,7 +870,7 @@ class Module(object):
         
         return ctx
 
-    def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> Dict[str, Any]:
+    def run(self, *, callback: Optional[Callable[['Module'], None]] = None) -> DictExt[str, Any]:
         """Execute module code and child modules."""
         if callable(callback):
             callback(self)

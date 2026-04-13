@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Optional, Tuple, TYPE_CHECKING
 from ..utils import *
 
 if TYPE_CHECKING:
@@ -100,11 +100,11 @@ def comboBox_setItems(data: dict, items: list[str]):
 
 # button functions
 
-def runButtonCommand(module: 'Module', buttonLabel: str) -> Optional[Dict[str, Any]]:
+def runButtonCommand(module: 'Module', buttonLabel: str) -> Optional[dict[str, Any]]:
     """Execute module button command by label."""
     supportedTemplates = {"button", "lineEditAndButton"}
 
-    def findAndRun(data: Dict[str, Any], template: str) -> Optional[Dict[str, Any]]:
+    def findAndRun(data: dict[str, Any], template: str) -> Optional[dict[str, Any]]:
         """Recursive helper to find and execute a button command."""
         if template in supportedTemplates:
             matchesLabel = data.get("buttonLabel") == buttonLabel or data.get("label") == buttonLabel

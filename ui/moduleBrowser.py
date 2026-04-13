@@ -7,7 +7,7 @@ import re
 import time
 import subprocess
 import xml.etree.ElementTree as ET
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Tuple
 import markdown
 
 from ..qt import *
@@ -19,7 +19,7 @@ from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
 from ..utils import clamp
 
-_DOC_CACHE: Dict[str, Tuple[float, str]] = {} # path: (mtime, content)
+_DOC_CACHE: dict[str, Tuple[float, str]] = {} # path: (mtime, content)
 
 def getDocFromFile(path: str) -> str:
     """Fetch doc content from file with caching based on mtime."""

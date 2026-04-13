@@ -10,7 +10,7 @@ import logging
 import fnmatch
 import xml.etree.ElementTree as ET
 from functools import partial
-from typing import Callable, Optional, List, Tuple, Dict, Union, Any, TYPE_CHECKING
+from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 
 from ..qt import *
 from .. import __version__
@@ -376,7 +376,7 @@ class AttributesTabWidget(QTabWidget):
         self.attributesChanged.emit()
         self.updateTabs()
 
-    def _onReplace(self, old: str, new: str, opts: Dict[str, bool]):
+    def _onReplace(self, old: str, new: str, opts: dict[str, bool]):
         def replaceStringInData(data: object, old: str, new: str) -> object:
             try:
                 return json.loads(json.dumps(data).replace(old,new))
@@ -489,7 +489,7 @@ class ModuleTracker(QObject):
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
-        self._cache: Dict[str, Module] = {}
+        self._cache: dict[str, Module] = {}
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._onFileChanged)
 
@@ -1982,7 +1982,7 @@ class MyProgressBar(QWidget):
     def initialize(self):
         self.queue = []
 
-    def updateWithState(self, state: Dict[str, object]):
+    def updateWithState(self, state: dict[str, object]):
         trimText = lambda text, size: "..." + text[-size+3:]  if len(text) > size else " "*(size-len(text)) + text
         self.labelWidget.setText(trimText(state["text"], self.labelSize))
         self.progressBarWidget.setValue(state["value"])

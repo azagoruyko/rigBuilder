@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
@@ -116,7 +116,7 @@ def squashHistory() -> Tuple[bool, str]:
 def getModuleHistoryEntries(
     limit: int = COMMITS_LIMIT,
     uid: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+) -> List[dict[str, Any]]:
     """Return history entries from git log; optional filter by UID."""
     repo = getHistoryRepo()
 

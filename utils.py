@@ -5,17 +5,7 @@ import json
 import io
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
-
-class Dict(dict):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return self.get(name)
-
-    def __setattr__(self, name: str, value: Any):
-        self[name] = value
+from typing import List, Any
 
 def clamp(val: float, low: float, high: float) -> float:
     """Clamp value between low and high bounds."""
@@ -264,7 +254,7 @@ class SimpleUndo:
             self.undoEnabled = True
 
 
-def categorizeFilesByModificationTime(files: List[str], *, daysAgo: int = 1, weeksAgo: int = 1) -> Dict[str, List[str]]:
+def categorizeFilesByModificationTime(files: List[str], *, daysAgo: int = 1, weeksAgo: int = 1) -> dict[str, List[str]]:
     """Categorize files by modification time into time-based groups."""
     now = datetime.now()
 
