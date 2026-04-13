@@ -13,7 +13,7 @@ import markdown
 from ..qt import *
 from ..core import Module, MODULE_EXTS, UidManager
 from .. import settings as settings_module
-from ..settings import settings, appState
+from ..settings import settings
 from .logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
