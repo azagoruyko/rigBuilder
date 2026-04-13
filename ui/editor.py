@@ -676,9 +676,8 @@ class CodeEditorWidget(QTextEdit):
             state = self._editorState[self.preset]
             if cursor:
                 c = self.textCursor()
-                if state["cursor"] > c.document().blockCount():
-                    state["cursor"] = 0
-                c.setPosition(state["cursor"])
+                maxPos = c.document().characterCount() - 1
+                c.setPosition(clamp(state["cursor"], 0, maxPos))
                 self.setTextCursor(c)
 
             if scroll:
