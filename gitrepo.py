@@ -7,7 +7,6 @@ import shlex
 import shutil
 import sys
 import subprocess
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 
@@ -17,32 +16,31 @@ if sys.platform == "win32":
 else:
     _startupinfo = None
 
-
 class GitRepo:
     """Wrapper for git commands in a given working directory."""
 
     def __init__(self, path: str) -> None:
         """Initialize with the repository working directory (file or directory path)."""
-        self.workingDirectory = Path(path)
+        self.workingDirectory = os.path.normpath(path)
 
     @staticmethod
     def findRepo(path: str) -> Optional[GitRepo]:
         """Search upward from path for a directory containing .git; return GitRepo or None."""
-        path = Path(path)
-        if not path.is_dir():
-            path = path.parent
+        path = os.path.normpath(path)
+        if not os.path.isdir(path):
+            path = os.path.dirname(path)
 
-        if not path or path.parent == path:
+        if not path or os.path.dirname(path) == path:
             return None
 
-        if (path / ".git").exists():
+        if os.path.exists(os.path.join(path, ".git")):
             return GitRepo(path)
-        return GitRepo.findRepo(path.parent)
+        return GitRepo.findRepo(os.path.dirname(path))
 
     @staticmethod
     def exists(path: str) -> bool:
         """Return True if path contains a .git directory."""
-        return (Path(path) / ".git").exists()
+        return os.path.exists(os.path.join(path, ".git"))
 
     @staticmethod
     def isAvailable() -> bool:
@@ -52,8 +50,8 @@ class GitRepo:
     def init(self) -> bool:
         """Ensure repo exists (run git init if needed). Return False if user/email not set in config."""
         # Ensure working directory exists before running any git commands
-        if not self.workingDirectory.exists():
-            self.workingDirectory.mkdir(parents=True, exist_ok=True)
+        if not os.path.exists(self.workingDirectory):
+            os.makedirs(self.workingDirectory, exist_ok=True)
 
         _, user = self("config user.name")
         _, email = self("config user.email")
