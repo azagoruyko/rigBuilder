@@ -7,6 +7,10 @@ import xml.etree.ElementTree as ET
 from ..core import Module, APIRegistry
 from ..utils import captureOutput, jsonifyContext, getErrorStack
 
+# Persistent execution contexts for interactive (line-by-line) code execution.
+# Keyed by a client-supplied contextKey so variables accumulate across calls.
+_interactiveContexts = {}
+
 
 class _StreamCapture(io.TextIOBase):
     """Captures stdout/stderr produced during module run or code execution
@@ -41,7 +45,7 @@ def overrideAPI(emitFn, runId):
     APIRegistry.override("endProgress", _endProgress)    
 
 
-def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
+def runModule(moduleXml: str, modulePath: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Deserialize the sent payload module XML, find module by modulePath, run it, and return updated XML."""
     
     overrideAPI(emitFn, runId)
@@ -64,6 +68,9 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
         emitFn({"event": "finished", "id": runId})
         return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
+    # Retrieve or create the accumulated interactive context.
+    extraContext = _interactiveContexts.get(contextKey, {}) if contextKey else {}
+
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -71,13 +78,20 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
             emitFn({"event": "runCallback", "id": runId, "path": m.path()})
 
         try:
-            module.run(callback=runCallback)
+            ctx = module.run(callback=runCallback, context=extraContext)
         except Exception as e:
             msg = str(e)
             tb = getErrorStack()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
             emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+
+    # Store surviving user variables for the next interactive call.
+    if contextKey:
+        if contextKey not in _interactiveContexts:
+            _interactiveContexts[contextKey] = {}
+
+        _interactiveContexts[contextKey].update(ctx)
 
     try:
         xmlOut = root.toXml()
@@ -92,9 +106,13 @@ def runModule(moduleXml: str, modulePath: str, emitFn, runId: str) -> dict:
     return {"ok": True, "xml": xmlOut, "id": runId}
 
 
-def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId: str) -> dict:
+def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Execute Python snippet within a module found by modulePath in the sent payload XML.
     Returns updated payload XML and (for executeCode) any JSON context exposed by the module execution.
+
+    When *contextKey* is non-empty the execution context is stored and reused
+    across calls, allowing interactive line-by-line execution with accumulated
+    variables.
     """
 
     overrideAPI(emitFn, runId)
@@ -117,17 +135,27 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
         emitFn({"event": "finished", "id": runId})
         return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
+    # Retrieve or create the accumulated interactive context.
+    extraContext = _interactiveContexts.get(contextKey, {}) if contextKey else {}
+
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
         try:
-            module.executeCode(code)
+            ctx = module.executeCode(code, extraContext)
         except Exception as e:
             msg = str(e)
             tb = getErrorStack()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
             emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+
+    # Store surviving user variables for the next interactive call.
+    if contextKey:
+        if contextKey not in _interactiveContexts:
+            _interactiveContexts[contextKey] = {}
+
+        _interactiveContexts[contextKey].update(ctx)
 
     try:
         xmlOut = root.toXml()
@@ -142,10 +170,11 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
     return {"ok": True, "xml": xmlOut, "id": runId}
 
 
-def executeCode(code: str, emitFn, runId: str) -> dict:
+def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Execute host-side Python code and return JSON-serializable context."""
 
-    context = {}
+    # Retrieve or create the accumulated interactive context.
+    context = _interactiveContexts.get(contextKey, {}) if contextKey else {}
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -157,6 +186,13 @@ def executeCode(code: str, emitFn, runId: str) -> dict:
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
             emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+
+    # Store surviving user variables for the next interactive call.
+    if contextKey:
+        if contextKey not in _interactiveContexts:
+            _interactiveContexts[contextKey] = {}
+
+        _interactiveContexts[contextKey].update(context)
 
     emitFn({"event": "finished", "id": runId})
     return {"ok": True, "context": jsonifyContext(context), "id": runId}

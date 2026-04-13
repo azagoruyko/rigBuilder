@@ -124,27 +124,27 @@ class HostClient(QObject):
         """Ping the server. Returns {"ok": True, "host": "…", "version": "…"}."""
         return self._send({"cmd": "ping"}, timeout_seconds=1.0)
 
-    def runModule(self, moduleXml: str, modulePath: str) -> dict:
-        """Run module XML on the host within the context of moduleXml; blocks until finished.
-        Returns {"ok": True, "xml": "…"} or an error dict.
-        """
+    def runModule(self, moduleXml: str, modulePath: str, contextKey: str = "") -> dict:
+        """Run module XML on the host within the context of moduleXml; blocks until finished."""
         runId = uuid.uuid4().hex
         return self._send(
-            {"cmd": "runModule", "xml": moduleXml, "path": modulePath, "id": runId},
+            {"cmd": "runModule", "xml": moduleXml, "path": modulePath, "id": runId, "contextKey": contextKey},
             timeout_seconds=DEFAULT_RUN_TIMEOUT,
         )
 
-    def executeModuleCode(self, moduleXml: str, modulePath: str, code: str) -> dict:
+    def executeModuleCode(self, moduleXml: str, modulePath: str, code: str, contextKey: str = "") -> dict:
         """Execute a Python snippet against a module found by path in the moduleXml tree on the host.
-        Returns {"ok": True, "context": {…}, "xml": "…"} or {"ok": False, "error": "…"}.
+        When *contextKey* is non-empty the server will accumulate execution
+        context across calls, enabling interactive line-by-line execution.
         """
         runId = uuid.uuid4().hex
-        return self._send({"cmd": "executeModuleCode", "xml": moduleXml, "path": modulePath, "code": code, "id": runId})
+        msg = {"cmd": "executeModuleCode", "xml": moduleXml, "path": modulePath, "code": code, "id": runId, "contextKey": contextKey}
+        return self._send(msg)
 
-    def executeCode(self, code: str) -> dict:
+    def executeCode(self, code: str, contextKey: str = "") -> dict:
         """Execute host-side Python code and return JSON-serializable context."""
         runId = uuid.uuid4().hex
-        return self._send({"cmd": "executeCode", "code": code, "id": runId}, timeout_seconds=DEFAULT_RUN_TIMEOUT)
+        return self._send({"cmd": "executeCode", "code": code, "id": runId, "contextKey": contextKey}, timeout_seconds=DEFAULT_RUN_TIMEOUT)
 
     # ------------------------------------------------------------------
     # Internal

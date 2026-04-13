@@ -2740,7 +2740,6 @@ class RigBuilderWindow(QFrame):
             return
 
         self.setFocus()
-        self.logWidget.clear()
         self.showLog()
         self.runBtn.setEnabled(False)
 

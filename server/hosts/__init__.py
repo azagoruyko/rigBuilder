@@ -151,7 +151,7 @@ class HostServer:
     def runModule(self, msg: dict) -> dict:
         """Execute a module XML payload; return updated XML."""
         return self._scheduleHostExecution(
-            lambda: runModule(msg["xml"], msg.get("path", "."), self.emit, msg["id"]),
+            lambda: runModule(msg["xml"], msg.get("path", "."), self.emit, msg["id"], msg.get("contextKey", "")),
             timeout=MODULE_EXECUTION_TIMEOUT,
         )
 
@@ -164,6 +164,7 @@ class HostServer:
                 msg["code"],
                 self.emit,
                 msg["id"],
+                msg.get("contextKey", ""),
             ),
             timeout=CODE_EXECUTION_TIMEOUT,
         )
@@ -171,7 +172,7 @@ class HostServer:
     def executeCode(self, msg: dict) -> dict:
         """Execute host-side code and return a JSON-serializable context."""
         return self._scheduleHostExecution(
-            lambda: executeCode(msg["code"], self.emit, msg["id"]),
+            lambda: executeCode(msg["code"], self.emit, msg["id"], msg.get("contextKey", "")),
             timeout=CODE_EXECUTION_TIMEOUT,
         )
         
