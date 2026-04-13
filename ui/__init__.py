@@ -1128,13 +1128,6 @@ class TreeWidget(QTreeView):
         self.setCurrentIndex(newIdx)
         self.scrollTo(newIdx)
 
-    def selectModule(self, module: Module):
-        idx = self.moduleModel.indexForModule(module)
-        if idx.isValid():
-            self.selectionModel().select(idx, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
-            self.setCurrentIndex(idx)
-            self.scrollTo(idx)
-
     def importModule(self):
         filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", settings.getModulesPath(), "Module files (*.rb *.xml);;All files (*)")
         if not filePath:
@@ -2487,10 +2480,6 @@ class RigBuilderWindow(QFrame):
         if idx.isValid():
             return self.treeWidget.moduleModel.getModule(idx)
         return None
-
-    def selectModule(self, module: Module):
-        """Select a module in the tree."""
-        self.treeWidget.selectModule(module)
 
     def selectModuleBySpec(self, spec: str):
         """Load and select module by spec (UID, relative or full path)."""
