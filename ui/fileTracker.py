@@ -77,10 +77,10 @@ class DirectoryWatcher(QObject):
                 if not self.recursive:
                     break
 
-        if not paths:
+        oldPaths = set(self.watcher.files() + self.watcher.directories())
+        if not paths and not oldPaths:
             return
 
-        oldPaths = set(self.watcher.files() + self.watcher.directories())
         toRemove = list(oldPaths - paths)
         toAdd = list(paths - oldPaths)
         if toRemove:
