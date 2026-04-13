@@ -4,6 +4,8 @@ import re
 import json
 import io
 import ast
+import stat
+import shutil
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime, timedelta
 from typing import List, Any
@@ -323,3 +325,22 @@ def executeWithResult(code: str, globalsDict: dict, localsDict: dict = None) -> 
         # Execute the entire block
         exec(compile(tree, "<string>", "exec"), globalsDict, localsDict)
         return None
+
+def forceRemove(path: str) -> None:
+    """Force remove a directory or file, handling read-only flags on Windows."""
+    if not os.path.exists(path):
+        return
+
+    def onerror(func, p, _excinfo):
+        """Clear read-only flag and retry the operation."""
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+
+    if os.path.isdir(path):
+        shutil.rmtree(path, onerror=onerror)
+    else:
+        try:
+            os.remove(path)
+        except OSError:
+            os.chmod(path, stat.S_IWRITE)
+            os.remove(path)
