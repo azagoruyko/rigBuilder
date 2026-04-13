@@ -2163,6 +2163,10 @@ class ManageHostsDialog(QDialog):
             return
             
         name = item.data(Qt.UserRole)
+        if name == "Default":
+            QMessageBox.warning(self, "Manage Hosts", "The 'Default' host cannot be removed.")
+            return
+
         connectionManager.removeServer(name)
         self.hostsChanged.emit()
         self._refreshList()
