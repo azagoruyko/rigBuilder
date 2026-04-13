@@ -2724,7 +2724,7 @@ class RigBuilderWindow(QFrame):
         self._progressCounter += 1
 
     def onFinishedCallback(self):
-        logger.info("Done!")
+        logger.info("Done\n")
 
     def runModule(self):
         """Run module on the host server."""
