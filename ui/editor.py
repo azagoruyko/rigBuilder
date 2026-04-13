@@ -549,6 +549,7 @@ class TextBlockData(QTextBlockUserData):
 
 class CodeEditorWidget(QTextEdit):
     numberBarUpdateRequested = Signal()
+    executeSelectedRequested = Signal(str)
     editorState = {}
     TabSpaces = 4
 
@@ -770,6 +771,14 @@ class CodeEditorWidget(QTextEdit):
                 self.completionWidget.hide()
             else:
                 super().keyPressEvent(event)
+
+        elif key in (Qt.Key_Return, Qt.Key_Enter) and (ctrl or key == Qt.Key_Enter):
+            cursor = self.textCursor()
+            code = cursor.selectedText().replace("\u2029", "\n").strip()
+            if not code:
+                code = cursor.block().text().strip()
+            if code:
+                self.executeSelectedRequested.emit(code)
 
         elif key == Qt.Key_Return:
             if self.completionWidget.isVisible():
