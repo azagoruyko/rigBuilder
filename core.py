@@ -849,8 +849,9 @@ class Module(object):
 
     def executeCode(self, code: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute code in the context of the module."""
-        ctx = self.context()
+        ctx = {}
         ctx.update(context or {})
+        ctx.update(self.context())
         
         try:
             exec(replaceAttrPrefix(code), ctx)
