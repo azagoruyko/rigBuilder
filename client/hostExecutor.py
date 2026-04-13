@@ -47,6 +47,7 @@ class HostExecutor(QObject):
         conn.onFinished.connect(self._handleFinished)
 
     def _startRun(self):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
         self._isRunning = True
 
     def _handlePrint(self, text: str):
@@ -74,6 +75,8 @@ class HostExecutor(QObject):
             self.endProgress.emit()
 
     def _handleFinished(self):
+        QApplication.restoreOverrideCursor()
+        
         if not self._isRunning:
             return
 
