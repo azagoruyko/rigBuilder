@@ -1925,8 +1925,10 @@ class LogWidget(QTextEdit):
 
         self.syntax = LogHighligher(self.document())
         self.setPlaceholderText("Output and errors or warnings...")
+        self.setReadOnly(True)
 
     def write(self, txt: str):
+        self.moveCursor(QTextCursor.End)
         self.insertPlainText(txt)
         self.ensureCursorVisible()
 
@@ -2724,7 +2726,7 @@ class RigBuilderWindow(QFrame):
         self._progressCounter += 1
 
     def onFinishedCallback(self):
-        logger.info("Done\n")
+        pass
 
     def runModule(self):
         """Run module on the host server."""
@@ -2737,6 +2739,10 @@ class RigBuilderWindow(QFrame):
 
         currentModule = self.treeWidget.currentModule()
         if not currentModule:
+            return
+
+        if not connectionManager.activeConnection():
+            QMessageBox.warning(self, "Rig Builder", "Not connected to host server")
             return
 
         self.setFocus()
