@@ -2373,7 +2373,7 @@ class RigBuilderWindow(QFrame):
         self.hostConnectBtn.setToolTip("Connect to selected host")
         self.hostConnectBtn.setEnabled(True)
         self.hostCombo.setEnabled(True)
-        self.hostRowWidget.setStyleSheet("")
+        self.hostCombo.setStyleSheet("")
         self.hostConnectBtn.blockSignals(False)
         self.cleanupRun()
 
@@ -2410,7 +2410,7 @@ class RigBuilderWindow(QFrame):
         self.hostConnectBtn.setToolTip("Disconnect from host")
         self.hostConnectBtn.setEnabled(True)
         self.hostCombo.setEnabled(False)
-        self.hostRowWidget.setStyleSheet("QWidget { color: #66cc66; }")
+        self.hostCombo.setStyleSheet("color: #66cc66;")
 
     def _onManageHosts(self):
         """Open a simple dialog to add/remove hosts."""
