@@ -923,9 +923,6 @@ class ModuleModel(QAbstractItemModel):
         self.beginResetModel()
         parentModule._children[row] = newModule
         newModule._parent = parentModule
-        # Re-link children (they might have been lost in serialization/deserialization if not deep)
-        for child in newModule.children():
-            child._parent = newModule
         self.endResetModel()
 
     def clear(self):
@@ -1864,9 +1861,6 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
             return
 
         self.module.setRunCode(self.editorWidget.toPlainText())
-        # The model should ideally emit dataChanged, but since runCode isn't in columns,
-        # we might just notify the window or emit an internal signal if needed.
-        # For now, let's keep it simple.
 
     def updateState(self):
         if not self.module:
