@@ -123,6 +123,43 @@ QComboBox::drop-down {
 	image: url("{ROOT}/images/combo-arrow.svg");
 }
 
+QAbstractSpinBox::up-button,
+QAbstractSpinBox::down-button {
+	background-color: #2b313b;
+	border-left: 1px solid #343c49;
+	width: 18px;
+}
+
+QAbstractSpinBox::up-button {
+	border-top-right-radius: 4px;
+}
+
+QAbstractSpinBox::down-button {
+	border-bottom-right-radius: 4px;
+}
+
+QAbstractSpinBox::up-button:hover,
+QAbstractSpinBox::down-button:hover {
+	background-color: #4b5a70;
+}
+
+QAbstractSpinBox::up-button:pressed,
+QAbstractSpinBox::down-button:pressed {
+	background-color: #273243;
+}
+
+QAbstractSpinBox::up-arrow {
+	image: url("{ROOT}/images/header-arrow-up.svg");
+	width: 10px;
+	height: 10px;
+}
+
+QAbstractSpinBox::down-arrow {
+	image: url("{ROOT}/images/header-arrow-down.svg");
+	width: 10px;
+	height: 10px;
+}
+
 
 /* =============================================================================
    Buttons
@@ -131,19 +168,25 @@ QComboBox::drop-down {
 QPushButton {
 	background-color: #2f3948;
 	color: #f3f4f6;
-	border: 1px solid #3d495b;
+	border: 1px solid #1a232e;
+	border-top: 1px solid #9fb3ce;
+	/* Harder specular highlight */
+	border-bottom: 2px solid #1a1e24;
+	/* Darker bottom shadow */
 	border-radius: 5px;
 	padding: 5px 10px;
 	font-weight: 600;
 }
 
 QPushButton:hover {
-	background-color: #38475d;
-	border-color: #556b87;
+	background-color: #4b5a75;
+	border-color: #3b4657;
+	border-top-color: #c9d6e8;
 }
 
 QPushButton:pressed {
-	background-color: #273243;
+	background-color: #2a3341;
+	border-top-color: #1a232e;
 }
 
 QPushButton:disabled {
@@ -183,6 +226,22 @@ QTabBar::tab:selected {
 	background-color: #1f232a;
 	color: #f3f4f6;
 	font-weight: 600;
+}
+
+QTabBar::close-button {
+	image: url("{ROOT}/images/tab-close.svg");
+	subcontrol-origin: margin;
+	subcontrol-position: center right;
+	margin: 2px;
+	border-radius: 2px;
+}
+
+QTabBar::close-button:hover {
+	background-color: #5a2e2e;
+}
+
+QTabBar::close-button:pressed {
+	background-color: #ba5b5b;
 }
 
 
@@ -427,7 +486,7 @@ QSlider::add-page:vertical {
 
 QScrollBar:vertical,
 QScrollBar:horizontal {
-	background-color: #20262f;
+	background-color: #1a1e24;
 	margin: 0;
 }
 
@@ -442,14 +501,26 @@ QScrollBar:horizontal {
 QScrollBar::handle:vertical,
 QScrollBar::handle:horizontal {
 	background-color: #3b4657;
-	border-radius: 5px;
-	min-height: 20px;
-	min-width: 20px;
+	border-radius: 4px;
+	margin: 2px;
+}
+
+QScrollBar::handle:vertical {
+	min-height: 25px;
+}
+
+QScrollBar::handle:horizontal {
+	min-width: 25px;
 }
 
 QScrollBar::handle:vertical:hover,
 QScrollBar::handle:horizontal:hover {
-	background-color: #4a5a70;
+	background-color: #506175;
+}
+
+QScrollBar::handle:vertical:pressed,
+QScrollBar::handle:horizontal:pressed {
+	background-color: #6ea7ff;
 }
 
 QScrollBar::add-line,
