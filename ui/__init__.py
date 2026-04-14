@@ -2870,8 +2870,9 @@ def cleanupVscode():
         if f.endswith(".py") or any(f.endswith(ext) for ext in MODULE_EXTS): # remove module files
             os.remove(os.path.join(vscodeFolder, f))
 
-# global references
+cleanupVscode()
 
+# global references
 mainWindow = RigBuilderWindow()
 logHandler.setTarget(mainWindow.logWidget)
 

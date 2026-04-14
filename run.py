@@ -18,14 +18,12 @@ def updatePalette(app: QApplication):
 if __name__ == "__main__":
     app = QApplication([])
 
-    from rigBuilder.ui import mainWindow, cleanupVscode
+    from rigBuilder.ui import mainWindow
     from rigBuilder.ui.utils import applyStylesheet    
 
     applyStylesheet(app)
     updatePalette(app)
 
-    mainWindow.show()
-
-    cleanupVscode()
+    mainWindow.show()   
 
     app.exec()
