@@ -40,7 +40,7 @@ class UidManager:
     @classmethod
     def update(cls):
         """Update cached UIDs from modules directory."""
-        cls._uids = cls.findUids(settings.getModulesPath())
+        cls._uids = cls.findUids(settings.modulesPath)
 
     @classmethod
     def get(cls, uid: str) -> Optional[str]:
@@ -60,7 +60,7 @@ class UidManager:
             
         modulePath = cls.get(spec)
         if not modulePath:
-            root = settings.getModulesPath()
+            root = settings.modulesPath
             spec = os.path.expandvars(spec)
 
             specPaths = [
@@ -670,7 +670,7 @@ class Module(object):
         """Get relative path from modules directory."""
         path = UidManager.resolve(self._uid)
         if self.loadedFromStore():
-            return calculateRelativePath(path, settings.getModulesPath())
+            return calculateRelativePath(path, settings.modulesPath)
         else:
             return path
 
@@ -893,8 +893,6 @@ class Module(object):
                 ch.run(callback=callback, context=context)
 
         return ctx
-
-os.makedirs(settings.getModulesPath(), exist_ok=True)
 
 UidManager.update()
 

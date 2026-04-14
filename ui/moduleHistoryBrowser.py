@@ -47,11 +47,13 @@ COMMITS_LIMIT = 25
 def getHistoryRepo() -> Optional[GitRepo]:
     """Return GitRepo for history directory, or None if git unavailable or init fails."""
     if not GitRepo.isAvailable():
-        return None
-    path = settings.getHistoryPath()
+        return
+
+    path = settings.historyPath
     repo = GitRepo(path)
     if not GitRepo.exists(path) and not repo.init():
-        return None
+        return
+
     return repo
 
 
@@ -67,11 +69,11 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     if not uid:
         return False
 
-    historyFile = os.path.join(settings.getHistoryPath(), uid)
-    with open(historyFile, "w", encoding="utf-8") as f:
-        f.write(module.toXml(keepConnections=False))
+    historyFile = os.path.join(settings.historyPath, uid)
+    moduleCopy = module.copy()
+    moduleCopy.saveToFile(historyFile)
 
-    message = "{}: {}".format(module.name(), commitMessage.strip() or "update")
+    message = "{}: {}".format(moduleCopy.name(), commitMessage.strip() or "update")
 
     err, _ = repo.commit(message, [historyFile])
     return not err
@@ -315,7 +317,7 @@ class ModuleHistoryWidget(QWidget):
         menu.exec_(self.textBrowser.mapToGlobal(pos))
 
     def _onOpenHistoryFolder(self):
-        path = settings.getHistoryPath()
+        path = settings.historyPath
         if os.path.isdir(path):
             subprocess.call("explorer \"{}\"".format(os.path.normpath(path)))
 
@@ -411,7 +413,7 @@ class ModuleHistoryWidget(QWidget):
 
     def updateModuleHistory(self):
         """Update the module history widget with the latest history."""
-        filterText = self.filterEdit.text().strip() if hasattr(self, "filterEdit") else ""
+        filterText = self.filterEdit.text().strip()
         html = buildHistoryHtml(filterText)
         self.textBrowser.clear()
         self.textBrowser.setHtml(html)

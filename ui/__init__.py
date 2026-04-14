@@ -14,9 +14,8 @@ from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 
 from ..qt import *
 from .. import __version__
-from .. import settings as settings_module
+from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..core import *
-from .workspaceManager import Workspace, WorkspaceWidget
 from .editor import CodeEditorWithNumbersWidget
 from .apiBrowser import ApiBrowserWidget
 from .docBrowser import DocBrowser
@@ -31,6 +30,7 @@ from ..client.hostExecutor import hostExecutor
 from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
+from .workspaceManager import WorkspaceWidget
 from .logger import logger, logHandler
 
 
@@ -932,7 +932,7 @@ class ModuleModel(QAbstractItemModel):
         self._rootModule.removeChildren()
         self.endResetModel()
 
-class TreeWidget(QTreeView):
+class ModuleTreeWidget(QTreeView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1129,7 +1129,7 @@ class TreeWidget(QTreeView):
         self.scrollTo(newIdx)
 
     def importModule(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", settings.getModulesPath(), "Module files (*.rb *.xml);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", settings.modulesPath, "Module files (*.rb *.xml);;All files (*)")
         if not filePath:
             return
 
@@ -1141,7 +1141,7 @@ class TreeWidget(QTreeView):
             self.window().showLog()
 
     def importScript(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", settings.getModulesPath(), "Python (*.py);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", settings.modulesPath, "Python (*.py);;All files (*)")
         if not filePath:
             return
 
@@ -1172,7 +1172,7 @@ class TreeWidget(QTreeView):
                 outputPath = module.referenceFile()
 
             if not outputPath:
-                initialPath = os.path.join(settings.getModulesPath(), module.name())
+                initialPath = os.path.join(settings.modulesPath, module.name())
                 title = "Save as " + module.name() if forceDialog else "Save " + module.name()
                 outputPath, _ = QFileDialog.getSaveFileName(self.window(), title, initialPath, "Module files (*.rb *.xml)")
 
@@ -2106,7 +2106,7 @@ class ManageHostsDialog(QDialog):
             code = HOST_STARTUP_TEMPLATE.format(
                 HostClass=HostClass,
                 host=host,
-                RIG_BUILDER_PATH=os.path.dirname(settings_module.RIG_BUILDER_PATH),
+                RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
                 rep_port=rep,
                 pub_port=pub
             )
@@ -2167,7 +2167,8 @@ class RigBuilderWindow(QFrame):
     def __init__(self):
         super().__init__()
 
-        self._currentWorkspace = None
+        self.logger = logger
+        self._refreshingUI = False
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 700)
@@ -2182,7 +2183,7 @@ class RigBuilderWindow(QFrame):
         
         self._progressCounter = 0
 
-        self.treeWidget = TreeWidget()
+        self.treeWidget = ModuleTreeWidget()
         self.treeWidget.selectionModel().selectionChanged.connect(self._onTreeSelectionChanged)
 
         self.codeEditorWidget = CodeEditorWidget()
@@ -2216,6 +2217,7 @@ class RigBuilderWindow(QFrame):
         self.hostCombo = QComboBox()
         self.hostCombo.setPlaceholderText("No host")
         self.hostCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.hostCombo.currentIndexChanged.connect(lambda: setattr(settings, "host", self.hostCombo.currentData()))
         self._refreshHostCombo()
 
         self.hostConnectBtn = QPushButton("🔗")
@@ -2226,6 +2228,9 @@ class RigBuilderWindow(QFrame):
         self.hostManageBtn = QPushButton("⚙️")
         self.hostManageBtn.setToolTip("Manage hosts")
         self.hostManageBtn.clicked.connect(self._onManageHosts)
+ 
+        self.workspaceWidget = WorkspaceWidget(self)
+        self.workspaceWidget.workspaceChanged.connect(self._onWorkspaceChanged)
 
         self.windowPinBtn = QPushButton("📌")
         self.windowPinBtn.setCheckable(True)
@@ -2233,20 +2238,14 @@ class RigBuilderWindow(QFrame):
         self.windowPinBtn.clicked.connect(self._onTogglePin)
         self.windowPinBtn.setStyleSheet("QPushButton:checked { background-color: #3e7bd6; border-color: #6ea7ff; color: #ffffff; }")
 
-        self.workspaceWidget = WorkspaceWidget(self)
-
-        hostRow = QHBoxLayout()
-        hostRow.setContentsMargins(0, 0, 0, 5)
-        hostRow.addWidget(self.workspaceWidget)
-        hostRow.addStretch()
-        hostRow.addWidget(self.hostCombo)
-        hostRow.addWidget(self.hostConnectBtn)
-        hostRow.addWidget(self.hostManageBtn)
-        hostRow.addWidget(self.windowPinBtn)
-
-        self.hostRowWidget = QWidget()
-        self.hostRowWidget.setLayout(hostRow)
-        self.hostRowWidget.setStyleSheet("border-bottom: 1px solid #444; padding-bottom: 2px;")
+        headerRow = QHBoxLayout()
+        headerRow.setContentsMargins(0, 0, 0, 5)
+        headerRow.addWidget(self.workspaceWidget)
+        headerRow.addStretch()
+        headerRow.addWidget(self.hostCombo)
+        headerRow.addWidget(self.hostConnectBtn)
+        headerRow.addWidget(self.hostManageBtn)
+        headerRow.addWidget(self.windowPinBtn)
 
         self.moduleHistoryWidget = ModuleHistoryWidget(self)
         self.moduleHistoryWidget.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
@@ -2291,27 +2290,35 @@ class RigBuilderWindow(QFrame):
         self.codeAndApiSplitter.addWidget(self.apiBrowserWidget)
         self.codeAndApiSplitter.setSizes([800, 200])
 
-        self.workspaceSplitter = WideSplitter(Qt.Vertical)
-        self.workspaceSplitter.addWidget(self.mainContentSplitter)
-        self.workspaceSplitter.addWidget(self.codeAndApiSplitter)
-        self.workspaceSplitter.addWidget(self.logWidget)
-        self.workspaceSplitter.setSizes([400, 0, 0])
+        self.verticalSplitter = WideSplitter(Qt.Vertical)
+        self.verticalSplitter.addWidget(self.mainContentSplitter)
+        self.verticalSplitter.addWidget(self.codeAndApiSplitter)
+        self.verticalSplitter.addWidget(self.logWidget)
+        self.verticalSplitter.setSizes([400, 0, 0])
 
-        self.workspaceSplitter.splitterMoved.connect(self._onCodeSplitterMoved)
+        self.verticalSplitter.splitterMoved.connect(self._onCodeSplitterMoved)
         self.codeWidget.setEnabled(False)
 
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()        
         self.treeWidget.addActions(getActions(self.menu()))
+        self.treeWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.treeWidget.customContextMenuRequested.connect(self._onTreeContextMenu)
         setActionsLocalShortcut(self.treeWidget)
 
-        layout.addWidget(self.hostRowWidget)
-        layout.addWidget(self.workspaceSplitter)
+        layout.addLayout(headerRow)
+        layout.addWidget(self.verticalSplitter)
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
-        self.workspaceWidget.workspaceChanged.connect(self.moduleHistoryWidget.updateModuleHistory)
-        self.workspaceWidget.initialize()
+        self.moduleHistoryWidget.updateModuleHistory()
+        self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
+        self.moduleBrowser.refreshModules()
+
+        self.loadAppSettings()
+
+    def _onTreeContextMenu(self, pos):
+        self.menu().exec(self.treeWidget.mapToGlobal(pos))
 
     def _onModuleExecutionRequested(self, code: str):
         module = self.treeWidget.currentModule()
@@ -2357,6 +2364,11 @@ class RigBuilderWindow(QFrame):
             self.hostCombo.addItem(label, userData=name)
 
         self.hostCombo.blockSignals(False)
+        
+        # Restore current host from settings
+        idx = self.hostCombo.findData(settings.host)
+        if idx >= 0:
+            self.hostCombo.setCurrentIndex(idx)
 
     def _resetHostConnectionRow(self):
         """Disconnected UI state for the host row (no message boxes)."""
@@ -2415,12 +2427,19 @@ class RigBuilderWindow(QFrame):
         """Toggle 'Stay on Top' window flag and update opacity."""
         self.setWindowFlag(Qt.WindowStaysOnTopHint, checked)
         self.show()
+ 
+    def _onWorkspaceChanged(self, workspace):
+        self._refreshModuleUI()
 
-    def currentWorkspace(self) -> Optional[Workspace]:
-        return self.workspaceWidget.currentWorkspace()
+    def _refreshModuleUI(self):
+        """Update UI components that depend on current settings/workspace."""
+        self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
+        self.moduleBrowser.refreshModules()
+        self.treeWidget.refreshModuleTree()
 
-    def setCurrentWorkspace(self, workspace: Workspace):
-        self.workspaceWidget.setCurrentWorkspace(workspace)
+    def _onOpenSettings(self):
+        # Deprecated: usage move to WorkspaceManager
+        pass
 
     def menu(self):
         menu = QMenu(self)
@@ -2470,9 +2489,7 @@ class RigBuilderWindow(QFrame):
             return
 
         settings.vscode = command.strip()
-        ws = self.currentWorkspace()
-        if ws:
-            settings.save(ws.settingsPath())
+        settings.save()
 
     def addModule(self, module: Module) -> Optional[Module]:
         """Add a module to the tree and return it."""
@@ -2568,8 +2585,8 @@ class RigBuilderWindow(QFrame):
 
         # generate header file
         fileName = module.path().lstrip("/").replace("/", "__")
-        headerFile = os.path.join(settings_module.RIG_BUILDER_USER_PATH, "vscode", "{}_header.py".format(fileName))
-        runCodeFilePath = os.path.join(settings_module.RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
+        headerFile = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}_header.py".format(fileName))
+        runCodeFilePath = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
 
         headerCode = []
 
@@ -2600,7 +2617,7 @@ class RigBuilderWindow(QFrame):
         startTrackedFileThread(runCodeFilePath, partial(onRunCodeFileChanged, runCodeFilePath, module.uid(), module.path()))
 
         try:
-            subprocess.Popen([settings.vscode, settings_module.RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([settings.vscode, RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -2650,7 +2667,7 @@ class RigBuilderWindow(QFrame):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(path)))
 
     def openUserFolder(self):
-        subprocess.call("explorer \"{}\"".format(settings_module.RIG_BUILDER_USER_PATH))
+        subprocess.call("explorer \"{}\"".format(RIG_BUILDER_USER_PATH))
 
     def _onTreeSelectionChanged(self, selected, deselected):
         module = self.treeWidget.currentModule()
@@ -2672,7 +2689,7 @@ class RigBuilderWindow(QFrame):
 
 
     def isCodeEditorHidden(self) -> bool:
-        return self.workspaceSplitter.sizes()[1] == 0 # code section size
+        return self.verticalSplitter.sizes()[1] == 0 # code section size
 
     def _onCodeSplitterMoved(self, sz: int, n: int):
         if self.isCodeEditorHidden():
@@ -2686,10 +2703,10 @@ class RigBuilderWindow(QFrame):
                 self.codeWidget.setEnabled(True)
 
     def showLog(self):
-        sizes = self.workspaceSplitter.sizes()
+        sizes = self.verticalSplitter.sizes()
         if sizes[-1] < 10:
             sizes[-1] = 200
-            self.workspaceSplitter.setSizes(sizes)
+            self.verticalSplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
     def onConnectionErrorCallback(self, text: str):
@@ -2771,6 +2788,48 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryWidget.filterEdit.setText(module.uid())
         self.treeWidget.clearSelection()
 
+    def saveAppSettings(self):
+        """Save app-specific settings like active workspace and window geometry."""
+        settings = QSettings("RigBuilder")
+        settings.setValue("activeWorkspace", self.workspaceWidget._currentWorkspaceName)
+        settings.setValue("geometry", self.saveGeometry())
+        
+        # Save splitter states
+        settings.setValue("verticalSplitter", self.verticalSplitter.saveState())
+        settings.setValue("mainContentSplitter", self.mainContentSplitter.saveState())
+        settings.setValue("leftSplitter", self.leftSplitter.saveState())
+        settings.setValue("rightSplitter", self.rightSplitter.saveState())
+        settings.setValue("codeAndApiSplitter", self.codeAndApiSplitter.saveState())
+
+    def loadAppSettings(self):
+        """Load app-specific settings."""
+        settings = QSettings("RigBuilder")
+        
+        # Restore window geometry
+        geometry = settings.value("geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+        
+        # Restore splitter states
+        for key, splitter in [
+            ("verticalSplitter", self.verticalSplitter),
+            ("mainContentSplitter", self.mainContentSplitter),
+            ("leftSplitter", self.leftSplitter),
+            ("rightSplitter", self.rightSplitter),
+            ("codeAndApiSplitter", self.codeAndApiSplitter)
+        ]:
+            state = settings.value(key)
+            if state:
+                splitter.restoreState(state)
+
+        # Restore workspace
+        workspaceName = settings.value("activeWorkspace", "default")
+        self.workspaceWidget.switchWorkspace(workspaceName)
+
+    def saveCurrentWorkspace(self):
+        """Save the current workspace state to disk."""
+        self.workspaceWidget.toWorkspace().save()
+
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing
         for thread in trackFileChangesThreads.values():
@@ -2779,6 +2838,9 @@ class RigBuilderWindow(QFrame):
                 thread.wait(1000)  # Wait up to 1 second for thread to finish
         trackFileChangesThreads.clear()
         
+        self.saveAppSettings()
+        self.saveCurrentWorkspace()
+
         # Call parent close event
         super().closeEvent(event)
 
@@ -2787,7 +2849,7 @@ def setupVscode():  # path to .vscode folder
         "python.autoComplete.extraPaths": [],
     }
 
-    folder = os.path.join(settings_module.RIG_BUILDER_USER_PATH, "vscode", ".vscode")
+    folder = os.path.join(RIG_BUILDER_USER_PATH, "vscode", ".vscode")
     os.makedirs(folder, exist_ok=True)
     settingsFile = os.path.join(folder, "settings.json")
 
@@ -2800,7 +2862,7 @@ def setupVscode():  # path to .vscode folder
     saveJson(settingsFile, settings)
 
 def cleanupVscode():
-    vscodeFolder = settings_module.RIG_BUILDER_USER_PATH+"/vscode"
+    vscodeFolder = RIG_BUILDER_USER_PATH+"/vscode"
     if not os.path.exists(vscodeFolder):
         return
     

@@ -63,7 +63,7 @@ def cleanAPIRegistry():
 def tempDir():
     """Create temporary directory in local modules folder for realistic caching."""
     # Create temp dir in modules folder
-    tmpdir = tempfile.mkdtemp(prefix="test_", dir=settings.getModulesPath())
+    tmpdir = tempfile.mkdtemp(prefix="test_", dir=settings.modulesPath)
 
     yield tmpdir
 
@@ -1581,8 +1581,8 @@ class TestPathAndSettings:
         assert result == os.path.normpath(path)
 
     def testGetModulesPath(self):
-        """getModulesPath returns a valid path."""
-        assert os.path.exists(settings.getModulesPath())
+        """modulesPath returns a valid path."""
+        assert os.path.exists(settings.modulesPath)
 
     def testUidManagerResolve_empty(self):
         """Empty spec should return empty string."""
@@ -1609,7 +1609,7 @@ class TestPathAndSettings:
         assert os.path.normpath(resolvedNoExt) == os.path.normpath(filePath)
 
         # By relative name under modules root
-        relName = os.path.relpath(filePath, settings.getModulesPath())
+        relName = os.path.relpath(filePath, settings.modulesPath)
         # Use name without extension relative to modules path
         relNameNoExt = relName[:-4]
         resolvedRel = UidManager.resolve(relNameNoExt)

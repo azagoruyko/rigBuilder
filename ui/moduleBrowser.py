@@ -124,7 +124,7 @@ class ModuleBrowserTree(QTreeWidget):
                 subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(item.filePath)))
 
     def openModulesFolder(self):
-        folderPath = settings.getModulesPath()
+        folderPath = settings.modulesPath
         subprocess.call("explorer \"{}\"".format(folderPath))
         
     def viewportEvent(self, event: QEvent) -> bool:
@@ -210,7 +210,7 @@ class ModuleBrowser(QWidget):
 
     def _updatePathLabel(self):
         """Update the path label with the current modules directory."""
-        path = os.path.normpath(settings.getModulesPath())
+        path = os.path.normpath(settings.modulesPath)
         userRoot = os.path.normpath(settings_module.RIG_BUILDER_USER_PATH)
         appRoot = os.path.normpath(settings_module.RIG_BUILDER_PATH)
 
@@ -227,7 +227,7 @@ class ModuleBrowser(QWidget):
 
     def _setupAutoReloadWatcher(self):
         """Setup the modules auto-reload watcher."""
-        watchRoots = [settings.getModulesPath()]
+        watchRoots = [settings.modulesPath]
         self.modulesAutoReloadWatcher = DirectoryWatcher(
             watchRoots,
             filePatterns=["*" + ext for ext in MODULE_EXTS],
@@ -254,7 +254,7 @@ class ModuleBrowser(QWidget):
                 if text == ch.text(column):
                     return ch
 
-        modulesDirectory = settings.getModulesPath()
+        modulesDirectory = settings.modulesPath
         modules = sorted(UidManager.uids().values())
 
         self.treeWidget.clear()

@@ -2,7 +2,6 @@
 
 import os
 import sys
-from functools import partial
 
 directory = os.path.dirname(__file__)
 sys.path.append(os.path.dirname(directory))
@@ -20,21 +19,13 @@ if __name__ == "__main__":
     app = QApplication([])
 
     from rigBuilder.ui import mainWindow, cleanupVscode
-    from rigBuilder.settings import appState
-    from rigBuilder.ui.utils import applyStylesheet
+    from rigBuilder.ui.utils import applyStylesheet    
 
     applyStylesheet(app)
     updatePalette(app)
 
     mainWindow.show()
 
-    def aboutToQuit():
-        """Save workspace and state (on quit)"""
-        mainWindow.workspaceWidget.toWorkspace().save()
-        appState.save()
-
-    QApplication.instance().aboutToQuit.connect(aboutToQuit)
-    
     cleanupVscode()
 
     app.exec()
