@@ -168,10 +168,8 @@ QAbstractSpinBox::down-arrow {
 QPushButton {
 	background-color: #2f3948;
 	color: #f3f4f6;
-	border: 1px solid #1a232e;
-	border-top: 1px solid #9fb3ce;
-	/* Harder specular highlight */
-	border-bottom: 2px solid #1a1e24;
+	border-top: 1px solid #7c8ba1;
+	/* Softer specular highlight */
 	/* Darker bottom shadow */
 	border-radius: 5px;
 	padding: 5px 10px;
@@ -179,14 +177,16 @@ QPushButton {
 }
 
 QPushButton:hover {
-	background-color: #4b5a75;
-	border-color: #3b4657;
-	border-top-color: #c9d6e8;
+	background-color: #364252;
+	border-color: #323d4d;
+	border-top-color: #8fa1b8;
 }
 
 QPushButton:pressed {
-	background-color: #2a3341;
-	border-top-color: #1a232e;
+	background-color: #2b3341;
+	border-top: 1px solid #1a232e;
+	border-bottom: 1px solid #1a1e24;
+	padding: 6px 10px 4px 10px;
 }
 
 QPushButton:disabled {
