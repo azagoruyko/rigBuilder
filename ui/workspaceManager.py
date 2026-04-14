@@ -228,7 +228,7 @@ class WorkspaceWidget(QWidget):
         super().__init__(parent)
         self.mainWindow = mainWindow
         self._blockSignals = False
-        self._currentWorkspaceName = "default"
+        self._currentWorkspaceName = ""
 
         self.combo = QComboBox()
         self.combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -307,8 +307,9 @@ class WorkspaceWidget(QWidget):
         if not name:
             return
 
-        # Save current
-        self.toWorkspace().save()
+        # Save current IF one was active and it's a DIFFERENT workspace
+        if self._currentWorkspaceName and self._currentWorkspaceName != name:
+            self.toWorkspace().save()
 
         # Check for recovery
         hasMain, hasAutosave = Workspace.getLoadInfo(name)
