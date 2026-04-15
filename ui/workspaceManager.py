@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from functools import partial
 from typing import List, Protocol, Optional
 
@@ -395,7 +396,8 @@ class WorkspaceWidget(QWidget):
         
         self.toWorkspace().autosave()
         
-        print(f"Workspace '{self._currentWorkspaceName}' autosaved.")
+        timestamp = datetime.now().strftime("%H:%M")
+        print(f"Workspace '{self._currentWorkspaceName}' autosaved at {timestamp}")
 
     def _updateAutoSaveInterval(self):
         """Update timer interval from global settings."""
