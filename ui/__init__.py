@@ -2200,8 +2200,6 @@ class RigBuilderWindow(QFrame):
 
         self.vscodeBtn = QPushButton("📝 Edit in VSCode")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
-        self.vscodeBtn.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.vscodeBtn.customContextMenuRequested.connect(self.onVscodeBtnContextMenu)
 
         self.codeWidget = QWidget()
         self.codeWidget.setLayout(QVBoxLayout())
@@ -2484,21 +2482,6 @@ class RigBuilderWindow(QFrame):
 
         return menu
 
-    def onVscodeBtnContextMenu(self, pos):
-        menu = QMenu(self)
-        menu.addAction("Set VSCode command", self.setVscodeCommand)
-        menu.exec(self.vscodeBtn.mapToGlobal(pos))
-
-    def setVscodeCommand(self):
-        currentCommand = settings.vscode
-        message = "VSCode command."
-        command, ok = QInputDialog.getText(self, "Rig Builder", message, QLineEdit.Normal, currentCommand)
-        if not ok:
-            return
-
-        settings.vscode = command.strip()
-        settings.save()
-
     def addModule(self, module: Module) -> Optional[Module]:
         """Add a module to the tree and return it."""
         idx = self.treeWidget.moduleModel.addModuleAt(module)
@@ -2522,7 +2505,7 @@ class RigBuilderWindow(QFrame):
             return         
 
         if not shutil.which(settings.vscode):
-            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command from the button context menu.".format(settings.vscode)
+            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command in the Workspace Manager.".format(settings.vscode)
             QMessageBox.warning(self,"Editor Error", msg)
             return
    
