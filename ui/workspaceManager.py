@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from typing import List, Protocol, Optional
 
 from ..qt import *
@@ -10,6 +11,7 @@ from ..settings import (
 )
 from ..workspace import Workspace, flattenModules
 from ..utils import replaceSpecialChars
+from ..client.connectionManager import connectionManager
 
 class WorkspaceMainWindow(Protocol):
     """Protocol for the main window passed to UI sync methods. Avoids depending on ui (circular import)."""
@@ -66,7 +68,7 @@ class WorkspaceManagerDialog(QDialog):
 
         self.modulesPathEdit = QLineEdit()
         self.modulesPathEdit.setPlaceholderText("Path to modules folder...")
-        self.modulesPathEdit.editingFinished.connect(lambda: self._onSettingChanged("modulesPath", self.modulesPathEdit.text()))
+        self.modulesPathEdit.editingFinished.connect(partial(self._onLineEditChanged, "modulesPath", self.modulesPathEdit))
         
         modulesPathLayout = QHBoxLayout()
         modulesPathLayout.addWidget(self.modulesPathEdit)
@@ -79,26 +81,30 @@ class WorkspaceManagerDialog(QDialog):
         self.settingsLayout.addRow("Modules Path:", modulesPathLayout)
 
         self.vscodeEdit = QLineEdit()
-        self.vscodeEdit.editingFinished.connect(lambda: self._onSettingChanged("vscode", self.vscodeEdit.text()))
+        self.vscodeEdit.editingFinished.connect(partial(self._onLineEditChanged, "vscode", self.vscodeEdit))
         self.settingsLayout.addRow("VSCode Command:", self.vscodeEdit)
 
         self.trackHistoryCheck = QCheckBox("Track History")
-        self.trackHistoryCheck.toggled.connect(lambda checked: self._onSettingChanged("trackHistory", checked))
+        self.trackHistoryCheck.toggled.connect(partial(self._onSettingChanged, "trackHistory"))
         self.settingsLayout.addRow("", self.trackHistoryCheck)
 
         self.aiLanguageEdit = QLineEdit()
-        self.aiLanguageEdit.editingFinished.connect(lambda: self._onSettingChanged("aiLanguage", self.aiLanguageEdit.text()))
+        self.aiLanguageEdit.editingFinished.connect(partial(self._onLineEditChanged, "aiLanguage", self.aiLanguageEdit))
         self.settingsLayout.addRow("AI Language:", self.aiLanguageEdit)
 
         self.ollamaModelEdit = QLineEdit()
-        self.ollamaModelEdit.editingFinished.connect(lambda: self._onSettingChanged("ollamaModel", self.ollamaModelEdit.text()))
+        self.ollamaModelEdit.editingFinished.connect(partial(self._onLineEditChanged, "ollamaModel", self.ollamaModelEdit))
         self.settingsLayout.addRow("Ollama Model:", self.ollamaModelEdit)
 
         self.autoSaveIntervalSpin = QSpinBox()
         self.autoSaveIntervalSpin.setRange(1, 60)
         self.autoSaveIntervalSpin.setSuffix(" min")
-        self.autoSaveIntervalSpin.valueChanged.connect(lambda val: self._onSettingChanged("autoSaveInterval", val))
+        self.autoSaveIntervalSpin.valueChanged.connect(partial(self._onSettingChanged, "autoSaveInterval"))
         self.settingsLayout.addRow("Auto-save Interval:", self.autoSaveIntervalSpin)
+
+        self.hostCombo = QComboBox()
+        self.hostCombo.currentIndexChanged.connect(partial(self._onComboChanged, "host", self.hostCombo))
+        self.settingsLayout.addRow("Host:", self.hostCombo)
 
         # 3. Main Layout
         self.splitter = QSplitter(Qt.Horizontal)
@@ -134,6 +140,18 @@ class WorkspaceManagerDialog(QDialog):
         self.aiLanguageEdit.setText(ws.settings.aiLanguage)
         self.ollamaModelEdit.setText(ws.settings.ollamaModel)
         self.autoSaveIntervalSpin.setValue(ws.settings.autoSaveInterval)
+
+        # Populate and set Default Host
+        self.hostCombo.clear()
+        entries = sorted(connectionManager.servers().items(), key=lambda x: x[0].lower())
+        for name, entry in entries:
+            label = "🖥️ {} ({})".format(name, entry["host"])
+            self.hostCombo.addItem(label, userData=name)
+        
+        idx = self.hostCombo.findData(ws.settings.host)
+        if idx >= 0:
+            self.hostCombo.setCurrentIndex(idx)
+
         self._blockSettingsSignals = False
 
     def _onSettingChanged(self, key, value):
@@ -151,8 +169,15 @@ class WorkspaceManagerDialog(QDialog):
             # If this is the active workspace, sync global settings immediately
             if self.currentWorkspaceName == ws.name:
                 settings.fromDict(ws.settings.toDict())
+                self.parent().mainWindow._refreshHostCombo()
                 self.parent()._refreshModuleBrowserSource()
                 self.parent()._updateAutoSaveInterval()
+
+    def _onLineEditChanged(self, key, edit):
+        self._onSettingChanged(key, edit.text())
+
+    def _onComboChanged(self, key, combo, _idx):
+        self._onSettingChanged(key, combo.currentData())
 
     def _onBrowseModulesPath(self):
         ws = self.selectedWorkspace()
@@ -254,6 +279,9 @@ class WorkspaceWidget(QWidget):
     def toWorkspace(self) -> Workspace:
         """Capture current UI state into a Workspace object."""
         ws = Workspace.load(self._currentWorkspaceName) or Workspace(self._currentWorkspaceName)
+        
+        # Sync current global settings into workspace settings before saving
+        ws.settings.fromDict(settings.toDict())
         
         tree = self.mainWindow.treeWidget
         rootModules = tree.moduleModel.rootModule().children()
