@@ -1,12 +1,12 @@
-# 🏗️ RigBuilder
+# Rig Builder
 
 [![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
 ![Commits since latest release](https://img.shields.io/github/commits-since/azagoruyko/rigBuilder/latest)
 [![Docs](https://img.shields.io/badge/docs-wiki-blue?logo=github)](https://github.com/azagoruyko/rigBuilder/wiki/Documentation)
 
-**RigBuilder** is a standalone application for managing scripts and complex hierarchies of scripts with the connections and expressions which can be executed in any host application (Maya, Blender, Unreal Engine, etc.).
+**Rig Builder** is a powerful, standalone environment for managing and executing complex Python script hierarchies across any host application (Maya, Blender, Unreal Engine, etc.).
 
-It provides a visual, module-based workflow for building character rigs and pipeline tools by assembling reusable building blocks.
+While initially developed for rigging, it has evolved into a versatile tool for building pipeline utilities, automation scripts, and custom DCC tools through a visual, module-based workflow. By assembling reusable building blocks, you can create anything from complex rigs to production-ready scene management tools.
 
 <img width="1297" height="991" alt="Screenshot 2026-04-06 165901" src="https://github.com/user-attachments/assets/04cb6619-4d76-4a9f-90d8-de4905e53c79" />
 
@@ -14,29 +14,27 @@ It provides a visual, module-based workflow for building character rigs and pipe
 
 ## ⚙️ Core Concepts
 
-At its heart, RigBuilder operates on a **graph-based hierarchy of modules**:
+At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 
-- **📦 Modules**: The primary building blocks. Each module represents a specific step (e.g., Spine, Limb, Rig Utilities).
+- **📦 Modules**: The primary building blocks. Modules can represent anything from a rigging step (e.g., Spine, Limb) to a general utility (e.g., Batch Exporter, Scene Cleanup).
 - **🎛️ Attributes**: Parameters that define module behavior. Attributes can hold any JSON-compatible data and dynamic **Python expressions**.
 - **🔗 Connections**: Attributes can be "wired" together using absolute or relative paths (e.g., `/parent/input`).
 - **🧠 Expressions**: They alter attribute values at time of value resolution.
-- **🖥️ Host Connectivity**: RigBuilder connects to host applications and executes modules inside bringing the result back.
-- **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its API.
-- **💼 Workspaces**: Isolated project environments that encapsulate your module tree, Git-backed history, and tool settings.
-
+- **🖥️ Host Connectivity**: Rig Builder connects to host applications and executes modules inside, bringing the result back in real-time.
+- **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its native API.
+- **💼 Workspaces**: Isolated environments that encapsulate your script hierarchies, Git-backed history, and dedicated tool settings.
 
 ---
 
 ## ✨ Key Features
 
-- **💼 Workspace Management** — Organize your work into isolated projects. Seamlessly switch between different rigs or tools while maintaining dedicated module hierarchies and environment settings.
-- **📦 Unified module storage** — Automatically manages and discovers modules in a single library, simplifying versioning and sharing. No more manual public/private folder management.
-
-- **🔄 Auto-Sync Architecture** — Automatically synchronizes the modules with their files on disk.
-- **📜 Module history** — Built-in, git-backed history browser for all module changes. Track every save, view diffs, and restore versions instantly.
-- **🖥️ DCC Agnostic** — RigBuilder communicates with **Maya**, **Blender**, **Unreal Engine**, or any other Python-capable host.
-- **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted rig building, documentation generation, and script refactoring without leaving the app.
-- **📝 Native Markdown docs** — All module documentation is now natively written and rendered in Markdown, providing a modern and clean look for tool descriptions.
+- **⚡ Modern Scripting Experience** — A high-performance Python editor tailored for technical artists.
+- **💼 Workspace Management** — Organize your work into isolated projects. Seamlessly switch between different toolsets, rigs, or automated pipelines while maintaining focused module hierarchies and persistent environment settings.
+- **📜 Git-Backed Module History** — Built-in version control for every module change. Track every save, view granular diffs, and restore previous versions in seconds.
+- **🔄 Native Auto-Sync** — Real-time synchronization between the application and your files on disk, ensuring your UI always reflects the latest changes.
+- **🖥️ DCC Agnostic** — Seamlessly connects to **Maya**, **Blender**, **Unreal Engine**, or any Python-capable host via a high-performance ZMQ bridge.
+- **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted script development and documentation generation.
+- **📝 Responsive Markdown Docs** — Author and view module documentation in native Markdown for a modern, clean documentation experience.
 
 ---
 
@@ -68,12 +66,11 @@ To enable Local AI Assistance, install Ollama and sign in to get access to cloud
 
    > Models ending in `-cloud` (like `gpt-oss:20b-cloud`) can be used instantly without pulling them to your local machine, as long as you are signed in.
    >
-   > [!TIP]
-   > The default AI model can be customized via the `ollamaModel` key in your `~/rigBuilder/settings.json` file.
+   > The default AI model can be customized via the `ollamaModel` key in the `settings.json` file located inside your active workspace folder (e.g., `~/rigBuilder/workspaces/<name>/settings.json`).
 
 ### 3. Launch
 
-Run RigBuilder using the launch script:
+Run Rig Builder using the launch script:
 
 ```bash
 run.bat
@@ -81,7 +78,7 @@ run.bat
 
 ### 3. Host Setup (Connectivity)
 
-To execute modules inside a host, you must install **`zmq`** (or `pyzmq`) in that host's Python environment. Replace `<path>` with your specific installation directory.
+To execute scripts inside a host, you must install **`zmq`** (or `pyzmq`) in that host's Python environment. Replace `<path>` with your specific installation directory.
 
 #### 🎨 Maya
 
