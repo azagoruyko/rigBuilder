@@ -2189,7 +2189,7 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget = CodeEditorWidget()
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
-        self.codeEditorWidget.editorWidget.executeSelectedRequested.connect(self._onExecuteSelectedCode)
+        self.codeEditorWidget.editorWidget.executeRequested.connect(self._onExecuteCode)
 
         self.apiBrowserWidget = ApiBrowserWidget()
 
@@ -2334,14 +2334,22 @@ class RigBuilderWindow(QFrame):
             self.treeWidget.replaceModule(idx, newModule)
             self.attributesTabWidget.updateTabs(newModule)
 
-    def _onExecuteSelectedCode(self, code: str):
-        """Execute selected lines interactively with accumulated context."""
+    def _onExecuteCode(self, code: str):
+        """Execute lines interactively with accumulated context."""
         module = self.treeWidget.currentModule()
         if not module:
             return
 
         self.showLog()
-        logger.info(">> {}".format("\n>> ".join(code.splitlines())))
+        
+        maxLines = 5
+        lines = code.splitlines()
+        log = [f">> {line}" for line in lines[:maxLines]]
+        if len(lines) > maxLines:
+            log.append(">> ...")
+            log.append(f">> {lines[-1]}") # last line is always shown
+            
+        logger.info("\n".join(log))
 
         newModule = hostExecutor.executeModuleCode(module, code)
         if newModule is None:
