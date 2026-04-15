@@ -130,10 +130,21 @@ class Workspace:
 
     @classmethod
     def getLoadInfo(cls, name: str) -> tuple[bool, bool]:
-        """Check if workspace files exist. Returns (mainExists, autosaveExists)."""
+        """Check if workspace files exist. Returns (mainExists, autosaveExists).
+        Autosave is only reported as existing if it is strictly newer than the main file.
+        """
         folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, replaceSpecialChars(name))
-        main = os.path.exists(os.path.join(folderPath, "workspace.rbws"))
-        auto = os.path.exists(os.path.join(folderPath, "workspace.autosave.rbws"))
+        mainPath = os.path.join(folderPath, "workspace.rbws")
+        autoPath = os.path.join(folderPath, "workspace.autosave.rbws")
+        
+        main = os.path.exists(mainPath)
+        auto = os.path.exists(autoPath)
+        
+        if auto and main:
+            # Only report autosave if it's newer than the main file
+            if os.path.getmtime(autoPath) <= os.path.getmtime(mainPath):
+                auto = False
+
         return main, auto
 
     def activate(self) -> bool:
