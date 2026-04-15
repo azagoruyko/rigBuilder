@@ -75,7 +75,7 @@ Run Rig Builder using the launch script:
 run.bat
 ```
 
-### 3. Host Setup (Connectivity)
+### 4. Host Setup (Connectivity)
 
 To execute scripts inside a host, you must install **`zmq`** (or `pyzmq`) in that host's Python environment. Replace `<path>` with your specific installation directory.
 
@@ -96,6 +96,10 @@ To execute scripts inside a host, you must install **`zmq`** (or `pyzmq`) in tha
 2. **Python**: `C:\Program Files\Epic Games\UE_<version>\Engine\Binaries\ThirdParty\Python3\Win64\python.exe`
 3. **Install**: `.\python.exe -m pip install zmq`
 4. 💡 **Tip**: Install `unreal-stub` for autocompletion in your IDE.
+
+### 5. Usage
+
+To get started with building your own modules, take a look at the [example.rb](modules/example.rb) module provided in the `modules` directory. This serves as a primary reference for module structure and usage patterns.
 
 ---
 
