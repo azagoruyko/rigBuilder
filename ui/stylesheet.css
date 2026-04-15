@@ -21,6 +21,10 @@ QWidget {
 	font-family: "Consolas";
 }
 
+QLabel {
+	background-color: transparent;
+}
+
 
 /* =============================================================================
    Choice controls (checkbox, radio)
@@ -71,6 +75,8 @@ QAbstractSpinBox {
 	background-color: #252b33;
 	color: #e8eaed;
 	border: 1px solid #343c49;
+	border-top: 1px solid #1e242d;    /* inset shadow — darker top */
+	border-bottom: 1px solid #3f4b5c; /* subtle lift — lighter bottom */
 	border-radius: 4px;
 	padding: 4px 6px;
 	selection-background-color: #3e7bd6;
@@ -97,6 +103,8 @@ QPlainTextEdit:focus,
 QComboBox:focus,
 QAbstractSpinBox:focus {
 	border: 1px solid #6ea7ff;
+	border-top-color: #3a5a9a;    /* keep inset feel on focus */
+	border-bottom-color: #6ea7ff;
 }
 
 QLineEdit:disabled,
@@ -270,7 +278,11 @@ QGroupBox::title {
    Data views (tables, trees, lists)
    ========================================================================== */
 
-QHeaderView,
+QHeaderView {
+	background-color: #222831;
+	border: none;
+}
+
 QTableWidget,
 QTableView,
 QTreeWidget,
@@ -278,7 +290,10 @@ QTreeView,
 QListWidget,
 QListView {
 	background-color: #222831;
-	border: none;
+	border: 1px solid #343c49;
+	border-top: 1px solid #1a1e24;    /* inset shadow — darker top */
+	border-bottom: 1px solid #3a4455; /* subtle lift — lighter bottom */
+	border-radius: 4px;
 	alternate-background-color: #252c36;
 }
 
