@@ -1318,6 +1318,7 @@ class ModuleTreeWidget(QTreeView):
     def pasteModules(self):
         """Paste modules from clipboard."""
         if not self.clipboard:
+            QMessageBox.warning(self, "Rig Builder", "Clipboard is empty.")
             return
 
         parentIdx = self.currentIndex()
@@ -2457,28 +2458,24 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModules, "Ctrl+S")
         menu.addAction("Save as", partial(self.treeWidget.saveModules, forceDialog=True, generateNewUids=True))
-        menu.addSeparator()
-
         menu.addAction("Locate file", self.locateModuleFile)
-        menu.addAction("Open User folder", self.openUserFolder)
         menu.addAction("View edit history", self.showModuleInHistory, "Ctrl+H")
+        menu.addAction("Diff vs File", self.diffModule, "Alt+D")        
         menu.addSeparator()
         menu.addAction("Duplicate", self.treeWidget.duplicateModule, "Ctrl+D")
-        menu.addSeparator()
         menu.addAction("Copy", self.treeWidget.copyModules, "Ctrl+C")
         menu.addAction("Cut", self.treeWidget.cutModules, "Ctrl+X")
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
+
         menu.addSeparator()
-
-        menu.addAction("Diff vs File", self.diffModule, "Alt+D")
-
         menu.addAction("Embed", self.treeWidget.embedModule)
-        
-        menu.addSeparator()
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
-        menu.addAction("Remove all", self.removeAllModules)
 
+        menu.addSeparator()
+        menu.addAction("Remove all", self.removeAllModules)
+        menu.addSeparator()
+        menu.addAction("Open User folder", self.openUserFolder)
         menu.addAction("Documentation", self.showDocumenation, "F1")
 
         return menu
