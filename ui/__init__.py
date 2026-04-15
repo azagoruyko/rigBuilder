@@ -2476,7 +2476,6 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Remove all", self.removeAllModules)
         menu.addSeparator()
         menu.addAction("Open User folder", self.openUserFolder)
-        menu.addAction("Documentation", self.showDocumenation, "F1")
 
         return menu
 
@@ -2635,10 +2634,6 @@ class RigBuilderWindow(QFrame):
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.treeWidget.clear()
-
-    def showDocumenation(self):
-        subprocess.Popen(["explorer", "https://github.com/azagoruyko/rigBuilder/wiki/Documentation"])
-
 
     def _onModuleAdditionRequested(self, module: Module):
         """Handle module addition from external browsers."""
