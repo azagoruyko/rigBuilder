@@ -217,13 +217,13 @@ class ButtonTemplateWidget(TemplateWidget):
         return {"command": 'chset("/someAttr", 1)',
                 "label": "Press me",
                 "color": "",
-                "default": "label"}
+                "default": "command"}
 
     def getJsonData(self):
         return {"command": self.buttonCommand,
                 "label": self.buttonWidget.text(),
                 "color": self.buttonColor,
-                "default": "label"}
+                "default": "command"}
 
     def setJsonData(self, data):
         self.buttonCommand = data.get("command", "")
