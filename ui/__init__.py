@@ -518,6 +518,7 @@ class ModuleTracker(QObject):
             # Start watching the file for changes if not already watched
             if path not in self._watcher.files():
                 self._watcher.addPath(path)
+                
         except Exception as e:
             mainWindow.logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
             self._cache[uid] = None
@@ -533,7 +534,6 @@ class ModuleTracker(QObject):
         """Force-reload all cached reference modules."""
         for uid in list(self._cache.keys()):
             self.loadModule(uid)
-
 
     def clearCache(self):
         """Clear all loaded modules and stop watching files."""
@@ -625,7 +625,7 @@ class ModuleModel(QAbstractItemModel):
                 icon = ""
                 if module.referenceFile():
                     icon = "📦 "
-                elif self.isInsideReferenceModule(module) is not None:
+                elif self.isInsideReferenceModule(module):
                     icon = "🔒 "
                 return icon + module.name() + " "
 
@@ -651,7 +651,7 @@ class ModuleModel(QAbstractItemModel):
                 color = QColor(200, 200, 200)
                 if module.muted() or isParentMuted: 
                     color = QColor(100, 100, 100)
-                elif self.isInsideReferenceModule(module) is not None:
+                elif self.isInsideReferenceModule(module):
                     color = QColor(230, 230, 100) # Yellow for reference modules
                 return color
 
@@ -883,20 +883,14 @@ class ModuleModel(QAbstractItemModel):
             self._draggedModules = []
             return True
         
-    def isInsideReferenceModule(self, module: Module) -> Optional[Module]:
+    def isInsideReferenceModule(self, module: Module) -> bool:
         """Recursive helper to find the reference counterpart (source definition) of a module."""
         uid = module.uid()
         if uid:
-            return self.moduleTracker.getModule(uid)
+            return self.moduleTracker.getModule(uid) is not None
 
-        # If not a root UID, try searching in parent's reference counterpart
         parent = module.parent()
-        if parent:
-            parentRef = self.isInsideReferenceModule(parent)
-            if parentRef:
-                return parentRef.findChild(module.name())
-        
-        return None
+        return self.isInsideReferenceModule(parent) if parent else False
 
     def _onModuleTrackerChanged(self, uid: str):
         """Handle signal from ModuleTracker when a tracked file changes."""
