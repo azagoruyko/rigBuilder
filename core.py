@@ -1041,8 +1041,6 @@ APIRegistry.register("curve_evaluateFromX", widgets_core.curve_evaluateFromX)
 APIRegistry.register("comboBox_items", widgets_core.comboBox_items)
 APIRegistry.register("comboBox_setItems", widgets_core.comboBox_setItems)
 
-APIRegistry.register("runButtonCommand", widgets_core.runButtonCommand)
-
 # UI functions
 
 APIRegistry.register("beginProgress", beginProgress)
