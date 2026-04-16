@@ -205,7 +205,6 @@ class ModuleBrowser(QWidget):
         layout.addWidget(self.pathLabel)
 
         self._setupAutoReloadWatcher()
-        self._updatePathLabel()
         self.refreshModules()
 
     def _updatePathLabel(self):
