@@ -206,26 +206,69 @@ class TestAttribute:
         attr.set(None)
         assert attr.get() is None
 
+    def testAttributeSyncFrom(self, simpleAttribute):
+        """Test attribute syncFrom with matching and mismatching templates."""
+        # 1. Template mismatch
+        other = Attribute()
+        other.setTemplate("int")
+        assert simpleAttribute.syncFrom(other) is False
+        
+        # 2. Template match - Verify data sync and preservation
+        source = simpleAttribute.copy()
+        source.setName("sourceAttr")
+        source.setCategory("sourceCategory")
+        source.setConnect("/source/connection")
+        source.setExpression("source = 1")
+        source.set(500.0) # This sets the default value in source
+        
+        target = simpleAttribute.copy()
+        target.setName("targetAttr")
+        target.setCategory("targetCategory")
+        target.setConnect("/local/connection")
+        target.setExpression("local = 1")
+        target.set(10.0) # This sets the default value in target
+        
+        # Add to module to provide context for expressions during get()
+        m = Module()
+        m.addAttribute(target)
+        
+        success = target.syncFrom(source)
+        assert success is True
+        
+        # Should sync
+        assert target.name() == "sourceAttr"
+        assert target.category() == "sourceCategory"
+        
+        # Should PRESERVE local rigging data
+        assert target.connect() == "/local/connection"
+        assert target.expression() == "local = 1"
+        assert target.get() == 10.0 # Default value preserved!
+
     def testAttributeIsSyncRequired(self, simpleAttribute):
         """Test attribute isSyncRequired detection."""
         ref = simpleAttribute.copy()
         assert simpleAttribute.isSyncRequired(ref) is False
 
-        # Structural changes
+        # Name change SHOULD be detected now
         simpleAttribute.setName("dirty_name")
         assert simpleAttribute.isSyncRequired(ref) is True
         simpleAttribute.setName(ref.name())
 
+        # Template change detected
         simpleAttribute.setTemplate("int")
         assert simpleAttribute.isSyncRequired(ref) is True
         simpleAttribute.setTemplate(ref.template())
 
+        # Connect/Expression changes should now be IGNORED
         simpleAttribute.setConnect("/new/connection")
-        assert simpleAttribute.isSyncRequired(ref) is True
+        assert simpleAttribute.isSyncRequired(ref) is False
         simpleAttribute.setConnect(ref.connect())
 
-        # Primary value change should be IGNORED by डिजाइन (per core implementation)
-        # This typically represents the 'current value' which is meant to be local state.
+        simpleAttribute.setExpression("val = 1")
+        assert simpleAttribute.isSyncRequired(ref) is False
+        simpleAttribute.setExpression(ref.expression())
+
+        # Primary value change should be IGNORED
         simpleAttribute.set(999.9)
         assert simpleAttribute.isSyncRequired(ref) is False
         simpleAttribute.set(ref.get())
@@ -234,13 +277,9 @@ class TestAttribute:
         simpleAttribute.set(True, "enabled")
         assert simpleAttribute.isSyncRequired(ref) is True
         
-        # Verify default key protection
-        defaultKey = simpleAttribute.data().get("default")
-        if defaultKey:
-            simpleAttribute.set(42.0, defaultKey)
-            # Should still be dirty because of 'meta', not because of defaultKey
-            simpleAttribute._data.pop("enabled")
-            assert simpleAttribute.isSyncRequired(ref) is False
+        # Verify default key protection (sync required if other data changes, even if value is same)
+        simpleAttribute._data.pop("enabled")
+        assert simpleAttribute.isSyncRequired(ref) is False
 
 class TestAttributeConnections:
     """Tests for attribute connections."""
@@ -456,26 +495,133 @@ class TestModule:
         ref = simpleModule.copy()
         assert simpleModule.isSyncRequired(ref) is False
 
-        # runCode change
+        # Name change SHOULD be IGNORED (per design, allow local renaming)
+        simpleModule.setName("local_name")
+        assert simpleModule.isSyncRequired(ref) is False
+        simpleModule.setName(ref.name())
+
+        # runCode change detected
         simpleModule.setRunCode("print('dirty')")
         assert simpleModule.isSyncRequired(ref) is True
         simpleModule.setRunCode(ref.runCode())
-        
-        # Meta change in attribute (detected because it's not the primary value)
-        simpleModule.attributes()[0].set(True, "enabled")
+
+        # uid change detected
+        simpleModule._uid = "dirty_uid"
         assert simpleModule.isSyncRequired(ref) is True
-        simpleModule.attributes()[0]._data.pop("enabled")
+        simpleModule._uid = ref.uid()
+
+        # Own muted state SHOULD be IGNORED (allow local muting)
+        simpleModule.mute()
+        assert simpleModule.isSyncRequired(ref) is False
+        simpleModule.unmute()
+
+        # Child muted state SHOULD be detected (divergence in structure/state of descendants)
+        child = createModule("child")
+        simpleModule.addChild(child)
+        refChild = child.copy()
+        # Mirror child in ref
+        ref.addChild(refChild)
         assert simpleModule.isSyncRequired(ref) is False
 
-        # Children structure change (add)
-        simpleModule.addChild(createModule("dirty_child"))
+        child.mute()
         assert simpleModule.isSyncRequired(ref) is True
-        simpleModule.removeChildren()
-        
-        # Restore children for further testing
-        for ch in ref.children():
-            simpleModule.addChild(ch.copy())
+        child.unmute()
         assert simpleModule.isSyncRequired(ref) is False
+
+    def testModuleSyncFrom(self, simpleModule):
+        """Test surgical module synchronization."""
+        # Setup source
+        source = createModule("source")
+        source._uid = "source_uid"
+        source.setRunCode("source_code")
+        source.setDoc("source_doc")
+        
+        sourceAttr = createAttribute("shared_attr")
+        sourceAttr.setCategory("input")
+        source.addAttribute(sourceAttr)
+        
+        newAttr = createAttribute("new_attr")
+        source.addAttribute(newAttr)
+        
+        sourceChild = createModule("source_child")
+        source.addChild(sourceChild)
+        
+        # Setup target
+        target = createModule("target")
+        target._uid = "target_uid"
+        target.setRunCode("target_code")
+        target.setDoc("target_doc")
+        
+        targetAttr = createAttribute("shared_attr")
+        targetAttr.setCategory("input")
+        targetAttr.setConnect("/some/connect") # Local data
+        target.addAttribute(targetAttr)
+        
+        oldAttr = createAttribute("old_attr")
+        target.addAttribute(oldAttr)
+        
+        targetChild = createModule("target_child")
+        target.addChild(targetChild)
+        
+        # Sync
+        target.syncFrom(source)
+        
+        # Verify core properties synced
+        assert target.uid() == "source_uid"
+        assert target.runCode() == "source_code"
+        assert target.doc() == "source_doc"
+        
+        # Verify attributes synced surgically
+        assert target.findAttribute("shared_attr") is targetAttr # In-place update!
+        assert targetAttr.connect() == "/some/connect" # Local data preserved
+        assert target.findAttribute("new_attr") is not None
+        assert target.findAttribute("old_attr") is None
+        
+        # Verify children synced surgically
+        assert len(target.children()) == 1
+        assert target.children()[0].name() == "source_child"
+
+    def testModuleSync(self, simpleModule):
+        """Test high-level Module.sync() preserving local muted state."""
+        # Setup source module in a file (fake by mocking or just creating a temp file)
+        # For this logic test, we can just ensure sync() preserves muted()
+        
+        # Mocking syncFrom or just testing the final state
+        # sync() internal: 
+        # 1. Load ref
+        # 2. syncFrom(ref)
+        # We want to verify that even if ref is unmuted, if target was muted, it stays muted.
+        
+        # 3. Perform sync
+        with tempfile.NamedTemporaryFile(suffix=".rb", delete=False) as f:
+            tempPath = f.name
+            
+        try:
+            source = simpleModule.copy()
+            source.unmute()
+            source.saveToFile(tempPath)
+            
+            # Register in UidManager mock storage
+            uid = source.uid()
+            UidManager._uids[uid] = tempPath
+            
+            target = simpleModule.copy()
+            target._uid = uid # Match source UID
+            target.mute()
+            
+            # Change something to trigger real sync work if needed
+            target.setRunCode("local_change")
+            
+            target.sync()
+            
+            assert target.muted() is True # Preserved!
+            assert target.runCode() == source.runCode() # Synced!
+            
+        finally:
+            if os.path.exists(tempPath):
+                os.remove(tempPath)
+            if uid in UidManager._uids:
+                del UidManager._uids[uid]
 
 class TestModuleChildren:
     """Tests for module children management."""

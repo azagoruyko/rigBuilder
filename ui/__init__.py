@@ -1281,6 +1281,30 @@ class ModuleTreeWidget(QTreeView):
         if module:
             mainWindow.attributesTabWidget.updateTabs(module)
 
+    def syncSelectedModules(self):
+        """Sync selected modules from disk with confirmation."""
+        selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices:
+            return
+
+        msg = "Sync selected modules from disk?\n\nYou might lose unsaved changes in the tree.\n\nContinue?"
+        if QMessageBox.question(self.window(), "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+
+        state = self._getTreeState()
+        self.moduleModel.beginResetModel()
+        for idx in selectedIndices:
+            module = self.moduleModel.getModule(idx)
+            if module:
+                module.sync()
+        self.moduleModel.endResetModel()
+        self._setTreeState(state)
+
+        # Refresh attributes panel if needed
+        module = self.currentModule()
+        if module:
+            mainWindow.attributesTabWidget.updateTabs(module)
+
     def muteModule(self):
         selectedIndices = self.selectionModel().selectedRows()
         if not selectedIndices:
@@ -2507,6 +2531,7 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
 
         menu.addSeparator()
+        menu.addAction("Sync from file", self.treeWidget.syncSelectedModules)
         menu.addAction("Embed", self.treeWidget.embedModule)
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")

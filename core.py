@@ -394,6 +394,21 @@ class Attribute(object):
         legacy_convertLineEditTemplate(attr)
         return attr
 
+    def syncFrom(self, other: 'Attribute') -> bool:
+        """Sync attribute data from another attribute. Returns False if template doesn't match."""
+        if self._template != other._template:
+            return False
+        
+        defaultValue = self._defaultValue() # preserve default value
+
+        self._name = other._name
+        self._category = other._category
+        self._data = copyJson(other._data)
+
+        self._setDefaultValue(defaultValue)
+
+        return True        
+
     def isSyncRequired(self, refAttr: 'Attribute') -> bool:
         """Check if attribute sync is required compared to a reference attribute."""
         if self._name != refAttr._name:
@@ -401,10 +416,6 @@ class Attribute(object):
         if self._template != refAttr._template:
             return True
         if self._category != refAttr._category:
-            return True
-        if self._connect != refAttr._connect:
-            return True
-        if self._expression != refAttr._expression:
             return True
             
         # Compare data excluding protected keys during update: default value entry.
@@ -459,8 +470,6 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
         return json.dumps(self._attr.data())
 
 class Module(object):
-
-
     glob = DictExt() # global memory
 
     def __init__(self):
@@ -496,7 +505,7 @@ class Module(object):
 
         module._muted = self._muted
         return module
-    
+
     def name(self) -> str:
         """Get module name."""
         return self._name
@@ -737,32 +746,43 @@ class Module(object):
         refPath = self.referenceFile()
         if refPath:
             refModule = Module.loadFromFile(refPath)
-
-            # Update attributes
-            origAttrs = {a._name: a for a in self._attributes}
-            self._attributes.clear()
-
-            for origAttr in refModule._attributes:
-                foundAttr = origAttrs.get(origAttr._name)
-                if foundAttr:
-                    if origAttr._name and foundAttr._template == origAttr._template: # shallow update
-                        origAttr._setDefaultValue(foundAttr._defaultValue()) 
-                        origAttr._connect = foundAttr._connect
-                        origAttr._expression = foundAttr._expression
-
-                self.addAttribute(origAttr)
-
-            # Update children
-            self._children.clear()
-
-            for ch in refModule._children:
-                self.addChild(ch)
-
-            self._runCode = refModule._runCode
-            self._doc = refModule._doc
+            muted = self._muted
+            self.syncFrom(refModule)
+            self._muted = muted
 
         for ch in self._children:
             ch.sync()
+
+    def syncFrom(self, other: 'Module') -> bool:
+        """Sync module structure and data from another module. Returns True on success."""
+        self._uid = other._uid
+        self._runCode = other._runCode
+        self._doc = other._doc
+        self._muted = other._muted
+
+        # Sync attributes in-place surgically
+        oldAttrs = {a._name: a for a in self._attributes}
+        self.removeAttributes()
+        
+        for refAttr in other._attributes:
+            localAttr = oldAttrs.get(refAttr._name)
+            if localAttr and localAttr.syncFrom(refAttr):
+                self.addAttribute(localAttr)
+            else:
+                self.addAttribute(refAttr.copy())
+
+        # Sync children in-place surgically and recursively
+        oldChildren = {ch._name: ch for ch in self._children}
+        self.removeChildren()
+
+        for refCh in other._children:
+            localCh = oldChildren.get(refCh._name)
+            if localCh and localCh.syncFrom(refCh):
+                self.addChild(localCh)
+            else:
+                self.addChild(refCh.copy())
+
+        return True            
 
     def isSyncRequired(self, refModule: Optional['Module'] = None) -> bool:
         """Check if module sync is required compared to its reference file."""
@@ -776,8 +796,12 @@ class Module(object):
                 return False
 
         # Compare key vars
+        if self._uid != refModule._uid:
+            return True
+
         if self._runCode != refModule._runCode:
             return True
+
         if self._doc != refModule._doc:
             return True
 
@@ -794,7 +818,7 @@ class Module(object):
             return True
 
         for c, rc in zip(self._children, refModule._children):
-            if c.isSyncRequired(rc):
+            if c.isSyncRequired(rc) or c._muted != rc._muted: # compare muted state for children only
                 return True
 
         return False
