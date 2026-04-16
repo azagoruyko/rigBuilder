@@ -51,8 +51,14 @@ def calculateModulesDiff(modules: List[Module]) -> str:
 
     return "\n".join(diffTexts)
 
+class DiffUserData(QTextBlockUserData):
+    """Custom data for storing intra-line diff spans for a block."""
+    def __init__(self, spans=None):
+        super().__init__()
+        self.spans = spans or [] # List of (start, length, format_name)
+
 class DiffHighlighter(QSyntaxHighlighter):
-    """Git-style coloring for unified diff: removed red, added green, hunk header blue."""
+    """Git-style coloring with intra-line highlighting for unified diff."""
 
     def __init__(self, parent: QTextDocument):
         super().__init__(parent)
@@ -70,14 +76,91 @@ class DiffHighlighter(QSyntaxHighlighter):
         self.hunkFormat.setForeground(QColor(130, 130, 220))
         self.hunkFormat.setFontWeight(QFont.Bold)
 
+        self.removedWordFormat = QTextCharFormat()
+        self.removedWordFormat.setBackground(QColor(120, 50, 50))
+        self.removedWordFormat.setForeground(QColor(255, 200, 200))
+
+        self.addedWordFormat = QTextCharFormat()
+        self.addedWordFormat.setBackground(QColor(50, 120, 50))
+        self.addedWordFormat.setForeground(QColor(200, 255, 200))
+
+        # Re-calculate diffs immediately
+        self.recalculateIntraLineDiffs()
+
+    def recalculateIntraLineDiffs(self):
+        """Pre-calculate differences by matching '-' and '+' lines 1-to-1 in order."""
+        doc = self.document()
+        curr = doc.begin()
+        
+        while curr.isValid():
+            text = curr.text()
+            # Find the start of a '-' block
+            if text.startswith("-") and not text.startswith("---"):
+                minusStart = curr
+                minusCount = 0
+                while curr.isValid() and curr.text().startswith("-") and not curr.text().startswith("---"):
+                    minusCount += 1
+                    curr = curr.next()
+                
+                # Now curr is at the start of the next block. Check if it's a '+' block.
+                if curr.isValid() and curr.text().startswith("+"):
+                    plusStart = curr
+                    plusCount = 0
+                    while curr.isValid() and curr.text().startswith("+") and not curr.text().startswith("+++"):
+                        plusCount += 1
+                        curr = curr.next()
+                    
+                    # Match them 1-to-1 up to the smaller block size
+                    count = min(minusCount, plusCount)
+                    m = minusStart
+                    p = plusStart
+                    for _ in range(count):
+                        self._calculateAndStoreDiff(m, p, m.text()[1:], p.text()[1:])
+                        m = m.next()
+                        p = p.next()
+                continue
+            curr = curr.next()
+
+    def _calculateAndStoreDiff(self, m_block, p_block, oldText, newText):
+        """Calculate character-level diffs and store in block metadata."""
+        matcher = difflib.SequenceMatcher(None, oldText, newText)
+
+        m_spans = []
+        p_spans = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag in ('delete', 'replace'):
+                m_spans.append((i1 + 1, i2 - i1)) 
+            if tag in ('insert', 'replace'):
+                p_spans.append((j1 + 1, j2 - j1))
+        
+        if m_spans:
+            data = m_block.userData() or DiffUserData()
+            data.spans.extend(m_spans)
+            m_block.setUserData(data)
+            
+        if p_spans:
+            data = p_block.userData() or DiffUserData()
+            data.spans.extend(p_spans)
+            p_block.setUserData(data)
+
     def highlightBlock(self, text: str):
         if not text:
             return
         
         if text.startswith("-") and not text.startswith("---"):
             self.setFormat(0, len(text), self.removedFormat)
+            data = self.currentBlock().userData()
+            if data and isinstance(data, DiffUserData):
+                for start, length in data.spans:
+                    self.setFormat(start, length, self.removedWordFormat)
+
         elif text.startswith("+") and not text.startswith("+++"):
             self.setFormat(0, len(text), self.addedFormat)
+            data = self.currentBlock().userData()
+            if data and isinstance(data, DiffUserData):
+                for start, length in data.spans:
+                    self.setFormat(start, length, self.addedWordFormat)
+
         elif text.startswith("@@"):
             self.setFormat(0, len(text), self.hunkFormat)
         else:
@@ -132,7 +215,7 @@ class DiffBrowserDialog(QDialog):
         self.textEdit = QPlainTextEdit()
         self.textEdit.setReadOnly(True)
         self.textEdit.setPlainText(diffText)
-        DiffHighlighter(self.textEdit.document())
+        self.highlighter = DiffHighlighter(self.textEdit.document())
         self.splitter.addWidget(self.textEdit)
 
         # AI Summary Section
