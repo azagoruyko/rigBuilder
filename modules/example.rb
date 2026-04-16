@@ -24,7 +24,7 @@ You can use links here
 - [Open example module](module:example)
 ]]></doc>
 <attributes>
-<attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# you can set json data directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})\n\n# or with ch/chset\nchset(\"/out_lst\", [\"a\", \"b\", \"c\"])\n\n# or even with @ syntax\n@set_slider(10)", "label": "Press me", "color": "#176f1a", "default": "label"}]]></attr>
+<attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# you can set json data directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})\n\n# or with ch/chset\nchset(\"/out_lst\", [\"a\", \"b\", \"c\"])\n\n# or even with @ syntax\n@set_slider(10)", "label": "Press me", "color": "#176f1a", "default": "command"}]]></attr>
 <attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<center><h3>You can use html markup here</h3></center>", "default": "text"}]]></attr>
 <attr name="lineAttr" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "", "placeholder": "You can set placeholder from the menu...", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
 <attr name="out_lst" template="listBox" category="General" connect=""><![CDATA[{"items": [], "default": "items"}]]></attr>
@@ -38,8 +38,8 @@ You can use links here
 <run><![CDATA[print("I'm a muted child, but can be run directly with Module.run")
 print("lineAttr = {}".format(ch("../lineAttr")))]]></run>
 <attributes>
-<attr name="input" template="lineEditAndButton" category="General" connect="/out_other"><![CDATA[{"value": "Hello world", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
-<attr name="input_edited" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "Hello world_edited!", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value", "_expression": "value = ch(\"/input\") + \"_edited!\""}]]></attr>
+<attr name="input" template="lineEditAndButton" category="General" connect="/out_other"><![CDATA[{"value": "", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
+<attr name="input_edited" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "_edited!", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value", "_expression": "value = ch(\"/input\") + \"_edited!\""}]]></attr>
 <attr name="slider" template="lineEditAndButton" category="General" connect="/slider"><![CDATA[{"value": 10, "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 1, "default": "value", "_expression": "chset(\"/out_slider\", value+1)"}]]></attr>
 <attr name="out_slider" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": 11, "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
 <attr name="table" template="table" category="General" connect=""><![CDATA[{"items": [[10, 11]], "header": ["name", "value"], "default": "items", "_expression": "a = ch(\"/slider\")\nb = ch(\"/out_slider\")\nvalue = [[a,b]]"}]]></attr>
