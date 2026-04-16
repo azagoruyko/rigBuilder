@@ -647,25 +647,28 @@ class ModuleModel(QAbstractItemModel):
             return "n/a"
 
         elif role == Qt.ForegroundRole:
+            # Check if self or any parent is muted
+            isMuted = module.muted()
+            p = module.parent()
+            while p:
+                if p.muted():
+                    isMuted = True
+                    break
+                p = p.parent()
+
             if column == 0:
-                isParentMuted = False
-                p = module.parent()
-                while p:
-                    isParentMuted = isParentMuted or p.muted()
-                    p = p.parent()
-                
                 color = QColor(200, 200, 200)
-                if module.muted() or isParentMuted: 
+                if isMuted:
                     color = QColor(100, 100, 100)
                 elif self.isInsideReferenceModule(module):
                     color = QColor(230, 230, 100) # Yellow for reference modules
                 return color
 
             elif column == 1:
-                return QColor(125, 125, 125)
+                return QColor(100, 100, 100) if isMuted else QColor(125, 125, 125)
 
             elif column == 2:
-                return QColor(125, 125, 170)
+                return QColor(100, 100, 150) if isMuted else QColor(125, 125, 170)
 
         elif role == Qt.BackgroundRole:
             if column == 0:
@@ -1280,13 +1283,17 @@ class ModuleTreeWidget(QTreeView):
 
     def muteModule(self):
         selectedIndices = self.selectionModel().selectedRows()
+        if not selectedIndices:
+            return
+
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
             if module.muted():
                 module.unmute()
             else:
                 module.mute()
-            self.moduleModel.dataChanged.emit(idx, idx)
+        
+        self.moduleModel.layoutChanged.emit() # Refresh all to redraw descendants
 
     def duplicateModule(self):
         # Sort indices by row descending to avoid index shifting issues during insertion
