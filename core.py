@@ -531,6 +531,8 @@ class Module(object):
             
     def insertChild(self, idx: int, child: 'Module'):
         """Insert child module at specific index."""
+        if child._parent:
+            child._parent.removeChild(child)
         child._parent = self
         self._children.insert(idx, child)
 
