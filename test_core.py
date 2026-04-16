@@ -71,7 +71,7 @@ def tempDir():
     shutil.rmtree(tmpdir, ignore_errors=True)
 
     # Update cache to remove deleted directory
-    UidManager.update()
+    UidManager.sync()
 
 
 @pytest.fixture
@@ -206,33 +206,33 @@ class TestAttribute:
         attr.set(None)
         assert attr.get() is None
 
-    def testAttributeIsUpdateRequired(self, simpleAttribute):
-        """Test attribute isUpdateRequired detection."""
+    def testAttributeIsSyncRequired(self, simpleAttribute):
+        """Test attribute isSyncRequired detection."""
         ref = simpleAttribute.copy()
-        assert simpleAttribute.isUpdateRequired(ref) is False
+        assert simpleAttribute.isSyncRequired(ref) is False
 
         # Structural changes
         simpleAttribute.setName("dirty_name")
-        assert simpleAttribute.isUpdateRequired(ref) is True
+        assert simpleAttribute.isSyncRequired(ref) is True
         simpleAttribute.setName(ref.name())
 
         simpleAttribute.setTemplate("int")
-        assert simpleAttribute.isUpdateRequired(ref) is True
+        assert simpleAttribute.isSyncRequired(ref) is True
         simpleAttribute.setTemplate(ref.template())
 
         simpleAttribute.setConnect("/new/connection")
-        assert simpleAttribute.isUpdateRequired(ref) is True
+        assert simpleAttribute.isSyncRequired(ref) is True
         simpleAttribute.setConnect(ref.connect())
 
         # Primary value change should be IGNORED by डिजाइन (per core implementation)
         # This typically represents the 'current value' which is meant to be local state.
         simpleAttribute.set(999.9)
-        assert simpleAttribute.isUpdateRequired(ref) is False
+        assert simpleAttribute.isSyncRequired(ref) is False
         simpleAttribute.set(ref.get())
 
         # Divergence in OTHER data (like settings or secondary values) should be detected
         simpleAttribute.set(True, "enabled")
-        assert simpleAttribute.isUpdateRequired(ref) is True
+        assert simpleAttribute.isSyncRequired(ref) is True
         
         # Verify default key protection
         defaultKey = simpleAttribute.data().get("default")
@@ -240,7 +240,7 @@ class TestAttribute:
             simpleAttribute.set(42.0, defaultKey)
             # Should still be dirty because of 'meta', not because of defaultKey
             simpleAttribute._data.pop("enabled")
-            assert simpleAttribute.isUpdateRequired(ref) is False
+            assert simpleAttribute.isSyncRequired(ref) is False
 
 class TestAttributeConnections:
     """Tests for attribute connections."""
@@ -451,31 +451,31 @@ class TestModule:
         module.embed()
         assert module.uid() == ""
 
-    def testModuleIsUpdateRequired(self, simpleModule):
-        """Test module isUpdateRequired detection."""
+    def testModuleIsSyncRequired(self, simpleModule):
+        """Test module isSyncRequired detection."""
         ref = simpleModule.copy()
-        assert simpleModule.isUpdateRequired(ref) is False
+        assert simpleModule.isSyncRequired(ref) is False
 
         # runCode change
         simpleModule.setRunCode("print('dirty')")
-        assert simpleModule.isUpdateRequired(ref) is True
+        assert simpleModule.isSyncRequired(ref) is True
         simpleModule.setRunCode(ref.runCode())
         
         # Meta change in attribute (detected because it's not the primary value)
         simpleModule.attributes()[0].set(True, "enabled")
-        assert simpleModule.isUpdateRequired(ref) is True
+        assert simpleModule.isSyncRequired(ref) is True
         simpleModule.attributes()[0]._data.pop("enabled")
-        assert simpleModule.isUpdateRequired(ref) is False
+        assert simpleModule.isSyncRequired(ref) is False
 
         # Children structure change (add)
         simpleModule.addChild(createModule("dirty_child"))
-        assert simpleModule.isUpdateRequired(ref) is True
+        assert simpleModule.isSyncRequired(ref) is True
         simpleModule.removeChildren()
         
         # Restore children for further testing
         for ch in ref.children():
             simpleModule.addChild(ch.copy())
-        assert simpleModule.isUpdateRequired(ref) is False
+        assert simpleModule.isSyncRequired(ref) is False
 
 class TestModuleChildren:
     """Tests for module children management."""
@@ -838,8 +838,8 @@ class TestModuleFileOperations:
         uid = UidManager.getUidFromFile(filePath)
         assert uid == simpleModule.uid()
 
-    def testLoadModuleWithUpdateTrue(self, tempDir):
-        """Test loadModule(update=True) applies update() so children are refreshed from their files."""
+    def testLoadModuleWithSyncTrue(self, tempDir):
+        """Test loadModule(sync=True) applies sync() so children are refreshed from their files."""
         parent = createModule("parent")
         child = createModule("child")
         child.setRunCode("original_run")
@@ -849,17 +849,17 @@ class TestModuleFileOperations:
         childPath = os.path.join(tempDir, "child.xml")
         child.saveToFile(childPath)
         parent.saveToFile(parentPath)
-        UidManager.update()
+        UidManager.sync()
 
         child.setRunCode("modified_run")
         child.saveToFile(childPath)
-        UidManager.update()
+        UidManager.sync()
 
-        loaded = Module.loadModule(parentPath, update=True)
+        loaded = Module.loadModule(parentPath, sync=True)
         assert loaded.findChild("child").runCode() == "modified_run"
 
-    def testLoadModuleWithUpdateFalse(self, tempDir):
-        """Test loadModule(update=False) skips update() so children stay as in parent XML."""
+    def testLoadModuleWithSyncFalse(self, tempDir):
+        """Test loadModule(sync=False) skips sync() so children stay as in parent XML."""
         parent = createModule("parent")
         child = createModule("child")
         child.setRunCode("original_run")
@@ -869,17 +869,17 @@ class TestModuleFileOperations:
         childPath = os.path.join(tempDir, "child.xml")
         child.saveToFile(childPath)
         parent.saveToFile(parentPath)
-        UidManager.update()
+        UidManager.sync()
 
         child.setRunCode("modified_run")
         child.saveToFile(childPath)
-        UidManager.update()
+        UidManager.sync()
 
-        loaded = Module.loadModule(parentPath, update=False)
+        loaded = Module.loadModule(parentPath, sync=False)
         assert loaded.findChild("child").runCode() == "original_run"
 
-    def testUpdatePreservesAttributeValues(self, tempDir):
-        """Test that update() preserves attribute values while updating structure."""
+    def testSyncPreservesAttributeValues(self, tempDir):
+        """Test that sync() preserves attribute values while syncronizing structure."""
         # Create original module
         original = createModule("original")
         attr1 = createAttribute("input1", "input", "float", 10.0)
@@ -896,15 +896,15 @@ class TestModuleFileOperations:
         loaded.findAttribute("input1").set(100.0)
         loaded.findAttribute("input2").set(200.0)
 
-        # Update from original file
-        loaded.update()
+        # Sync from original file
+        loaded.sync()
 
         # Values should be preserved
         assert loaded.findAttribute("input1").get() == 100.0
         assert loaded.findAttribute("input2").get() == 200.0
 
-    def testUpdateAddsNewAttributes(self, tempDir):
-        """Test that update() adds new attributes from reference file."""
+    def testSyncAddsNewAttributes(self, tempDir):
+        """Test that sync() adds new attributes from reference file."""
         # Create v1
         v1 = createModule("module")
         attr1 = createAttribute("input1", "input", "float", 10.0)
@@ -925,17 +925,17 @@ class TestModuleFileOperations:
         v2.addAttribute(attr2_v2)
         v2._uid = loaded.uid()  # Same UID
         v2.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
-        # Update
-        loaded.update()
+        # Sync
+        loaded.sync()
 
         # Should have new attribute
         assert len(loaded.attributes()) == 2
         assert loaded.findAttribute("input2") is not None
 
-    def testUpdateRemovesOldAttributes(self, tempDir):
-        """Test that update() removes attributes not in reference file."""
+    def testSyncRemovesOldAttributes(self, tempDir):
+        """Test that sync() removes attributes not in reference file."""
         # Create v1 with 2 attributes
         v1 = createModule("module")
         attr1 = createAttribute("input1", "input", "float", 10.0)
@@ -956,18 +956,18 @@ class TestModuleFileOperations:
         v2.addAttribute(attr1_v2)
         v2._uid = loaded.uid()  # Same UID
         v2.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
-        # Update
-        loaded.update()
+        # Sync
+        loaded.sync()
 
         # Should have only 1 attribute
         assert len(loaded.attributes()) == 1
         assert loaded.findAttribute("input1") is not None
         assert loaded.findAttribute("input2") is None
 
-    def testUpdatePreservesConnectionsAndExpressions(self, tempDir):
-        """Test that update() preserves connections and expressions."""
+    def testSyncPreservesConnectionsAndExpressions(self, tempDir):
+        """Test that sync() preserves connections and expressions."""
         # Create original
         original = createModule("original")
         attr1 = createAttribute("input", "input", "float", 10.0)
@@ -975,7 +975,7 @@ class TestModuleFileOperations:
 
         filePath = os.path.join(tempDir, "original.xml")
         original.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
         # Load and add connection/expression
         loaded = Module.loadModule(filePath)
@@ -984,18 +984,18 @@ class TestModuleFileOperations:
         loadedAttr.setExpression("value = value + 10")  # Simple additive expression
         loadedAttr.set(50.0)
 
-        # Update
-        loaded.update()
+        # Sync
+        loaded.sync()
 
         # Connection and expression should be preserved
         updatedAttr = loaded.findAttribute("input")
         assert updatedAttr.connect() == "/someAttr"
         assert updatedAttr.expression() == "value = value + 10"
-        # Value preserved (expression doesn't execute during update)
+        # Value preserved (expression doesn't execute during sync)
         assert updatedAttr.localData()["value"] == 50.0
 
-    def testUpdateChangesRunCode(self, tempDir):
-        """Test that update() updates runCode from reference file."""
+    def testSyncChangesRunCode(self, tempDir):
+        """Test that sync() updates runCode from reference file."""
         # Create v1
         v1 = createModule("module")
         v1.setRunCode("old_code = 1")
@@ -1012,16 +1012,16 @@ class TestModuleFileOperations:
         v2.setRunCode("new_code = 2")
         v2._uid = loaded.uid()
         v2.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
-        # Update
-        loaded.update()
+        # Sync
+        loaded.sync()
 
         # RunCode should be updated
         assert loaded.runCode() == "new_code = 2"
 
-    def testUpdateReplacesEmbeddedChildren(self, tempDir):
-        """Test that update() replaces embedded children from reference file."""
+    def testSyncReplacesEmbeddedChildren(self, tempDir):
+        """Test that sync() replaces embedded children from reference file."""
         # Create v1 with one child
         parent = createModule("parent")
         child1 = createModule("child1")
@@ -1030,7 +1030,7 @@ class TestModuleFileOperations:
 
         filePath = os.path.join(tempDir, "parent.xml")
         parent.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
         # Load and modify
         loaded = Module.loadModule(filePath)
@@ -1043,31 +1043,31 @@ class TestModuleFileOperations:
         parentV2.addChild(child2)
         parentV2._uid = loaded.uid()
         parentV2.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
-        # Update
-        loaded.update()
+        # Sync
+        loaded.sync()
 
         # Children should be replaced from reference file
         assert len(loaded.children()) == 1
         assert loaded.findChild("child2") is not None
         assert loaded.findChild("child1") is None
 
-    def testUpdateWithNoReferenceFile(self, tempDir):
-        """Test that update() does nothing when no reference file exists."""
+    def testSyncWithNoReferenceFile(self, tempDir):
+        """Test that sync() does nothing when no reference file exists."""
         module = createModule("module")
         attr = createAttribute("input", "input", "float", 10.0)
         module.addAttribute(attr)
 
         # No file saved, no reference
         initialAttrs = len(module.attributes())
-        module.update()
+        module.sync()
 
         # Nothing should change
         assert len(module.attributes()) == initialAttrs
 
-    def testUpdateWithMismatchedTemplate(self, tempDir):
-        """Test that update() replaces attributes with mismatched templates."""
+    def testSyncWithMismatchedTemplate(self, tempDir):
+        """Test that sync() replaces attributes with mismatched templates."""
         # Create v1 with float attribute
         v1 = createModule("module")
         attr1 = createAttribute("input", "input", "float", 10.0)
@@ -1086,10 +1086,10 @@ class TestModuleFileOperations:
         v2.addAttribute(attr1_v2)
         v2._uid = loaded.uid()
         v2.saveToFile(filePath)
-        UidManager.update()  # Update cache from disk
+        UidManager.sync()  # Sync cache from disk
 
-        # Update
-        loaded.update()
+        # Sync
+        loaded.sync()
 
         # Should get new template with original value
         updatedAttr = loaded.findAttribute("input")
@@ -1114,20 +1114,20 @@ class TestModuleFileOperations:
         uid = UidManager.getUidFromFile(filePath)
         assert uid is None
 
-    def testModuleUpdateWithNoChildren(self):
-        """Test update on module without children."""
+    def testModuleSyncWithNoChildren(self):
+        """Test sync on module without children."""
         module = createModule("test")
         attr = createAttribute("input", "input", "float", 10.0)
         module.addAttribute(attr)
 
-        # Update without reference file should not crash
-        module.update()
+        # Sync without reference file should not crash
+        module.sync()
 
         # Module should remain unchanged
         assert len(module.attributes()) == 1
 
-    def testUpdateWithMatchingTemplatePreservesValue(self, tempDir):
-        """Test that update() preserves attribute value when template matches."""
+    def testSyncWithMatchingTemplatePreservesValue(self, tempDir):
+        """Test that sync() preserves attribute value when template matches."""
         # Create v1
         v1 = createModule("module")
         attr1 = createAttribute("input", "input", "float", 10.0)
@@ -1139,8 +1139,8 @@ class TestModuleFileOperations:
         loaded = Module.loadModule(filePath)
         loaded.findAttribute("input").set(99.9)
         
-        # Update (nothing changed on disk)
-        loaded.update()
+        # Sync (nothing changed on disk)
+        loaded.sync()
         
         # Value should be preserved
         assert loaded.findAttribute("input").get() == 99.9
@@ -1682,7 +1682,7 @@ class TestPathAndSettings:
         module = createModule("resolveTest")
         filePath = os.path.join(tempDir, "resolveTest.xml")
         module.saveToFile(filePath)
-        UidManager.update()
+        UidManager.sync()
 
         uid = module.uid()
         assert uid in UidManager.uids()

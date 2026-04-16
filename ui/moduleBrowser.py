@@ -239,7 +239,7 @@ class ModuleBrowser(QWidget):
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""
         self._updatePathLabel()
-        UidManager.update()
+        UidManager.sync()
         self.applyMask()
 
     def _onMaskTextChanged(self, text: str):

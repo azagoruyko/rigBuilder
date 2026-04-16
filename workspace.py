@@ -157,7 +157,7 @@ class Workspace:
         repo.init()
         
         # Refresh UID Manager
-        UidManager.update()
+        UidManager.sync()
 
         global settings
         settings.fromDict(self.settings.toDict()) # override global settings with workspace settings

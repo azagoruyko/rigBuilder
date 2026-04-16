@@ -38,8 +38,8 @@ class UidManager:
     _uids: dict[str, str] = {}
 
     @classmethod
-    def update(cls):
-        """Update cached UIDs from modules directory."""
+    def sync(cls):
+        """Sync cached UIDs from modules directory."""
         cls._uids = cls.findUids(settings.modulesPath)
 
     @classmethod
@@ -394,8 +394,8 @@ class Attribute(object):
         legacy_convertLineEditTemplate(attr)
         return attr
 
-    def isUpdateRequired(self, refAttr: 'Attribute') -> bool:
-        """Check if attribute update is required compared to a reference attribute."""
+    def isSyncRequired(self, refAttr: 'Attribute') -> bool:
+        """Check if attribute sync is required compared to a reference attribute."""
         if self._name != refAttr._name:
             return True
         if self._template != refAttr._template:
@@ -732,8 +732,8 @@ class Module(object):
         """Embed module by clearing UID."""
         self._uid = ""
 
-    def update(self):
-        """Update module from reference file."""
+    def sync(self):
+        """Sync module from reference file."""
         refPath = self.referenceFile()
         if refPath:
             refModule = Module.loadFromFile(refPath)
@@ -762,10 +762,10 @@ class Module(object):
             self._doc = refModule._doc
 
         for ch in self._children:
-            ch.update()
+            ch.sync()
 
-    def isUpdateRequired(self, refModule: Optional['Module'] = None) -> bool:
-        """Check if module update is required compared to its reference file."""
+    def isSyncRequired(self, refModule: Optional['Module'] = None) -> bool:
+        """Check if module sync is required compared to its reference file."""
         if not refModule:
             refPath = self.referenceFile()
             if not refPath or not os.path.exists(refPath):
@@ -786,7 +786,7 @@ class Module(object):
             return True
 
         for a, ra in zip(self._attributes, refModule._attributes):
-            if a.isUpdateRequired(ra):
+            if a.isSyncRequired(ra):
                 return True
 
         # Compare children structure (names and UIDs)
@@ -794,7 +794,7 @@ class Module(object):
             return True
 
         for c, rc in zip(self._children, refModule._children):
-            if c.isUpdateRequired(rc):
+            if c.isSyncRequired(rc):
                 return True
 
         return False
@@ -807,7 +807,7 @@ class Module(object):
         with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
             f.write(self.toXml(keepConnections=False))  # don't keep outer connections
 
-        UidManager.update()
+        UidManager.sync()
 
     @staticmethod
     def loadFromFile(fileName: str) -> 'Module':
@@ -818,15 +818,15 @@ class Module(object):
         return m
 
     @staticmethod
-    def loadModule(spec: str, *, update: bool = True) -> 'Module': # spec can be full path, relative path or uid
+    def loadModule(spec: str, *, sync: bool = True) -> 'Module': # spec can be full path, relative path or uid
         """Load module by spec (path, relative path, or UID)."""
         modulePath = UidManager.resolve(spec)
         if not modulePath:
             raise ModuleNotFoundError("Module '{}' not found".format(spec))
 
         module = Module.loadFromFile(modulePath)
-        if update:
-            module.update()
+        if sync:
+            module.sync()
         return module
 
     @staticmethod
@@ -963,7 +963,7 @@ class Module(object):
 
         return ctx
 
-UidManager.update()
+UidManager.sync()
 
 # API
 

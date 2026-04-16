@@ -630,7 +630,7 @@ class ModuleModel(QAbstractItemModel):
                 
                 name = module.name()
                 refModule = self.moduleTracker.getModule(module.uid())
-                if refModule and module.isUpdateRequired(refModule):
+                if refModule and module.isSyncRequired(refModule):
                     name += "*"
 
                 return icon + name + " "
@@ -1220,7 +1220,7 @@ class ModuleTreeWidget(QTreeView):
                 self.moduleModel.dataChanged.emit(idx, idx) # refresh display
                 self.window().attributesTabWidget.updateWidgetStyles()
 
-        self.window().moduleHistoryWidget.updateModuleHistory()
+        self.window().moduleHistoryWidget.syncModuleHistory()
 
 
     def embedModule(self):
@@ -1239,13 +1239,13 @@ class ModuleTreeWidget(QTreeView):
             module.embed()
             self.moduleModel.dataChanged.emit(idx, idx)
 
-    def updateAllModules(self):
+    def syncAllModules(self):
         """Full refresh of the entire tree from disk while preserving expansion state."""
         state = self._getTreeState()
         self.moduleModel.refreshReferences()
         
         self.moduleModel.beginResetModel()
-        self.moduleModel.rootModule().update()
+        self.moduleModel.rootModule().sync()
         self.moduleModel.endResetModel()
         
         self._setTreeState(state)
@@ -1255,12 +1255,12 @@ class ModuleTreeWidget(QTreeView):
         if module:
             mainWindow.attributesTabWidget.updateTabs(module)
 
-    def updateModule(self, filePath: str):
-        """Update specific module(s) from disk."""
+    def syncModule(self, filePath: str):
+        """Sync specific module(s) from disk."""
         
         def walk(module: Module):
             if module.referenceFile() == filePath:
-                module.update()
+                module.sync()
             
             for ch in module.children():
                 walk(ch)
@@ -2256,7 +2256,7 @@ class RigBuilderWindow(QFrame):
         self.hostManageBtn.clicked.connect(self._onManageHosts)
 
         self.updateBtn = QPushButton("🔄")
-        self.updateBtn.setToolTip("Update all modules from disk (reset local changes)")
+        self.updateBtn.setToolTip("Sync all modules (reset local changes)")
         self.updateBtn.clicked.connect(self._onUpdateRequested)
  
         self.workspaceWidget = WorkspaceWidget(self)
@@ -2304,7 +2304,7 @@ class RigBuilderWindow(QFrame):
         self.treeContainer.layout().addWidget(self.treeWidget)
 
         self.moduleBrowser = ModuleBrowser()
-        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.updateModule)
+        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.syncModule)
 
         self.leftSplitter = WideSplitter(Qt.Vertical, 8)
         self.leftSplitter.addWidget(self.treeContainer)
@@ -2342,7 +2342,7 @@ class RigBuilderWindow(QFrame):
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
-        self.moduleHistoryWidget.updateModuleHistory()
+        self.moduleHistoryWidget.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
 
@@ -2459,7 +2459,7 @@ class RigBuilderWindow(QFrame):
     def _onUpdateRequested(self):
         msg = "Update all modules from disk?\n\nYou might lose unsaved changes in the tree.\n\nContinue?"
         if QMessageBox.question(self, "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            self.treeWidget.updateAllModules()
+            self.treeWidget.syncAllModules()
 
     def _onManageHosts(self):
         """Open a simple dialog to add/remove hosts."""

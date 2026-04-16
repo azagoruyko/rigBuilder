@@ -73,7 +73,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     moduleCopy = module.copy()
     moduleCopy.saveToFile(historyFile)
 
-    message = "{}: {}".format(moduleCopy.name(), commitMessage.strip() or "update")
+    message = "{}: {}".format(moduleCopy.name(), commitMessage.strip() or "sync")
 
     err, _ = repo.commit(message, [historyFile])
     return not err
@@ -236,7 +236,7 @@ class ModuleHistoryWidget(QWidget):
         self.filterEdit = QLineEdit()
         self.filterEdit.setPlaceholderText("Filter by UID")
         self.filterEdit.setClearButtonEnabled(True)
-        self.filterEdit.textChanged.connect(self.updateModuleHistory)
+        self.filterEdit.textChanged.connect(self.syncModuleHistory)
 
         self.textBrowser = QTextBrowser()
         self.textBrowser.setOpenLinks(False)
@@ -253,7 +253,7 @@ class ModuleHistoryWidget(QWidget):
 
         layout.addWidget(self.filterEdit)
         layout.addWidget(self.textBrowser)
-        self.updateModuleHistory()
+        self.syncModuleHistory()
 
     def isHistoryTrackingEnabled(self) -> bool:
         """Return True if git history tracking is enabled (saves will be committed)."""
@@ -332,7 +332,7 @@ class ModuleHistoryWidget(QWidget):
             return
         success, errMsg = squashHistory()
         if success:
-            self.updateModuleHistory()
+            self.syncModuleHistory()
         else:
             QMessageBox.warning(
                 self,
@@ -411,8 +411,8 @@ class ModuleHistoryWidget(QWidget):
         return (accepted, lineEdit.text().strip() if accepted else "")
 
 
-    def updateModuleHistory(self):
-        """Update the module history widget with the latest history."""
+    def syncModuleHistory(self):
+        """Sync the module history widget with the latest history."""
         filterText = self.filterEdit.text().strip()
         html = buildHistoryHtml(filterText)
         self.textBrowser.clear()
