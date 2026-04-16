@@ -1233,17 +1233,30 @@ class ModuleTreeWidget(QTreeView):
             module.embed()
             self.moduleModel.dataChanged.emit(idx, idx)
 
-    def refreshModuleTree(self):
-        """Automatically refresh the entire tree from disk while preserving state."""
+    def updateAllModules(self):
+        """Full refresh of the entire tree from disk while preserving expansion state."""
         state = self._getTreeState()
-        
-        self.moduleModel.refreshReferences() # Update disk cache
+        self.moduleModel.refreshReferences()
         
         self.moduleModel.beginResetModel()
         self.moduleModel.rootModule().update()
         self.moduleModel.endResetModel()
         
         self._setTreeState(state)
+
+    def updateModule(self, filePath: str):
+        """Update specific module(s) from disk."""
+        def walk(module: Module):
+            if module.referenceFile() == filePath:
+                module.update()
+                idx = self.moduleModel.indexForModule(module)
+                if idx.isValid():
+                    self.moduleModel.dataChanged.emit(idx, idx)
+            
+            for ch in module.children():
+                walk(ch)
+
+        walk(self.moduleModel.rootModule())
 
     def muteModule(self):
         selectedIndices = self.selectionModel().selectedRows()
@@ -2221,6 +2234,10 @@ class RigBuilderWindow(QFrame):
         self.hostManageBtn = QPushButton("⚙️")
         self.hostManageBtn.setToolTip("Manage hosts")
         self.hostManageBtn.clicked.connect(self._onManageHosts)
+
+        self.updateBtn = QPushButton("🔄")
+        self.updateBtn.setToolTip("Update all modules from disk (reset local changes)")
+        self.updateBtn.clicked.connect(self._onUpdateRequested)
  
         self.workspaceWidget = WorkspaceWidget(self)
         self.workspaceWidget.workspaceChanged.connect(self._onWorkspaceChanged)
@@ -2234,6 +2251,7 @@ class RigBuilderWindow(QFrame):
         headerRow = QHBoxLayout()
         headerRow.setContentsMargins(0, 0, 0, 5)
         headerRow.addWidget(self.workspaceWidget)
+        headerRow.addWidget(self.updateBtn)
         headerRow.addStretch()
         headerRow.addWidget(self.hostCombo)
         headerRow.addWidget(self.hostConnectBtn)
@@ -2266,7 +2284,7 @@ class RigBuilderWindow(QFrame):
         self.treeContainer.layout().addWidget(self.treeWidget)
 
         self.moduleBrowser = ModuleBrowser()
-        self.moduleBrowser.modulesAutoReloadWatcher.somethingChanged.connect(self.treeWidget.refreshModuleTree)
+        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.updateModule)
 
         self.leftSplitter = WideSplitter(Qt.Vertical, 8)
         self.leftSplitter.addWidget(self.treeContainer)
@@ -2418,6 +2436,11 @@ class RigBuilderWindow(QFrame):
         self.hostCombo.setEnabled(False)
         self.hostCombo.setStyleSheet("color: #66cc66;")
 
+    def _onUpdateRequested(self):
+        msg = "Update all modules from disk?\n\nYou might lose unsaved changes in the tree.\n\nContinue?"
+        if QMessageBox.question(self, "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            self.treeWidget.updateAllModules()
+
     def _onManageHosts(self):
         """Open a simple dialog to add/remove hosts."""
         dialog = ManageHostsDialog(parent=self)
@@ -2437,7 +2460,6 @@ class RigBuilderWindow(QFrame):
         self._refreshHostCombo()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
-        self.treeWidget.refreshModuleTree()
 
     def menu(self):
         menu = QMenu(self)
@@ -2555,7 +2577,7 @@ class RigBuilderWindow(QFrame):
                 old_th.wait(1000)
 
             th = TrackFileChangesThread(filePath)
-            th.somethingChanged.connect(callback)
+            th.fileChanged.connect(callback)
             th.start()
             trackFileChangesThreads[filePath] = th
 
@@ -2592,7 +2614,9 @@ class RigBuilderWindow(QFrame):
             importLine = "from .{} import * # must be the first line".format(headerModule)
             f.write("\n".join([importLine, code]))
 
-        startTrackedFileThread(runCodeFilePath, partial(onRunCodeFileChanged, runCodeFilePath, module.uid(), module.path()))
+        # Use partial to bind uid and modulePath, filePath will come from the signal
+        callback = partial(onRunCodeFileChanged, uid=module.uid(), modulePath=module.path())
+        startTrackedFileThread(runCodeFilePath, callback)
 
         try:
             subprocess.Popen([settings.vscode, RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

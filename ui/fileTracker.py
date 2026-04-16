@@ -8,7 +8,7 @@ from ..qt import *
 trackFileChangesThreads = {} # by file path
 
 class TrackFileChangesThread(QThread):
-    somethingChanged = Signal()
+    fileChanged = Signal(str)
 
     def __init__(self, filePath: str):
         super().__init__()
@@ -32,7 +32,7 @@ class TrackFileChangesThread(QThread):
 
                 currentModified = os.path.getmtime(self.filePath)
                 if currentModified != lastModified:
-                    self.somethingChanged.emit()
+                    self.fileChanged.emit(self.filePath)
                     lastModified = currentModified
             except Exception:
                 pass # ignore temporary file access errors
@@ -41,17 +41,18 @@ class TrackFileChangesThread(QThread):
 
 class DirectoryWatcher(QObject):
     """Watch directories recursively and emit debounced change events."""
-    somethingChanged = Signal()
+    fileChanged = Signal(str)
 
     def __init__(self, roots: List[str], *, debounceMs: int = 700, filePatterns: Optional[List[str]] = None, recursive: bool = True, parent: Optional[QObject] = None):
         super().__init__(parent=parent)
-        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
+        self.roots = [p for p in roots if os.path.exists(p)]
         self.debounceMs = debounceMs
         self.filePatterns = [p.lower() for p in (filePatterns or [])]
         self.recursive = recursive
         self.watcher = QFileSystemWatcher(self)
         self.debounceTimer = QTimer(self)
         self.debounceTimer.setSingleShot(True)
+        self._changedPaths = set()
 
         self.watcher.directoryChanged.connect(self._onFilesystemChanged)
         self.watcher.fileChanged.connect(self._onFilesystemChanged)
@@ -61,7 +62,7 @@ class DirectoryWatcher(QObject):
 
     def setRoots(self, roots: List[str]):
         """Update monitored roots and refresh watcher."""
-        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
+        self.roots = [p for p in roots if os.path.exists(p)]
         self.refreshWatchedPaths()
 
     def refreshWatchedPaths(self):
@@ -69,11 +70,11 @@ class DirectoryWatcher(QObject):
         for root in self.roots:
             walkIterator = os.walk(root)
             for dirPath, _, fileNames in walkIterator:
-                paths.add(os.path.normpath(dirPath))
+                paths.add(dirPath)
                 for fileName in fileNames:
                     fileNameLower = fileName.lower()
                     if not self.filePatterns or any(fnmatch.fnmatch(fileNameLower, p) for p in self.filePatterns):
-                        paths.add(os.path.normpath(os.path.join(dirPath, fileName)))
+                        paths.add(os.path.join(dirPath, fileName))
                 if not self.recursive:
                     break
 
@@ -88,10 +89,11 @@ class DirectoryWatcher(QObject):
         if toAdd:
             self.watcher.addPaths(toAdd)
 
-    def _onFilesystemChanged(self, _path: str):
+    def _onFilesystemChanged(self, path: str):
+        self._changedPaths.add(path)
         self.debounceTimer.start(self.debounceMs)
 
     def _onDebounceTimeout(self):
-        # File watchers can drop updated paths on some platforms, so refresh first.
-        self.refreshWatchedPaths()
-        self.somethingChanged.emit()
+        for p in self._changedPaths:
+            self.fileChanged.emit(p)
+        self._changedPaths.clear()

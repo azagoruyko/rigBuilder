@@ -234,7 +234,7 @@ class ModuleBrowser(QWidget):
             recursive=True,
             parent=self)
 
-        self.modulesAutoReloadWatcher.somethingChanged.connect(self.refreshModules)
+        self.modulesAutoReloadWatcher.fileChanged.connect(lambda _: self.refreshModules())
 
     def refreshModules(self):
         """Internal refresh used by startup and auto-reload flows."""
