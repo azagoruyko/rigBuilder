@@ -915,8 +915,8 @@ class ModuleModel(QAbstractItemModel):
             return
             
         self.beginResetModel()
-        parentModule._children[row] = newModule
-        newModule._parent = parentModule
+        parentModule.removeChild(oldModule)
+        parentModule.insertChild(row, newModule)
         self.endResetModel()
 
     def clear(self):
