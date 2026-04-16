@@ -2445,10 +2445,6 @@ class RigBuilderWindow(QFrame):
         self.moduleBrowser.refreshModules()
         self.treeWidget.refreshModuleTree()
 
-    def _onOpenSettings(self):
-        # Deprecated: usage move to WorkspaceManager
-        pass
-
     def menu(self):
         menu = QMenu(self)
 
