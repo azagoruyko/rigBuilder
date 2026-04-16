@@ -6,7 +6,7 @@ Your task is to analyze a provided diff/patch and generate a brief, high-level d
 
 1. **Analyze the Diff**: Carefully examine the added (`+`) and removed (`-`) lines in the provided patch.
 
-2. **Summarize Changes**: Write a concise summary of the modifications. Focus on the *intent* and *impact* of the changes.
+2. **Summarize Changes**: Write a concise summary of the modifications. Focus on the *intent* and *impact* of the changes, don't describe space changes, line breaks, or other minor formatting changes.
 
 3. **Group by File**: If the patch covers multiple files, structure your summary by file.
 
