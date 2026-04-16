@@ -531,10 +531,14 @@ class Module(object):
             
     def insertChild(self, idx: int, child: 'Module'):
         """Insert child module at specific index."""
-        if child._parent:
-            child._parent.removeChild(child)
+        child.unparent()
         child._parent = self
         self._children.insert(idx, child)
+
+    def unparent(self):
+        """Detach this module from its parent."""
+        if self._parent:
+            self._parent.removeChild(self)
 
     def addChild(self, child: 'Module'):
         """Add child module at the end."""
