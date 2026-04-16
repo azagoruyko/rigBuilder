@@ -206,6 +206,42 @@ class TestAttribute:
         attr.set(None)
         assert attr.get() is None
 
+    def testAttributeIsUpdateRequired(self, simpleAttribute):
+        """Test attribute isUpdateRequired detection."""
+        ref = simpleAttribute.copy()
+        assert simpleAttribute.isUpdateRequired(ref) is False
+
+        # Structural changes
+        simpleAttribute.setName("dirty_name")
+        assert simpleAttribute.isUpdateRequired(ref) is True
+        simpleAttribute.setName(ref.name())
+
+        simpleAttribute.setTemplate("int")
+        assert simpleAttribute.isUpdateRequired(ref) is True
+        simpleAttribute.setTemplate(ref.template())
+
+        simpleAttribute.setConnect("/new/connection")
+        assert simpleAttribute.isUpdateRequired(ref) is True
+        simpleAttribute.setConnect(ref.connect())
+
+        # Primary value change should be IGNORED by डिजाइन (per core implementation)
+        # This typically represents the 'current value' which is meant to be local state.
+        simpleAttribute.set(999.9)
+        assert simpleAttribute.isUpdateRequired(ref) is False
+        simpleAttribute.set(ref.get())
+
+        # Divergence in OTHER data (like settings or secondary values) should be detected
+        simpleAttribute.set(True, "enabled")
+        assert simpleAttribute.isUpdateRequired(ref) is True
+        
+        # Verify default key protection
+        defaultKey = simpleAttribute.data().get("default")
+        if defaultKey:
+            simpleAttribute.set(42.0, defaultKey)
+            # Should still be dirty because of 'meta', not because of defaultKey
+            simpleAttribute._data.pop("enabled")
+            assert simpleAttribute.isUpdateRequired(ref) is False
+
 class TestAttributeConnections:
     """Tests for attribute connections."""
 
@@ -415,6 +451,32 @@ class TestModule:
         module.embed()
         assert module.uid() == ""
 
+    def testModuleIsUpdateRequired(self, simpleModule):
+        """Test module isUpdateRequired detection."""
+        ref = simpleModule.copy()
+        assert simpleModule.isUpdateRequired(ref) is False
+
+        # runCode change
+        simpleModule.setRunCode("print('dirty')")
+        assert simpleModule.isUpdateRequired(ref) is True
+        simpleModule.setRunCode(ref.runCode())
+        
+        # Meta change in attribute (detected because it's not the primary value)
+        simpleModule.attributes()[0].set(True, "enabled")
+        assert simpleModule.isUpdateRequired(ref) is True
+        simpleModule.attributes()[0]._data.pop("enabled")
+        assert simpleModule.isUpdateRequired(ref) is False
+
+        # Children structure change (add)
+        simpleModule.addChild(createModule("dirty_child"))
+        assert simpleModule.isUpdateRequired(ref) is True
+        simpleModule.removeChildren()
+        
+        # Restore children for further testing
+        for ch in ref.children():
+            simpleModule.addChild(ch.copy())
+        assert simpleModule.isUpdateRequired(ref) is False
+
 class TestModuleChildren:
     """Tests for module children management."""
 
@@ -450,6 +512,32 @@ class TestModuleChildren:
         # Remove all
         simpleModule.removeChildren()
         assert len(simpleModule.children()) == 0
+
+    def testUnparent(self, simpleModule):
+        """Test unparenting a child module."""
+        child = createModule("child")
+        simpleModule.addChild(child)
+        assert child.parent() is simpleModule
+        
+        child.unparent()
+        assert child.parent() is None
+        assert child not in simpleModule.children()
+
+    def testMultipleParentPrevention(self):
+        """Test that a module cannot have two parents; adding to a new one unparents from the old one."""
+        p1 = createModule("parent1")
+        p2 = createModule("parent2")
+        child = createModule("child")
+
+        p1.addChild(child)
+        assert child.parent() is p1
+        assert child in p1.children()
+
+        # Adding to p2 should automatically remove from p1
+        p2.addChild(child)
+        assert child.parent() is p2
+        assert child in p2.children()
+        assert child not in p1.children()
 
     def testChildWithInvalidType(self):
         """Test child() method with invalid parameter type."""

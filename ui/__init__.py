@@ -627,7 +627,13 @@ class ModuleModel(QAbstractItemModel):
                     icon = "📦 "
                 elif self.isInsideReferenceModule(module):
                     icon = "🔒 "
-                return icon + module.name() + " "
+                
+                name = module.name()
+                refModule = self.moduleTracker.getModule(module.uid())
+                if refModule and module.isUpdateRequired(refModule):
+                    name += "*"
+
+                return icon + name + " "
 
             elif column == 1:
                 return module.relativePathString().replace("\\", "/") + " "
@@ -1244,19 +1250,33 @@ class ModuleTreeWidget(QTreeView):
         
         self._setTreeState(state)
 
+        # Refresh attributes panel if needed
+        module = self.currentModule()
+        if module:
+            mainWindow.attributesTabWidget.updateTabs(module)
+
     def updateModule(self, filePath: str):
         """Update specific module(s) from disk."""
+        
         def walk(module: Module):
             if module.referenceFile() == filePath:
                 module.update()
-                idx = self.moduleModel.indexForModule(module)
-                if idx.isValid():
-                    self.moduleModel.dataChanged.emit(idx, idx)
             
             for ch in module.children():
                 walk(ch)
 
+        state = self._getTreeState()
+        self.moduleModel.beginResetModel()
+
         walk(self.moduleModel.rootModule())
+        
+        self.moduleModel.endResetModel()
+        self._setTreeState(state)
+
+        # Refresh attributes panel if needed
+        module = self.currentModule()
+        if module:
+            mainWindow.attributesTabWidget.updateTabs(module)
 
     def muteModule(self):
         selectedIndices = self.selectionModel().selectedRows()

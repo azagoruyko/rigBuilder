@@ -394,6 +394,34 @@ class Attribute(object):
         legacy_convertLineEditTemplate(attr)
         return attr
 
+    def isUpdateRequired(self, refAttr: 'Attribute') -> bool:
+        """Check if attribute update is required compared to a reference attribute."""
+        if self._name != refAttr._name:
+            return True
+        if self._template != refAttr._template:
+            return True
+        if self._category != refAttr._category:
+            return True
+        if self._connect != refAttr._connect:
+            return True
+        if self._expression != refAttr._expression:
+            return True
+            
+        # Compare data excluding protected keys during update: default value entry.
+        # Note: connect and expression are already outside _data in self properties.
+        d1 = dict(self._data)
+        d2 = dict(refAttr._data)
+        
+        defaultKey1 = d1.get("default")
+        if defaultKey1:
+            d1.pop(defaultKey1, None)
+            
+        defaultKey2 = d2.get("default")
+        if defaultKey2:
+            d2.pop(defaultKey2, None)
+            
+        return d1 != d2
+
 class AttrsWrapper(object): # attributes getter/setter
     def __init__(self, module: 'Module'):
         self._module = module
@@ -735,6 +763,41 @@ class Module(object):
 
         for ch in self._children:
             ch.update()
+
+    def isUpdateRequired(self, refModule: Optional['Module'] = None) -> bool:
+        """Check if module update is required compared to its reference file."""
+        if not refModule:
+            refPath = self.referenceFile()
+            if not refPath or not os.path.exists(refPath):
+                return False
+            try:
+                refModule = Module.loadFromFile(refPath)
+            except Exception:
+                return False
+
+        # Compare key vars
+        if self._runCode != refModule._runCode:
+            return True
+        if self._doc != refModule._doc:
+            return True
+
+        # Compare attributes
+        if len(self._attributes) != len(refModule._attributes):
+            return True
+
+        for a, ra in zip(self._attributes, refModule._attributes):
+            if a.isUpdateRequired(ra):
+                return True
+
+        # Compare children structure (names and UIDs)
+        if len(self._children) != len(refModule._children):
+            return True
+
+        for c, rc in zip(self._children, refModule._children):
+            if c.isUpdateRequired(rc):
+                return True
+
+        return False
 
     def saveToFile(self, fileName: str, *, newUid: bool = False):
         """Save module to file."""
