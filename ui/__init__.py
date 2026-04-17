@@ -1285,12 +1285,12 @@ class ModuleTreeWidget(QTreeView):
             mainWindow.attributesTabWidget.updateTabs(module)
 
     def syncSelectedModules(self):
-        """Sync selected modules from disk with confirmation."""
+        """Sync selected modules with the files on disk with confirmation."""
         selectedIndices = self.selectionModel().selectedRows()
         if not selectedIndices:
             return
 
-        msg = "Sync selected modules from disk?\n\nYou might lose unsaved changes in the tree.\n\nContinue?"
+        msg = "Sync selected modules with the files on disk?\n\nYou may lose unsaved changes for those modules.\n\nContinue?"
         if QMessageBox.question(self.window(), "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
@@ -2289,9 +2289,9 @@ class RigBuilderWindow(QFrame):
         self.hostManageBtn.setToolTip("Manage hosts")
         self.hostManageBtn.clicked.connect(self._onManageHosts)
 
-        self.updateBtn = QPushButton("🔄")
-        self.updateBtn.setToolTip("Sync all modules (reset local changes)")
-        self.updateBtn.clicked.connect(self._onUpdateRequested)
+        self.syncBtn = QPushButton("🔄")
+        self.syncBtn.setToolTip("Sync all modules (reset local changes)")
+        self.syncBtn.clicked.connect(self._onSyncRequested)
  
         self.workspaceWidget = WorkspaceWidget(self)
         self.workspaceWidget.workspaceChanged.connect(self._onWorkspaceChanged)
@@ -2305,7 +2305,7 @@ class RigBuilderWindow(QFrame):
         headerRow = QHBoxLayout()
         headerRow.setContentsMargins(0, 0, 0, 5)
         headerRow.addWidget(self.workspaceWidget)
-        headerRow.addWidget(self.updateBtn)
+        headerRow.addWidget(self.syncBtn)
         headerRow.addStretch()
         headerRow.addWidget(self.hostCombo)
         headerRow.addWidget(self.hostConnectBtn)
@@ -2490,8 +2490,8 @@ class RigBuilderWindow(QFrame):
         self.hostCombo.setEnabled(False)
         self.hostCombo.setStyleSheet("color: #66cc66;")
 
-    def _onUpdateRequested(self):
-        msg = "Update all modules from disk?\n\nYou might lose unsaved changes in the tree.\n\nContinue?"
+    def _onSyncRequested(self):
+        msg = "Sync all modules with the files on disk?\n\nYou may lose unsaved changes for those modules.\n\nContinue?"
         if QMessageBox.question(self, "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.treeWidget.syncAllModules()
 
@@ -2534,7 +2534,7 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
 
         menu.addSeparator()
-        menu.addAction("Sync from file", self.treeWidget.syncSelectedModules)
+        menu.addAction("Sync with file", self.treeWidget.syncSelectedModules)
         menu.addAction("Embed", self.treeWidget.embedModule)
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")

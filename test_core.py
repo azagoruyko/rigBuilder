@@ -207,11 +207,11 @@ class TestAttribute:
         assert attr.get() is None
 
     def testAttributeSyncFrom(self, simpleAttribute):
-        """Test attribute syncFrom with matching and mismatching templates."""
+        """Test attribute syncWith with matching and mismatching templates."""
         # 1. Template mismatch
         other = Attribute()
         other.setTemplate("int")
-        assert simpleAttribute.syncFrom(other) is False
+        assert simpleAttribute.syncWith(other) is False
         
         # 2. Template match - Verify data sync and preservation
         source = simpleAttribute.copy()
@@ -232,7 +232,7 @@ class TestAttribute:
         m = Module()
         m.addAttribute(target)
         
-        success = target.syncFrom(source)
+        success = target.syncWith(source)
         assert success is True
         
         # Should sync
@@ -564,7 +564,7 @@ class TestModule:
         target.addChild(targetChild)
         
         # Sync
-        target.syncFrom(source)
+        target.syncWith(source)
         
         # Verify core properties synced
         assert target.uid() == "source_uid"
@@ -586,10 +586,10 @@ class TestModule:
         # Setup source module in a file (fake by mocking or just creating a temp file)
         # For this logic test, we can just ensure sync() preserves muted()
         
-        # Mocking syncFrom or just testing the final state
+        # Mocking syncWith or just testing the final state
         # sync() internal: 
         # 1. Load ref
-        # 2. syncFrom(ref)
+        # 2. syncWith(ref)
         # We want to verify that even if ref is unmuted, if target was muted, it stays muted.
         
         # 3. Perform sync

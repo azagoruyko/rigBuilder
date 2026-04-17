@@ -394,8 +394,8 @@ class Attribute(object):
         legacy_convertLineEditTemplate(attr)
         return attr
 
-    def syncFrom(self, other: 'Attribute') -> bool:
-        """Sync attribute data from another attribute. Returns False if template doesn't match."""
+    def syncWith(self, other: 'Attribute') -> bool:
+        """Sync attribute data with another attribute. Returns False if template doesn't match."""
         if self._template != other._template:
             return False
 
@@ -745,19 +745,19 @@ class Module(object):
         self._uid = ""
 
     def sync(self):
-        """Sync module from reference file."""
+        """Sync module with the reference file."""
         refPath = self.referenceFile()
         if refPath:
             refModule = Module.loadFromFile(refPath)
             muted = self._muted
-            self.syncFrom(refModule)
+            self.syncWith(refModule)
             self._muted = muted
 
         for ch in self._children:
             ch.sync()
 
-    def syncFrom(self, other: 'Module') -> bool:
-        """Sync module structure and data from another module. Returns True on success."""
+    def syncWith(self, other: 'Module') -> bool:
+        """Sync module structure and data with another module. Returns True on success."""
         self._uid = other._uid
         self._runCode = other._runCode
         self._doc = other._doc
@@ -769,7 +769,7 @@ class Module(object):
         
         for refAttr in other._attributes:
             localAttr = oldAttrs.get(refAttr._name)
-            if localAttr and localAttr.syncFrom(refAttr):
+            if localAttr and localAttr.syncWith(refAttr):
                 self.addAttribute(localAttr)
             else:
                 self.addAttribute(refAttr.copy())
@@ -780,7 +780,7 @@ class Module(object):
 
         for refCh in other._children:
             localCh = oldChildren.get(refCh._name)
-            if localCh and localCh.syncFrom(refCh):
+            if localCh and localCh.syncWith(refCh):
                 self.addChild(localCh)
             else:
                 self.addChild(refCh.copy())
