@@ -73,7 +73,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     moduleCopy = module.copy()
     moduleCopy.saveToFile(historyFile)
 
-    message = "{}: {}".format(moduleCopy.name(), commitMessage.strip() or "sync")
+    message = "{}: {}".format(moduleCopy.name(), commitMessage.strip() or "update")
 
     err, _ = repo.commit(message, [historyFile])
     return not err
