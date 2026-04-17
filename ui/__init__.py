@@ -1982,6 +1982,12 @@ class LogWidget(QTextEdit):
         self.setPlaceholderText("Output and errors or warnings...")
         self.setReadOnly(True)
 
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        menu = self.createStandardContextMenu()
+        menu.addSeparator()
+        menu.addAction("Clear log", self.clear)
+        menu.popup(event.globalPos())
+
     def write(self, txt: str):
         self.moveCursor(QTextCursor.End)
         self.insertPlainText(txt)
