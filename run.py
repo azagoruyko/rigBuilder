@@ -6,9 +6,6 @@ import sys
 directory = os.path.dirname(__file__)
 sys.path.append(os.path.dirname(directory))
 
-from rigBuilder.logger import setupStreamRedirection
-setupStreamRedirection()
-
 from rigBuilder.qt import QApplication, QColor, QPalette, QSharedMemory, QMessageBox
 
 def updatePalette(app: QApplication):
@@ -19,20 +16,23 @@ def updatePalette(app: QApplication):
     app.setPalette(palette)
 
 if __name__ == "__main__":
-    app = QApplication([])    
-
+    app = QApplication([])
+    
     # Prevent multiple instances
     sharedMemory = QSharedMemory("RigBuilder_Unique_Lock")
     if not sharedMemory.create(1):
         QMessageBox.warning(None, "RigBuilder", "RigBuilder is already running.\n\nOnly one instance is allowed at a time.")
         sys.exit(0)
 
+    from rigBuilder.logger import setupStreamRedirection
     from rigBuilder.ui import mainWindow
     from rigBuilder.ui.utils import applyStylesheet
 
     applyStylesheet(app)
     updatePalette(app)
 
-    mainWindow.show()   
+    mainWindow.show()
+
+    setupStreamRedirection()
 
     app.exec()
