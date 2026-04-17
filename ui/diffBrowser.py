@@ -125,6 +125,10 @@ class DiffHighlighter(QSyntaxHighlighter):
         """Calculate character-level diffs and store in block metadata."""
         matcher = difflib.SequenceMatcher(None, oldText, newText)
 
+        # If lines are too different, don't show intra-line highlights (GitHub-style behavior)
+        if matcher.ratio() < 0.5:
+            return
+
         m_spans = []
         p_spans = []
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
