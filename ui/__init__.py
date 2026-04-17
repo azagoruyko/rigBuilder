@@ -31,7 +31,7 @@ from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
 from .workspaceManager import WorkspaceWidget
-from .logger import logger, logHandler
+from ..logger import logger, logHandler
 
 
 class AttributesWidget(QWidget):
@@ -2930,6 +2930,7 @@ def cleanupVscode():
             os.remove(os.path.join(vscodeFolder, f))
 
 cleanupVscode()
+
 
 # global references
 mainWindow = RigBuilderWindow()

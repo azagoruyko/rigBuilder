@@ -5,7 +5,7 @@ from typing import List
 from ..core import Module
 from ..qt import *
 from .utils import centerWindow
-from .logger import logger
+from ..logger import logger
 from .. import ai
 from ..ai import engine
 

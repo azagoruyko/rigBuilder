@@ -14,7 +14,7 @@ from ..qt import *
 from ..core import Module, MODULE_EXTS, UidManager
 from .. import settings as settings_module
 from ..settings import settings
-from .logger import logger
+from ..logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
 from ..utils import clamp

@@ -6,7 +6,7 @@ from ..qt import *
 from .. import ai
 from ..ai import engine
 from ..core import Module
-from .logger import logger
+from ..logger import logger
 
 
 activeWorkers = []
