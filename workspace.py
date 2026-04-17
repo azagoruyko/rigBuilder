@@ -127,6 +127,13 @@ class Workspace:
 
         workspace.settings.load(os.path.join(folderPath, "settings.json"))
 
+        # Fix empty paths
+        if not os.path.exists(workspace.settings.historyPath):
+            workspace.settings.historyPath = os.path.join(folderPath, "history")
+
+        if not os.path.exists(workspace.settings.modulesPath):
+            workspace.settings.modulesPath = os.path.join(folderPath, "modules")
+
         return workspace
 
     @classmethod
