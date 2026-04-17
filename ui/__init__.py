@@ -894,9 +894,9 @@ class ModuleModel(QAbstractItemModel):
         
     def isInsideReferenceModule(self, module: Module) -> bool:
         """Recursive helper to find the reference counterpart (source definition) of a module."""
-        uid = module.uid()
-        if uid:
-            return self.moduleTracker.getModule(uid) is not None
+        refFile = module.referenceFile()
+        if refFile:
+            return True
 
         parent = module.parent()
         return self.isInsideReferenceModule(parent) if parent else False
