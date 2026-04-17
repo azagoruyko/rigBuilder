@@ -398,6 +398,9 @@ class Attribute(object):
         """Sync attribute data from another attribute. Returns False if template doesn't match."""
         if self._template != other._template:
             return False
+
+        if "default" in other._data:
+            self._data["default"] = other._data["default"] # update default key
         
         defaultValue = self._defaultValue() # preserve default value
 
