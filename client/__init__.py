@@ -183,11 +183,20 @@ class HostClient(QObject):
                         return {"ok": False, "error": "server timeout (poll)"}
 
                 try:
-                    return json.loads(self._req.recv_string())
+                    reply = json.loads(self._req.recv_string())
+                    
+                    # Drain pending PUB signals (like prints) before returning 
+                    # to ensure correct log ordering in the UI.
+                    if isGuiThread:
+                        app.processEvents()
+                        
+                    return reply
+
                 except zmq.Again:
                     self._recreateReqSocket()
                     self._emitConnectionLostOnce("Server stopped replying (request timed out).")
                     return {"ok": False, "error": "server timeout"}
+                    
             finally:
                 self._req.setsockopt(zmq.RCVTIMEO, prev_rcvtimeo)
 

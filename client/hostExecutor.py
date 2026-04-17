@@ -3,7 +3,25 @@ from typing import Optional
 from ..qt import QObject, Signal, QApplication, Qt
 from ..core import Module
 from xml.etree import ElementTree as ET
+import functools
 
+def executionGate(func):
+    """Decorator to ensure start/stop run is called correctly."""
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        # Start Run (Latching)
+        if not self._isRunning:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            self._isRunning = True
+        
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            # Stop Run (Latching)
+            if self._isRunning:
+                QApplication.restoreOverrideCursor()
+                self._isRunning = False
+    return wrapper
 
 class HostExecutor(QObject):
     onConnectionError = Signal(str)
@@ -27,64 +45,54 @@ class HostExecutor(QObject):
         if self._boundConnection:
             try:
                 self._boundConnection.onPrint.disconnect(self._handlePrint)
-                self._boundConnection.onError.disconnect(self._handleError)
                 self._boundConnection.onRunCallback.disconnect(self._handleRunCallback)
                 self._boundConnection.beginProgress.disconnect(self._handleBeginProgress)
                 self._boundConnection.stepProgress.disconnect(self._handleStepProgress)
                 self._boundConnection.endProgress.disconnect(self._handleEndProgress)
                 self._boundConnection.onFinished.disconnect(self._handleFinished)
+                self._boundConnection.onConnectionLost.disconnect(self._handleConnectionLost)
             except (RuntimeError, TypeError):
                 pass
 
         self._boundConnection = conn
         conn.onPrint.connect(self._handlePrint)
-        conn.onError.connect(self._handleError)
         conn.onRunCallback.connect(self._handleRunCallback)
         conn.beginProgress.connect(self._handleBeginProgress)
         conn.stepProgress.connect(self._handleStepProgress)
         conn.endProgress.connect(self._handleEndProgress)
         conn.onFinished.connect(self._handleFinished)
-
-    def _startRun(self):
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        self._isRunning = True
+        conn.onConnectionLost.connect(self._handleConnectionLost)
 
     def _handlePrint(self, text: str):
-        if self._isRunning:
-            self.onPrint.emit(text)
-
-    def _handleError(self, text: str, trace: str):
-        if self._isRunning:
-            self.onError.emit(text, trace)
+        self.onPrint.emit(text)
 
     def _handleRunCallback(self, path: str):
-        if self._isRunning:
-            self.onRunCallback.emit(path)
+        self.onRunCallback.emit(path)
 
     def _handleBeginProgress(self, text: str, count: int):
-        if self._isRunning:
-            self.beginProgress.emit(text, count)
+        self.beginProgress.emit(text, count)
 
     def _handleStepProgress(self, value: int, text: str):
-        if self._isRunning:
-            self.stepProgress.emit(value, text)
+        self.stepProgress.emit(value, text)
 
     def _handleEndProgress(self):
-        if self._isRunning:
-            self.endProgress.emit()
+        self.endProgress.emit()
 
     def _handleFinished(self):
-        QApplication.restoreOverrideCursor()
-        
-        if not self._isRunning:
-            return
-
-        self._isRunning = False
+        if self._isRunning:
+            QApplication.restoreOverrideCursor()
+            self._isRunning = False
         self.onFinished.emit()
 
+    def _handleConnectionLost(self, reason: str):
+        if self._isRunning:
+            QApplication.restoreOverrideCursor()
+            self._isRunning = False
+        self.onConnectionError.emit(reason)
+
+    @executionGate
     def executeCode(self, code: str) -> dict:
         """Execute a Python snippet on the host server with JSON-serializable context."""
-
         conn = connectionManager.activeConnection()
         if not conn:
             self.onConnectionError.emit("No active connection")
@@ -93,35 +101,32 @@ class HostExecutor(QObject):
         contextKey = "global"
 
         self._ensureBoundConnection(conn)
-        self._startRun()
         reply = conn.executeCode(code, contextKey=contextKey)
 
         if reply:
             if reply.get("ok"):
                 return reply.get("context", {})
             else:
-                self._isRunning = False
                 self.onError.emit(reply.get("error", "Error executing code"), reply.get("traceback", ""))
         else:
-            self._isRunning = False
             self.onError.emit("Error executing code: empty response", "")
-            return {}
+        
+        return {}
 
+    @executionGate
     def executeModuleCode(self, module: Module, code: str) -> Optional[Module]:
         """Execute a Python snippet on the host server against a module subtree."""
-
         conn = connectionManager.activeConnection()
         if not conn:
             self.onConnectionError.emit("No active connection")
             return
 
         self._ensureBoundConnection(conn)
-        self._startRun()
+        
         moduleXml = module.toXml()
-        modulePath = "."
         contextKey = "global"
 
-        reply = conn.executeModuleCode(moduleXml, modulePath, code, contextKey=contextKey)
+        reply = conn.executeModuleCode(moduleXml, ".", code, contextKey=contextKey)
 
         if reply:
             if reply.get("ok"):
@@ -131,18 +136,14 @@ class HostExecutor(QObject):
                 except Exception as e:
                     self.onError.emit(f"Failed to sync state from server: {e}", "")
             else:
-                self._isRunning = False
                 self.onError.emit(reply.get("error", "Error executing module code"), reply.get("traceback", ""))
-
         else:
-            self._isRunning = False
             self.onError.emit("Error executing module code: empty response", "")
-            
 
+    @executionGate
     def runModule(self, module: Module) -> Optional[Module]:
         """Run module on the host server."""
         conn = connectionManager.activeConnection()
-
         if not conn:
             self.onConnectionError.emit("No active connection")
             return
@@ -150,7 +151,6 @@ class HostExecutor(QObject):
         contextKey = "global"
 
         self._ensureBoundConnection(conn)
-        self._startRun()
         moduleXml = module.toXml()
         reply = conn.runModule(moduleXml, ".", contextKey=contextKey)
 
@@ -165,9 +165,6 @@ class HostExecutor(QObject):
                 else:
                     self.onError.emit("Failed to sync state from server: empty response", "")
             else:
-                self._isRunning = False
                 self.onError.emit(reply.get("error", "Error running module"), reply.get("traceback", ""))
 
-
 hostExecutor = HostExecutor()
-
