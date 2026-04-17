@@ -1,3 +1,4 @@
+from __future__ import annotations
 import time
 import json
 import re
@@ -701,7 +702,7 @@ class ModuleModel(QAbstractItemModel):
                 return True
         return False
 
-    def _saveConnections(self, currentModule: "Module"):
+    def _saveConnections(self, currentModule: Module):
         connections = []
         for a in currentModule.attributes():
             connections.append({"attr":a, "module": currentModule, "connections":a.listConnections()})
@@ -2013,7 +2014,7 @@ class WideSplitterHandle(QSplitterHandle):
                 painter.end()
 
 class WideSplitter(QSplitter):
-    def __init__(self, orientation: Qt.Orientation, width: int = 16, **kwargs):
+    def __init__(self, orientation: Qt.Orientation, width: int = 4, **kwargs):
         super().__init__(orientation, **kwargs)
         self.setHandleWidth(width)
 
@@ -2324,7 +2325,7 @@ class RigBuilderWindow(QFrame):
         self.docBrowser = DocBrowser()
         self.docBrowser.moduleRequested.connect(self.selectModuleBySpec)
 
-        self.rightSplitter = WideSplitter(Qt.Vertical, 4)
+        self.rightSplitter = WideSplitter(Qt.Vertical)
         self.rightSplitter.addWidget(self.attributesTabWidget)
         self.rightSplitter.addWidget(self.docBrowser)
         self.rightSplitter.setSizes([400, 100])
@@ -2346,7 +2347,7 @@ class RigBuilderWindow(QFrame):
         self.moduleBrowser = ModuleBrowser()
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.syncModule)
 
-        self.leftSplitter = WideSplitter(Qt.Vertical, 8)
+        self.leftSplitter = WideSplitter(Qt.Vertical)
         self.leftSplitter.addWidget(self.treeContainer)
         self.leftSplitter.addWidget(self.moduleBrowser)
         self.leftSplitter.setSizes([300, 200])

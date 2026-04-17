@@ -1,3 +1,4 @@
+from __future__ import annotations
 from ..qt import *
 from functools import partial
 import json

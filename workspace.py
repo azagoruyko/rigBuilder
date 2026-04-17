@@ -1,3 +1,4 @@
+from __future__ import annotations
 import html
 import os
 import xml.etree.ElementTree as ET
@@ -173,7 +174,7 @@ class Workspace:
             return False
 
     @classmethod
-    def list(cls) -> List['Workspace']:
+    def list(cls) -> List[Workspace]:
         """List all available workspaces in the standard directory."""
         workspaces = []
         for d in os.listdir(RIG_BUILDER_WORKSPACES_PATH):
@@ -192,7 +193,7 @@ class Workspace:
         return os.path.exists(folderPath)
 
     @classmethod
-    def create(cls, name: str) -> Optional['Workspace']:
+    def create(cls, name: str) -> Optional[Workspace]:
         """Create a new workspace directory structure."""        
         if cls.exists(name):
             return

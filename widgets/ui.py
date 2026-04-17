@@ -1,4 +1,5 @@
 """Template widgets for Rig Builder."""
+from __future__ import annotations
 from ..qt import *
 from functools import partial
 

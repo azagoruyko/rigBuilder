@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import re
 import glob
@@ -198,7 +199,7 @@ class Attribute(object):
         self._module = None
         self._data = {}
 
-    def copy(self) -> 'Attribute':
+    def copy(self) -> Attribute:
         """Create a deep copy of the attribute."""
         attr = Attribute()
         attr._name = self._name
@@ -254,7 +255,7 @@ class Attribute(object):
         if expression != self._expression:
             self._expression = expression
     
-    def module(self) -> Optional['Module']:
+    def module(self) -> Optional[Module]:
         """Get parent module that owns this attribute."""
         return self._module
     
@@ -348,9 +349,9 @@ class Attribute(object):
             srcAttr = self._module._parent.findAttributeByPath(self._connect)
             return srcAttr
 
-    def listConnections(self) -> List['Attribute']:
+    def listConnections(self) -> List[Attribute]:
         """List all attributes that connect to this attribute."""
-        def _listConnections(currentModule: 'Module') -> List['Attribute']:
+        def _listConnections(currentModule: Module) -> List[Attribute]:
             connections = []
             for ch in currentModule._children:
                 if ch is not self._module: # not self
@@ -381,7 +382,7 @@ class Attribute(object):
         return header.format(attribs=attrsStr, data=json.dumps(data))
     
     @staticmethod
-    def fromXml(root: 'Element') -> 'Attribute':
+    def fromXml(root: Element) -> Attribute:
         """Create attribute from XML element."""
         attr = Attribute()
         attr._name = root.attrib.get("name", "")
@@ -394,7 +395,7 @@ class Attribute(object):
         legacy_convertLineEditTemplate(attr)
         return attr
 
-    def syncWith(self, other: 'Attribute') -> bool:
+    def syncWith(self, other: Attribute) -> bool:
         """Sync attribute data with another attribute. Returns False if template doesn't match."""
         if self._template != other._template:
             return False
@@ -412,7 +413,7 @@ class Attribute(object):
 
         return True        
 
-    def isSyncRequired(self, refAttr: 'Attribute') -> bool:
+    def isSyncRequired(self, refAttr: Attribute) -> bool:
         """Check if attribute sync is required compared to a reference attribute."""
         if self._name != refAttr._name:
             return True
@@ -437,7 +438,7 @@ class Attribute(object):
         return d1 != d2
 
 class AttrsWrapper(object): # attributes getter/setter
-    def __init__(self, module: 'Module'):
+    def __init__(self, module: Module):
         self._module = module
 
     def __getattr__(self, name: str) -> Attribute:
@@ -490,7 +491,7 @@ class Module(object):
 
         self.attr = AttrsWrapper(self) # attributes accessor
 
-    def copy(self) -> 'Module':
+    def copy(self) -> Module:
         """Create a deep copy of the module."""
         module = Module()
         module._name = self._name
@@ -521,7 +522,7 @@ class Module(object):
         """Get module unique identifier."""
         return self._uid
     
-    def parent(self) -> Optional['Module']:
+    def parent(self) -> Optional[Module]:
         """Get parent module in hierarchy."""
         return self._parent
     
@@ -553,7 +554,7 @@ class Module(object):
         """Set module documentation (implicitly Markdown)."""
         self._doc = doc
 
-    def root(self) -> 'Module':
+    def root(self) -> Module:
         """Get root module in hierarchy."""
         return self._parent.root() if self._parent else self
 
@@ -561,7 +562,7 @@ class Module(object):
         """Get list of child modules."""
         return list(self._children)
 
-    def child(self, nameOrIndex: Union[str, int]) -> Optional['Module']:
+    def child(self, nameOrIndex: Union[str, int]) -> Optional[Module]:
         """Get child module by name or index."""
         if type(nameOrIndex) == int:
             return self.children()[nameOrIndex]
@@ -569,7 +570,7 @@ class Module(object):
         elif type(nameOrIndex) == str:
             return self.findChild(nameOrIndex)
             
-    def insertChild(self, idx: int, child: 'Module'):
+    def insertChild(self, idx: int, child: Module):
         """Insert child module at specific index."""
         child.unparent()
         child._parent = self
@@ -580,11 +581,11 @@ class Module(object):
         if self._parent:
             self._parent.removeChild(self)
 
-    def addChild(self, child: 'Module'):
+    def addChild(self, child: Module):
         """Add child module at the end."""
         self.insertChild(len(self._children), child)
 
-    def removeChild(self, child: 'Module'):
+    def removeChild(self, child: Module):
         """Remove child module from children list."""
         child._parent = None
         self._children.remove(child)
@@ -595,7 +596,7 @@ class Module(object):
             ch._parent = None
         self._children = []
 
-    def findChild(self, name: str) -> Optional['Module']:
+    def findChild(self, name: str) -> Optional[Module]:
         """Find child module by name."""
         for ch in self._children:
             if ch._name == name:
@@ -680,7 +681,7 @@ class Module(object):
         return "\n".join(template)
 
     @staticmethod
-    def fromXml(root: 'Element') -> 'Module':
+    def fromXml(root: Element) -> Module:
         """Create module from XML element. Tolerates missing optional elements."""
         module = Module()
         module._name = root.attrib.get("name", "")
@@ -787,7 +788,7 @@ class Module(object):
 
         return True            
 
-    def isSyncRequired(self, refModule: Optional['Module'] = None) -> bool:
+    def isSyncRequired(self, refModule: Optional[Module] = None) -> bool:
         """Check if module sync is required compared to its reference file."""
         if not refModule:
             refPath = self.referenceFile()
@@ -837,7 +838,7 @@ class Module(object):
         UidManager.sync()
 
     @staticmethod
-    def loadFromFile(fileName: str) -> 'Module':
+    def loadFromFile(fileName: str) -> Module:
         """Load module from XML file."""
         with open(fileName, "r", encoding="utf-8") as f:
             m = Module.fromXml(ET.parse(f).getroot())
