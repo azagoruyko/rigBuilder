@@ -1,12 +1,13 @@
 import os
 import json
+import logging
 from ..qt import *
 from .. import settings
-
-PRESETS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "presets.json")
-
 from .utils import centerWindow
 from ..utils import loadJson, saveJson
+
+PRESETS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "presets.json")
+logger = logging.getLogger('rigBuilder')
 
 class WidgetPresetManager:
     """Manages saving, loading and removing widget presets."""
@@ -14,14 +15,22 @@ class WidgetPresetManager:
     @staticmethod
     def presets() -> dict:
         """Return all saved presets."""
-        return loadJson(PRESETS_FILE)
+        if os.path.exists(PRESETS_FILE):
+            try:
+                return loadJson(PRESETS_FILE)
+            except Exception as e:
+                logger.error(f"Failed to load presets from {PRESETS_FILE}: {e}")
+        return {}
 
     @staticmethod
     def savePreset(name: str, template: str, data: dict):
         """Save a new preset or update an existing one."""
         presets = WidgetPresetManager.presets()
         presets[name] = {"template": template, "data": data}
-        saveJson(PRESETS_FILE, presets)
+        try:
+            saveJson(PRESETS_FILE, presets)
+        except Exception as e:
+            logger.error(f"Failed to save preset '{name}': {e}")
 
     @staticmethod
     def removePreset(name: str):
@@ -29,7 +38,10 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         if name in presets:
             del presets[name]
-            saveJson(PRESETS_FILE, presets)
+            try:
+                saveJson(PRESETS_FILE, presets)
+            except Exception as e:
+                logger.error(f"Failed to remove preset '{name}': {e}")
 
     @staticmethod
     def renamePreset(oldName: str, newName: str):
@@ -37,7 +49,10 @@ class WidgetPresetManager:
         presets = WidgetPresetManager.presets()
         if oldName in presets:
             presets[newName] = presets.pop(oldName)
-            saveJson(PRESETS_FILE, presets)
+            try:
+                saveJson(PRESETS_FILE, presets)
+            except Exception as e:
+                logger.error(f"Failed to rename preset '{oldName}' to '{newName}': {e}")
 
 
 class PresetEditorDialog(QDialog):

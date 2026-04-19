@@ -1,5 +1,8 @@
 import logging
 import sys
+import os
+from logging.handlers import RotatingFileHandler
+from .settings import RIG_BUILDER_USER_PATH
 
 class LogHandler(logging.Handler):
     """Generic log handler that pipes messages to an external target."""
@@ -22,11 +25,16 @@ class LogHandler(logging.Handler):
         try:
             from rigBuilder.qt import QTimer
             self._timer = QTimer()
+            self._timer.destroyed.connect(self._onTimerDestroyed)
             self._timer.timeout.connect(self._flushPending)
             self._timer.start(100) # 100ms interval
         except (ImportError, RuntimeError):
             pass # Fallback to immediate printing if Qt is not available
         
+    def _onTimerDestroyed(self):
+        """Callback for when the underlying C++ QTimer object is deleted."""
+        self._timer = None
+
     def format(self, record: logging.LogRecord) -> str:
         """Hide level name for INFO messages."""
         if record.levelno == logging.INFO:
@@ -87,10 +95,19 @@ def setupStreamRedirection():
     sys.stdout = LoggerStream(logger, logging.INFO)
     sys.stderr = LoggerStream(logger, logging.ERROR)
 
-# Initialize the global logger for the rigBuilder package
+# Initialize the logger
 logger = logging.getLogger('rigBuilder')
 logger.setLevel(logging.DEBUG)
 
-# Create and add the global log handler
+# Create and add the UI log handler
 logHandler = LogHandler()
 logger.addHandler(logHandler)
+
+# Add file logging
+logFile = os.path.join(RIG_BUILDER_USER_PATH, "log.txt")
+os.makedirs(RIG_BUILDER_USER_PATH, exist_ok=True)
+
+fileHandler = RotatingFileHandler(logFile, maxBytes=5 * 1024 * 1024, backupCount=2, encoding='utf-8')
+fileHandler.setFormatter(logging.Formatter('%(asctime)s, %(levelname)s: %(message)s'))
+fileHandler.setLevel(logging.WARNING)
+logger.addHandler(fileHandler)

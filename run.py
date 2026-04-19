@@ -25,6 +25,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     from rigBuilder.logger import setupStreamRedirection
+    setupStreamRedirection()
+
     from rigBuilder.ui import mainWindow
     from rigBuilder.ui.utils import applyStylesheet
 
@@ -32,7 +34,5 @@ if __name__ == "__main__":
     updatePalette(app)
 
     mainWindow.show()
-
-    setupStreamRedirection()
 
     app.exec()

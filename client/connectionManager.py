@@ -2,6 +2,7 @@
 
 import json
 import os
+import logging
 from typing import Optional
 
 from .. import settings
@@ -10,6 +11,8 @@ from ..utils import loadJson, saveJson
 from ..server.hosts.standalone import StandaloneServer
 
 HOSTS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "hosts.json")
+
+logger = logging.getLogger('rigBuilder')
 
 class ConnectionManager:
     """Manages the list of saved host servers and the currently active connection."""
@@ -25,11 +28,20 @@ class ConnectionManager:
 
     def servers(self) -> dict:
         """Return all saved server entries as a dictionary."""
-        return loadJson(HOSTS_FILE)
+        if os.path.exists(HOSTS_FILE):
+            try:
+                return loadJson(HOSTS_FILE)
+            except Exception as e:
+                logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
+        return {}
 
     def saveServers(self, entries: dict):
         """Persist the full server dictionary."""
-        saveJson(HOSTS_FILE, entries)
+        os.makedirs(os.path.dirname(HOSTS_FILE), exist_ok=True)
+        try:
+            saveJson(HOSTS_FILE, entries)
+        except Exception as e:
+            logger.error(f"Failed to save servers to {HOSTS_FILE}: {e}")
 
     def addServer(self, name: str, host: str, address: str, rep_port: int, pub_port: int):
         """Add a new server entry. Replaces an existing entry with the same name."""

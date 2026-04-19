@@ -2775,7 +2775,7 @@ class RigBuilderWindow(QFrame):
         self.cleanupRun()
 
     def onErrorCallback(self, text: str, tb: str):
-        logger.error("\n".join([tb, "Error: {}".format(text)]))
+        print("\n".join([tb, "Error: {}".format(text)]))
         self.showLog()
         self.cleanupRun()
 
@@ -2787,7 +2787,7 @@ class RigBuilderWindow(QFrame):
         self.runBtn.setEnabled(True)  
 
     def onRunCallback(self, path: str):
-        logger.info(f"{path} is running...")
+        print(f"{path} is running...")
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
@@ -2914,12 +2914,18 @@ def setupVscode():  # path to .vscode folder
     settingsFile = os.path.join(folder, "settings.json")
 
     if os.path.exists(settingsFile):
-        settings.update(loadJson(settingsFile))
+        try:
+            settings.update(loadJson(settingsFile))
+        except Exception as e:
+            logger.error(f"Failed to load VSCode settings from {settingsFile}: {e}")
 
     context = hostExecutor.executeCode("import sys;hostSysPath=sys.path")
     settings["python.autoComplete.extraPaths"] = context.get("hostSysPath", [])
 
-    saveJson(settingsFile, settings)
+    try:
+        saveJson(settingsFile, settings)
+    except Exception as e:
+        logger.error(f"Failed to save VSCode settings to {settingsFile}: {e}")
 
 def cleanupVscode():
     vscodeFolder = RIG_BUILDER_USER_PATH+"/vscode"

@@ -8,6 +8,9 @@ import os
 from ..utils import clamp, findUniqueName, SimpleUndo, loadJson, saveJson
 from ..ui.utils import getActions, centerWindow, setActionsLocalShortcut, SearchReplaceDialog, JsonColors
 
+import logging
+logger = logging.getLogger('rigBuilder')
+
 RootDirectory = os.path.dirname(__file__)
 
 FloatType = 6  # QMetaType.Double
@@ -420,20 +423,30 @@ class JsonWidget(QTreeWidget):
             else:
                 data = self.toJsonList()
 
-            saveJson(path, data)
+            try:
+                saveJson(path, data)
+            except Exception as e:
+                logger.error(f"Failed to save JSON to {path}: {e}")
+                QMessageBox.critical(self, "Rig Builder", f"Failed to save JSON:\n{e}")
 
     def loadFromFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Load JSON", "", "JSON (*.json)")
         if path:
             self.clear()
-            d = loadJson(path)
-            self.loadFromJsonList([d])
+            try:
+                d = loadJson(path)
+                self.loadFromJsonList([d])
+            except Exception as e:
+                logger.error(f"Failed to load JSON from {path}: {e}")
 
     def importFile(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import JSON", "", "JSON (*.json)")
         if path:
-            d = loadJson(path)
-            self.loadFromJsonList([d])
+            try:
+                d = loadJson(path)
+                self.loadFromJsonList([d])
+            except Exception as e:
+                logger.error(f"Failed to import JSON from {path}: {e}")
 
     def setRootItem(self, item=None):
         if item and item.jsonType in [item.ListType, item.DictType]:
