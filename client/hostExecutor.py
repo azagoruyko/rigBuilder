@@ -6,7 +6,7 @@ from xml.etree import ElementTree as ET
 import functools
 
 def executionGate(func):
-    """Decorator to ensure start/stop run is called correctly."""
+    """Decorator to ensure cursor is always restored after execution."""
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         # Start Run (Latching)
@@ -27,7 +27,6 @@ class HostExecutor(QObject):
     onConnectionError = Signal(str)
     onPrint = Signal(str)
     onError = Signal(str, str)
-    onFinished = Signal()
     onRunCallback = Signal(str)
     beginProgress = Signal(str, int)
     stepProgress = Signal(int, str)
@@ -49,7 +48,6 @@ class HostExecutor(QObject):
                 self._boundConnection.beginProgress.disconnect(self._handleBeginProgress)
                 self._boundConnection.stepProgress.disconnect(self._handleStepProgress)
                 self._boundConnection.endProgress.disconnect(self._handleEndProgress)
-                self._boundConnection.onFinished.disconnect(self._handleFinished)
                 self._boundConnection.onConnectionLost.disconnect(self._handleConnectionLost)
             except (RuntimeError, TypeError):
                 pass
@@ -60,7 +58,6 @@ class HostExecutor(QObject):
         conn.beginProgress.connect(self._handleBeginProgress)
         conn.stepProgress.connect(self._handleStepProgress)
         conn.endProgress.connect(self._handleEndProgress)
-        conn.onFinished.connect(self._handleFinished)
         conn.onConnectionLost.connect(self._handleConnectionLost)
 
     def _handlePrint(self, text: str):
@@ -78,17 +75,10 @@ class HostExecutor(QObject):
     def _handleEndProgress(self):
         self.endProgress.emit()
 
-    def _handleFinished(self):
-        if self._isRunning:
-            QApplication.restoreOverrideCursor()
-            self._isRunning = False
-        self.onFinished.emit()
-
     def _handleConnectionLost(self, reason: str):
         if self._isRunning:
             QApplication.restoreOverrideCursor()
             self._isRunning = False
-        self.onConnectionError.emit(reason)
 
     @executionGate
     def executeCode(self, code: str) -> dict:

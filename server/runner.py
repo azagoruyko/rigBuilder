@@ -10,7 +10,7 @@ from ..utils import captureOutput, jsonifyContext, getErrorStack, executeWithRes
 # Persistent execution contexts for interactive (line-by-line) code execution.
 # Keyed by a client-supplied contextKey so variables accumulate across calls.
 _interactiveContexts = {}
-
+DEFAULT_CONTEXT_KEY = "default"
 
 class _StreamCapture(io.TextIOBase):
     """Captures stdout/stderr produced during module run or code execution
@@ -45,136 +45,78 @@ def overrideAPI(emitFn, runId):
     APIRegistry.override("endProgress", _endProgress)    
 
 
-def runModule(moduleXml: str, modulePath: str, emitFn, runId: str, contextKey: str = "") -> dict:
-    """Deserialize the sent payload module XML, find module by modulePath, run it, and return updated XML."""
-    
+def _emitError(emitFn, runId: str, msg: str, tb: str = "") -> dict:
+    """Emit error + finished events and return a failure reply dict."""
+    emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
+    return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+
+
+def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, contextKey: str, actionFn) -> dict:
+    """Parse moduleXml, find the target module, run actionFn(module, extraContext),
+    persist the resulting context, serialize the root back to XML, and return a reply dict.
+
+    *actionFn* receives (module, extraContext) and must return the updated context dict.
+    """
     overrideAPI(emitFn, runId)
-    xmlOut = moduleXml
 
     try:
-        root = Module.fromXml(ET.fromstring(moduleXml))  # payload root (sent by the client)
+        root = Module.fromXml(ET.fromstring(moduleXml))
     except Exception as e:
-        msg = str(e)
-        tb = getErrorStack()
-        emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        emitFn({"event": "finished", "id": runId})
-        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+        return _emitError(emitFn, runId, str(e), getErrorStack())
 
     module = root.findModuleByPath(modulePath)
     if not module:
-        msg = f"Module not found at path: {modulePath}"
-        tb = ""
-        emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        emitFn({"event": "finished", "id": runId})
-        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+        return _emitError(emitFn, runId, f"Module not found at path: {modulePath}")
 
-    # Retrieve or create the accumulated interactive context.
-    extraContext = _interactiveContexts.get(contextKey, {}) if contextKey else {}
-
+    extraContext = _interactiveContexts.get(contextKey or DEFAULT_CONTEXT_KEY, {})
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
-        def runCallback(m: Module):
-            emitFn({"event": "runCallback", "id": runId, "path": m.path()})
-
         try:
-            ctx = module.run(callback=runCallback, context=extraContext)
+            ctx = actionFn(module, extraContext)
         except Exception as e:
-            msg = str(e)
-            tb = getErrorStack()
-            emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            emitFn({"event": "finished", "id": runId})
-            return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+            return _emitError(emitFn, runId, str(e), getErrorStack())
 
-    # Store surviving user variables for the next interactive call.
-    if contextKey:
-        if contextKey not in _interactiveContexts:
-            _interactiveContexts[contextKey] = {}
-
-        _interactiveContexts[contextKey].update(ctx)
+    _interactiveContexts[contextKey or DEFAULT_CONTEXT_KEY] = ctx
 
     try:
         xmlOut = root.toXml()
     except Exception as e:
-        msg = "Failed to serialize root module to XML"
-        tb = getErrorStack()
-        emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        emitFn({"event": "finished", "id": runId})
-        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+        return _emitError(emitFn, runId, "Failed to serialize root module to XML", getErrorStack())
 
-    emitFn({"event": "finished", "id": runId})
     return {"ok": True, "xml": xmlOut, "id": runId}
+
+
+def runModule(moduleXml: str, modulePath: str, emitFn, runId: str, contextKey: str = "") -> dict:
+    """Deserialize the sent payload module XML, find module by modulePath, run it, and return updated XML."""
+    def _action(module, extraContext):
+        def runCallback(m: Module):
+            emitFn({"event": "runCallback", "id": runId, "path": m.path()})
+        return module.run(callback=runCallback, context=extraContext)
+
+    return _runWithModuleXml(moduleXml, modulePath, emitFn, runId, contextKey, _action)
 
 
 def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Execute Python snippet within a module found by modulePath in the sent payload XML.
-    Returns updated payload XML and (for executeCode) any JSON context exposed by the module execution.
+    Returns updated payload XML and any JSON context exposed by the module execution.
 
     When *contextKey* is non-empty the execution context is stored and reused
     across calls, allowing interactive line-by-line execution with accumulated
     variables.
     """
+    def _action(module, extraContext):
+        return module.executeCode(code, extraContext, executor=executeWithResult)
 
-    overrideAPI(emitFn, runId)
-    xmlOut = moduleXml
+    return _runWithModuleXml(moduleXml, modulePath, emitFn, runId, contextKey, _action)
 
-    try:
-        root = Module.fromXml(ET.fromstring(moduleXml))
-    except Exception as e:
-        msg = str(e)
-        tb = getErrorStack()
-        emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        emitFn({"event": "finished", "id": runId})
-        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
-
-    module = root.findModuleByPath(modulePath)
-    if not module:
-        msg = f"Module not found at path: {modulePath}"
-        tb = ""
-        emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        emitFn({"event": "finished", "id": runId})
-        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
-
-    # Retrieve or create the accumulated interactive context.
-    extraContext = _interactiveContexts.get(contextKey, {}) if contextKey else {}
-
-    capture = _StreamCapture(emitFn, runId)
-
-    with captureOutput(capture):
-        try:
-            ctx = module.executeCode(code, extraContext, executor=executeWithResult)
-        except Exception as e:
-            msg = str(e)
-            tb = getErrorStack()
-            emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            emitFn({"event": "finished", "id": runId})
-            return {"ok": False, "error": msg, "traceback": tb, "id": runId}
-
-    # Store surviving user variables for the next interactive call.
-    if contextKey:
-        if contextKey not in _interactiveContexts:
-            _interactiveContexts[contextKey] = {}
-
-        _interactiveContexts[contextKey].update(ctx)
-
-    try:
-        xmlOut = root.toXml()
-    except Exception as e:
-        msg = "Failed to serialize root module to XML"
-        tb = getErrorStack()
-        emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-        emitFn({"event": "finished", "id": runId})
-        return {"ok": False, "error": msg, "traceback": tb, "id": runId}
-
-    emitFn({"event": "finished", "id": runId})
-    return {"ok": True, "xml": xmlOut, "id": runId}
 
 
 def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Execute host-side Python code and return JSON-serializable context."""
 
     # Retrieve or create the accumulated interactive context.
-    context = _interactiveContexts.get(contextKey, {}) if contextKey else {}
+    context = _interactiveContexts.get(contextKey or DEFAULT_CONTEXT_KEY, {})
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -186,15 +128,10 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
             msg = str(e)
             tb = getErrorStack()
             emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            emitFn({"event": "finished", "id": runId})
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     # Store surviving user variables for the next interactive call.
-    if contextKey:
-        if contextKey not in _interactiveContexts:
-            _interactiveContexts[contextKey] = {}
-
-        _interactiveContexts[contextKey].update(context)
+    _interactiveContexts[contextKey or DEFAULT_CONTEXT_KEY] = context
 
     emitFn({"event": "finished", "id": runId})
     return {"ok": True, "context": jsonifyContext(context), "id": runId}

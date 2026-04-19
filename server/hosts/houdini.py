@@ -3,7 +3,7 @@
 Run once inside Houdini (e.g. from a startup script or shelf tool):
 
     from rigBuilder.server.hosts.houdini import HoudiniServer
-    HoudiniServer(rep_port=7206, pub_port=7207).start()
+    HoudiniServer(7206, 7207).start()
 """
 
 import hou

@@ -43,7 +43,7 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Failed to save servers to {HOSTS_FILE}: {e}")
 
-    def addServer(self, name: str, host: str, address: str, rep_port: int, pub_port: int):
+    def addServer(self, name: str, host: str, address: str, cmd_port: int, event_port: int):
         """Add a new server entry. Replaces an existing entry with the same name."""
         try:
             data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
@@ -53,7 +53,7 @@ class ConnectionManager:
 
         data[name] = {
             "host": host,
-            "address": address, "rep_port": rep_port, "pub_port": pub_port,
+            "address": address, "cmd_port": cmd_port, "event_port": event_port,
         }
         self.saveServers(data)
 
@@ -80,6 +80,13 @@ class ConnectionManager:
         entry = data.get(name)
         if entry:
             result = entry.copy()
+            
+            # Migration for old hosts.json formats
+            if "cmd_port" not in result and "rep_port" in result:
+                result["cmd_port"] = result.pop("rep_port")
+            if "event_port" not in result and "pub_port" in result:
+                result["event_port"] = result.pop("pub_port")
+            
             result["name"] = name
             return result
         return None
@@ -104,7 +111,7 @@ class ConnectionManager:
         if entry is None:
             raise ValueError(f"Server {name!r} not found in {HOSTS_FILE}")
 
-        conn = HostClient(entry["address"], entry["rep_port"], entry["pub_port"], parent)
+        conn = HostClient(entry["address"], entry["cmd_port"], entry["event_port"], parent)
         reply = conn.ping()
         if not reply.get("ok"):
             err = reply.get("error")
@@ -147,5 +154,5 @@ if not connectionManager.findServer("Default"):
 
 defaultServer = connectionManager.findServer("Default")
 
-defaultStandaloneServer = StandaloneServer(defaultServer["rep_port"], defaultServer["pub_port"])
+defaultStandaloneServer = StandaloneServer(defaultServer["cmd_port"], defaultServer["event_port"])
 defaultStandaloneServer.start()

@@ -4,6 +4,7 @@ import uuid
 import threading
 import time
 import zmq
+import traceback
 
 from ..qt import QObject, Signal, QApplication, QThread, QTimer
 
@@ -17,13 +18,15 @@ class HostClient(QObject):
     """ZeroMQ client that connects to a single host server.
 
     Uses two sockets:
-        REQ  — sends commands (ping, runModule, executeModuleCode, executeCode), receives replies.
-        SUB  — receives asynchronous event stream (print, error, progress, …).
+        PUSH — sends commands fire-and-forget (no state machine, no lock during wait).
+        SUB  — receives asynchronous event stream including command replies.
+
+    Each _send() registers a threading.Event keyed by runId.
+    The SUB listener sets it when a matching {"event": "reply", "id": runId} arrives.
     """
 
     onAnyEvent = Signal(dict)
     onRunCallback = Signal(str)
-    onFinished = Signal()
     onPrint = Signal(str)
     onError = Signal(str, str)
     onConnectionLost = Signal(str)
@@ -32,21 +35,23 @@ class HostClient(QObject):
     stepProgress = Signal(int, str)
     endProgress = Signal()
 
-    def __init__(self, address: str, rep_port: int, pub_port: int, parent=None):
+    def __init__(self, address: str, cmd_port: int, event_port: int, parent=None):
         super().__init__(parent)
-        self._address = address
-        self._rep_port = rep_port
-        self._pub_port = pub_port
         self._ctx = zmq.Context.instance()
 
-        self._req = self._ctx.socket(zmq.REQ)
+        self._push = self._ctx.socket(zmq.PUSH)
         self._sub = self._ctx.socket(zmq.SUB)
-        self._req.setsockopt(zmq.RCVTIMEO, 1000)   # 1 s receive timeout
-        self._req.connect(f"tcp://{address}:{rep_port}")
-        self._sub.connect(f"tcp://{address}:{pub_port}")
+        self._push.connect(f"tcp://{address}:{cmd_port}")
+        self._sub.connect(f"tcp://{address}:{event_port}")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "")   # subscribe to all
 
-        self._lock = threading.Lock()   # serialise REQ sends
+        # ZMQ subscriptions are asynchronous: give the SUB a moment to propagate
+        # to the PUB before anyone sends a command whose reply travels via PUB/SUB.
+        time.sleep(0.1)
+
+        self._lock = threading.Lock()          # serialise PUSH sends
+        self._replyLock = threading.Lock()     # protect _pendingReplies
+        self._pendingReplies = {}              # runId -> (threading.Event, dict)
         self._subActivityLock = threading.Lock()
         self._connLostLock = threading.Lock()
         self._lastSubActivityMonotonic = time.monotonic()
@@ -57,20 +62,19 @@ class HostClient(QObject):
         self._listener_thread = threading.Thread(target=self._listen, daemon=True)
         self._listener_thread.start()
 
-        self._staleCheckTimer = QTimer(self)
-        self._staleCheckTimer.setInterval(1000)
-        self._staleCheckTimer.timeout.connect(self._checkSubStale)
-        self._staleCheckTimer.start()
-
     def stop(self):
         """Stop the listener thread and close the sockets."""
         self._stopping = True
         self._running = False
-        self._staleCheckTimer.stop()
+
+        # Wake any blocked _send() waiters so they don't hang.
+        with self._replyLock:
+            for event_obj, _ in self._pendingReplies.values():
+                event_obj.set()
 
         try:
-            self._req.close(linger=0)
-            self._sub.close(linger=0)
+            with self._lock:
+                self._push.close(linger=0)
         except Exception:
             pass
 
@@ -78,170 +82,131 @@ class HostClient(QObject):
         with self._subActivityLock:
             self._lastSubActivityMonotonic = time.monotonic()
 
-    def _checkSubStale(self):
-        with self._subActivityLock:
-            idle = time.monotonic() - self._lastSubActivityMonotonic
-        if idle >= SUB_STALE_TIMEOUT_SEC:
-            self._emitConnectionLostOnce(
-                "No messages from host for too long; the host may have stopped or the network failed.",
-            )
-
     def _emitConnectionLostOnce(self, reason: str):
         with self._connLostLock:
             if self._stopping or self._connectionLostEmitted:
                 return
             self._connectionLostEmitted = True
 
-        if QThread.currentThread() is self.thread():
-            self._deliverConnectionLost(reason)
-
-        else:
-            QTimer.singleShot(0, self, lambda r=reason: self._deliverConnectionLost(r))
-
-    def _deliverConnectionLost(self, reason: str):
-        self._staleCheckTimer.stop()
-        if self._stopping:
-            return
-
         self.onConnectionLost.emit(reason)
 
-    def _recreateReqSocket(self):
-        """Recreate the REQ socket to reset the state machine after a timeout."""
-        try:
-            self._req.close(linger=0)
-        except Exception:
-            pass
-
-        self._req = self._ctx.socket(zmq.REQ)
-        self._req.setsockopt(zmq.RCVTIMEO, 1000)
-        self._req.connect(f"tcp://{self._address}:{self._rep_port}")
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def ping(self) -> dict:
-        """Ping the server. Returns {"ok": True, "host": "…", "version": "…"}."""
+        """Ping the server. Returns {"ok": True, "host": "…"}."""
         return self._send({"cmd": "ping"}, timeout_seconds=1.0)
 
     def runModule(self, moduleXml: str, modulePath: str, contextKey: str = "") -> dict:
-        """Run module XML on the host within the context of moduleXml; blocks until finished."""
-        runId = uuid.uuid4().hex
-        return self._send(
-            {"cmd": "runModule", "xml": moduleXml, "path": modulePath, "id": runId, "contextKey": contextKey},
-            timeout_seconds=DEFAULT_RUN_TIMEOUT,
-        )
+        """Run module XML on the host; blocks until the server finishes."""
+        return self._send({"cmd": "runModule", "xml": moduleXml, "path": modulePath, "contextKey": contextKey})
 
     def executeModuleCode(self, moduleXml: str, modulePath: str, code: str, contextKey: str = "") -> dict:
-        """Execute a Python snippet against a module found by path in the moduleXml tree on the host.
-        When *contextKey* is non-empty the server will accumulate execution
-        context across calls, enabling interactive line-by-line execution.
+        """Execute a Python snippet against a module in the moduleXml tree on the host.
+        When *contextKey* is non-empty the server accumulates execution context across calls.
         """
-        runId = uuid.uuid4().hex
-        msg = {"cmd": "executeModuleCode", "xml": moduleXml, "path": modulePath, "code": code, "id": runId, "contextKey": contextKey}
-        return self._send(msg)
+        return self._send({"cmd": "executeModuleCode", "xml": moduleXml, "path": modulePath, "code": code, "contextKey": contextKey})
 
     def executeCode(self, code: str, contextKey: str = "") -> dict:
         """Execute host-side Python code and return JSON-serializable context."""
-        runId = uuid.uuid4().hex
-        return self._send({"cmd": "executeCode", "code": code, "id": runId, "contextKey": contextKey}, timeout_seconds=DEFAULT_RUN_TIMEOUT)
+        return self._send({"cmd": "executeCode", "code": code, "contextKey": contextKey})
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    def _send(self, msg: dict, timeout_seconds: float = 5.0) -> dict:
+    def _send(self, msg: dict, timeout_seconds: float = DEFAULT_RUN_TIMEOUT) -> dict:
+        """Push *msg* to the server and block until a matching reply arrives on the SUB socket.
+
+        The lock is held only for the brief PUSH send, never during the wait,
+        so processEvents() cannot cause a deadlock even when called from the GUI thread.
+        """
+        runId = uuid.uuid4().hex
+        msg = {**msg, "id": runId}
+
+        event_obj = threading.Event()
+        result = {}
+
+        with self._replyLock:
+            self._pendingReplies[runId] = (event_obj, result)
+
+        # Send — hold the lock only for the push itself.
         with self._lock:
-            if self._stopping or self._req.closed:
+            if self._stopping or self._push.closed:
+                with self._replyLock:
+                    self._pendingReplies.pop(runId, None)
                 return {"ok": False, "error": "connection stopping"}
-
             try:
-                prev_rcvtimeo = self._req.getsockopt(zmq.RCVTIMEO)
+                self._push.send_string(json.dumps(msg))
             except zmq.ZMQError:
-                return {"ok": False, "error": "socket closed or invalid"}
+                with self._replyLock:
+                    self._pendingReplies.pop(runId, None)
+                return {"ok": False, "error": "socket error during send"}
 
-            try:
-                self._req.setsockopt(zmq.RCVTIMEO, int(timeout_seconds * 1000))
-                self._req.send_string(json.dumps(msg))
-                # If we are in the main thread (where QApplication lives),
-                # we should poll and process events to keep the UI alive.
-                # This allows progress/log signals from the SUB thread to be processed.
+        # Wait for the SUB listener to deliver the reply.
+        app = QApplication.instance()
+        isGuiThread = app and app.thread() == QThread.currentThread()
 
-                app = QApplication.instance()
-                isGuiThread = app and app.thread() == QThread.currentThread()
-
-                if isGuiThread:
-                    deadline = time.time() + timeout_seconds
-                    while True:
-                        if self._stopping or self._req.closed:
-                            return {"ok": False, "error": "connection closed"}
-
-                        try:
-                            if self._req.poll(timeout=100):
-                                break
-                        except zmq.ZMQError:
-                            return {"ok": False, "error": "socket error during poll"}
-
-                        if time.time() > deadline:
-                            self._recreateReqSocket()
-                            self._emitConnectionLostOnce("Server stopped replying (request timed out).")
-                            return {"ok": False, "error": "server timeout (poll)"}
-
-                        app.processEvents()
-
-                else:
-                    try:
-                        if not self._req.poll(timeout=int(timeout_seconds * 1000)):
-                            self._recreateReqSocket()
-                            self._emitConnectionLostOnce("Server stopped replying (request timed out).")
-                            return {"ok": False, "error": "server timeout (poll)"}
-                    except zmq.ZMQError:
-                        return {"ok": False, "error": "socket error during poll"}
-
-                try:
-                    if self._stopping or self._req.closed:
-                        return {"ok": False, "error": "connection closed before recv"}
-
-                    reply = json.loads(self._req.recv_string())
-                    
-                    # Drain pending PUB signals (like prints) before returning 
-                    # to ensure correct log ordering in the UI.
-                    if isGuiThread:
-                        app.processEvents()
-                        
-                    return reply
-
-                except zmq.Again:
-                    self._recreateReqSocket()
+        if isGuiThread:
+            deadline = time.time() + timeout_seconds
+            while not event_obj.is_set():
+                if self._stopping:
+                    break
+                if time.time() > deadline:
+                    with self._replyLock:
+                        self._pendingReplies.pop(runId, None)
                     self._emitConnectionLostOnce("Server stopped replying (request timed out).")
                     return {"ok": False, "error": "server timeout"}
-                except zmq.ZMQError:
-                    return {"ok": False, "error": "socket error during recv"}
-                    
-            finally:
-                if not self._req.closed:
-                    try:
-                        self._req.setsockopt(zmq.RCVTIMEO, prev_rcvtimeo)
-                    except zmq.ZMQError:
-                        pass
+                event_obj.wait(timeout=0.05)   # 50 ms poll; gives Qt time to process signals
+                app.processEvents()
+        else:
+            event_obj.wait(timeout=timeout_seconds)
+
+        with self._replyLock:
+            self._pendingReplies.pop(runId, None)
+
+        if not result:
+            if not self._stopping:
+                self._emitConnectionLostOnce("Server stopped replying (request timed out).")
+            return {"ok": False, "error": "server timeout"}
+
+        return result.get("reply", {"ok": False, "error": "empty reply"})
 
     def _listen(self):
         """Persistent daemon thread that forwards ALL PUB events as Qt signals."""
-        while self._running:
+        try:
+            while self._running:
+                try:
+                    if self._sub.poll(timeout=200):    # ms
+                        try:
+                            ev = json.loads(self._sub.recv_string())
+                            self._touchSubActivity()
+                            self._dispatchSignal(ev)
+                        except Exception as e:
+                            self.onError.emit(f"Error processing PUB event: {e}", traceback.format_exc())
+                            continue
+                    else:
+                        with self._subActivityLock:
+                            idle = time.monotonic() - self._lastSubActivityMonotonic
+                        if idle >= SUB_STALE_TIMEOUT_SEC:
+                            self._emitConnectionLostOnce(
+                                "No messages from host for too long; the host may have stopped or the network failed."
+                            )
+                            continue
+                except zmq.ZMQError:
+                    if self._running:
+                        self._emitConnectionLostOnce("PUB connection error (host closed or network lost).")
+                    break
+                except Exception as e: # Catch any other exceptions that might occur during poll or processing
+                    self.onError.emit(f"Unexpected error in client SUB listener: {e}", traceback.format_exc())
+                    continue
+        finally:
             try:
-                if self._sub.poll(timeout=200):    # ms
-                    try:
-                        ev = json.loads(self._sub.recv_string())
-                        self._touchSubActivity()
-                        self._dispatchSignal(ev)
-                    except Exception:
-                        continue
-            except zmq.ZMQError:
-                if self._running:
-                    self._emitConnectionLostOnce("PUB connection error (host closed or network lost).")
-                break
-            except Exception: # Catch any other exceptions that might occur during poll or processing
-                continue
+                self._sub.close(linger=0)
+            except Exception:
+                pass
 
     def _dispatchSignal(self, ev: dict):
         """Emit the appropriate Qt signal for the incoming event."""
@@ -258,9 +223,6 @@ class HostClient(QObject):
         elif event == "error":
             self.onError.emit(ev.get("text", ""), ev.get("traceback", ""))
 
-        elif event == "finished":
-            self.onFinished.emit()
-
         elif event == "beginProgress":
             self.beginProgress.emit(ev.get("text", ""), ev.get("count", 0))
 
@@ -269,6 +231,16 @@ class HostClient(QObject):
 
         elif event == "endProgress":
             self.endProgress.emit()
+
+        elif event == "reply":
+            runId = ev.get("id")
+            if runId:
+                with self._replyLock:
+                    entry = self._pendingReplies.get(runId)
+                if entry:
+                    event_obj, result = entry
+                    result["reply"] = ev
+                    event_obj.set()
 
         elif event == "heartbeat":
             pass

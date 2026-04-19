@@ -2105,15 +2105,15 @@ class ManageHostsDialog(QDialog):
         self.nameEdit = QLineEdit(); self.nameEdit.setPlaceholderText("Name (e.g. Maya 2025)")
         self.hostCombo = QComboBox()
         self.addressEdit = QLineEdit("localhost")
-        self.repPortEdit = QLineEdit(); self.repPortEdit.setPlaceholderText("REP port")
-        self.pubPortEdit = QLineEdit(); self.pubPortEdit.setPlaceholderText("PUB port")
+        self.cmdPortEdit = QLineEdit(); self.cmdPortEdit.setPlaceholderText("CMD port")
+        self.eventPortEdit = QLineEdit(); self.eventPortEdit.setPlaceholderText("EVENT port")
 
         # Populate host types using server/hosts utility
         self.hostCombo.addItems(AVAILABLE_HOSTS)
         
         for row, (label, widget) in enumerate([
             ("Name", self.nameEdit), ("Host", self.hostCombo), ("Address", self.addressEdit),
-            ("REP port", self.repPortEdit), ("PUB port", self.pubPortEdit)]):
+            ("CMD port", self.cmdPortEdit), ("EVENT port", self.eventPortEdit)]):
             formLayout.addWidget(QLabel(label), row, 0)
             formLayout.addWidget(widget, row, 1)
         layout.addLayout(formLayout)
@@ -2137,8 +2137,8 @@ class ManageHostsDialog(QDialog):
         self.listWidget.itemDoubleClicked.connect(self._onItemDoubleClicked)
         self.hostCombo.currentIndexChanged.connect(self._refreshCode)
         self.addressEdit.textChanged.connect(self._refreshCode)
-        self.repPortEdit.textChanged.connect(self._refreshCode)
-        self.pubPortEdit.textChanged.connect(self._refreshCode)
+        self.cmdPortEdit.textChanged.connect(self._refreshCode)
+        self.eventPortEdit.textChanged.connect(self._refreshCode)
 
         self._refreshList()
 
@@ -2152,8 +2152,8 @@ class ManageHostsDialog(QDialog):
             self.hostCombo.setCurrentIndex(idx)
 
             self.addressEdit.setText(entry["address"])
-            self.repPortEdit.setText(str(entry["rep_port"]))
-            self.pubPortEdit.setText(str(entry["pub_port"]))
+            self.cmdPortEdit.setText(str(entry.get("cmd_port", "")))
+            self.eventPortEdit.setText(str(entry.get("event_port", "")))
             self._refreshCode()
 
     def _onSelectionChanged(self):
@@ -2168,16 +2168,16 @@ class ManageHostsDialog(QDialog):
             return
 
         HostClass = host.capitalize() + "Server"
-        rep = self.repPortEdit.text() or "0"
-        pub = self.pubPortEdit.text() or "0"
+        cmd = self.cmdPortEdit.text() or "0"
+        event = self.eventPortEdit.text() or "0"
 
         try:
             code = HOST_STARTUP_TEMPLATE.format(
                 HostClass=HostClass,
                 host=host,
                 RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
-                rep_port=rep,
-                pub_port=pub
+                cmd_port=cmd,
+                event_port=event
             )
             self.codeEdit.setPlainText(code)
         except Exception as e:
@@ -2195,7 +2195,7 @@ class ManageHostsDialog(QDialog):
             entry = servers[name]
             label = "{} | {} | {}:{}/{}".format(
                 name, entry["host"],
-                entry["address"], entry["rep_port"], entry["pub_port"])
+                entry["address"], entry.get("cmd_port", "0"), entry.get("event_port", "0"))
             
             item = QListWidgetItem(f"🖥️ {label}")
             item.setData(Qt.UserRole, name)
@@ -2206,11 +2206,11 @@ class ManageHostsDialog(QDialog):
             connectionManager.addServer(
                 self.nameEdit.text().strip(), self.hostCombo.currentText().strip(),
                 self.addressEdit.text().strip(),
-                int(self.repPortEdit.text() or "0"), int(self.pubPortEdit.text() or "0"))
+                int(self.cmdPortEdit.text() or "0"), int(self.eventPortEdit.text() or "0"))
 
             self.hostsChanged.emit()
             self._refreshList()
-            self.nameEdit.clear(); self.repPortEdit.clear(); self.pubPortEdit.clear()
+            self.nameEdit.clear(); self.cmdPortEdit.clear(); self.eventPortEdit.clear()
 
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
@@ -2789,8 +2789,7 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
-    def onFinishedCallback(self):
-        pass
+
 
     def runModule(self):
         """Run module on the host server."""
@@ -2946,7 +2945,6 @@ hostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
 hostExecutor.onPrint.connect(mainWindow.onPrintCallback)
 hostExecutor.onError.connect(mainWindow.onErrorCallback)
 hostExecutor.onRunCallback.connect(mainWindow.onRunCallback)
-hostExecutor.onFinished.connect(mainWindow.onFinishedCallback)
 hostExecutor.beginProgress.connect(mainWindow.progressBarWidget.beginProgress)
 hostExecutor.stepProgress.connect(mainWindow.progressBarWidget.stepProgress)
 hostExecutor.endProgress.connect(mainWindow.progressBarWidget.endProgress)

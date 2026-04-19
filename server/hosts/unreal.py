@@ -3,7 +3,7 @@
 Run inside Unreal (e.g. from Python Script Editor):
 
     from rigBuilder.server.hosts.unreal import UnrealServer
-    UnrealServer(rep_port=7208, pub_port=7209).start()
+    UnrealServer(7208, 7209).start()
 """
 
 import queue
@@ -17,8 +17,8 @@ from rigBuilder.server.hosts import HostServer
 class UnrealServer(HostServer):
     """Dispatches execution to Unreal's main thread via a persistent Slate post-tick callback and a task queue."""
 
-    def __init__(self, rep_port: int, pub_port: int):
-        super().__init__(rep_port, pub_port)
+    def __init__(self, cmd_port: int, event_port: int):
+        super().__init__(cmd_port, event_port)
         self._queue = queue.Queue()
         self._tick_handle = None
 
