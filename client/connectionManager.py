@@ -45,7 +45,11 @@ class ConnectionManager:
 
     def addServer(self, name: str, host: str, address: str, rep_port: int, pub_port: int):
         """Add a new server entry. Replaces an existing entry with the same name."""
-        data = loadJson(HOSTS_FILE)
+        try:
+            data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
+        except Exception as e:
+            logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
+            data = {}
 
         data[name] = {
             "host": host,
@@ -55,16 +59,24 @@ class ConnectionManager:
 
     def removeServer(self, name: str):
         """Remove a server entry by name."""
-        data = loadJson(HOSTS_FILE)
-        
+        try:
+            data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
+        except Exception as e:
+            logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
+            return
+
         if name in data:
             del data[name]
             self.saveServers(data)
 
     def findServer(self, name: str) -> dict | None:
         """Return a server entry dict by name, or None if not found."""
-        data = loadJson(HOSTS_FILE)
-        
+        try:
+            data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
+        except Exception as e:
+            logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
+            return None
+
         entry = data.get(name)
         if entry:
             result = entry.copy()
@@ -130,10 +142,10 @@ connectionManager = ConnectionManager()
 
 # Make default standalone server
 
-defaultServer = connectionManager.findServer("Default")
-if not defaultServer:
+if not connectionManager.findServer("Default"):
     connectionManager.addServer("Default", "standalone", "127.0.0.1", 7000, 7001)
-    defaultServer = connectionManager.findServer("Default")
+
+defaultServer = connectionManager.findServer("Default")
 
 defaultStandaloneServer = StandaloneServer(defaultServer["rep_port"], defaultServer["pub_port"])
 defaultStandaloneServer.start()
