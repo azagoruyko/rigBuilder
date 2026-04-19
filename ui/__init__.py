@@ -1,5 +1,4 @@
 from __future__ import annotations
-import time
 import json
 import re
 import os
@@ -2787,7 +2786,7 @@ class RigBuilderWindow(QFrame):
         self.runBtn.setEnabled(True)  
 
     def onRunCallback(self, path: str):
-        print(f"{path} is running...")
+        logger.info(f"{path} is running...")
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
@@ -2821,8 +2820,7 @@ class RigBuilderWindow(QFrame):
         self._progressCounter = 0
 
         self.aboutToRunModule.emit()
-        ts = time.strftime("%Y-%m-%d %H:%M:%S")
-        logger.info(f"[{ts}] Running on {connectionManager.activeServerName()}")
+        logger.info(f"Running on {connectionManager.activeServerName()}")
 
         newModule = hostExecutor.runModule(currentModule)
 
@@ -2835,6 +2833,8 @@ class RigBuilderWindow(QFrame):
                 QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
         
         self.cleanupRun()
+
+        logger.info("Running done.")
 
     def showModuleInHistory(self):
         """Put selected module UID into history browser filter and clear selection so user can view history."""
