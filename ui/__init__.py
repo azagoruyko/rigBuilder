@@ -2834,7 +2834,7 @@ class RigBuilderWindow(QFrame):
         
         self.cleanupRun()
 
-        logger.info("Running done.")
+        logger.info("Running done.\n")
 
     def showModuleInHistory(self):
         """Put selected module UID into history browser filter and clear selection so user can view history."""
