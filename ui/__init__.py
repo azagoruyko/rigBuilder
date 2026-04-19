@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import time
 import re
 import os
 import subprocess
@@ -2230,8 +2231,6 @@ class ManageHostsDialog(QDialog):
 
 
 class RigBuilderWindow(QFrame):
-    aboutToRunModule = Signal()
-
     def __init__(self):
         super().__init__()
 
@@ -2819,8 +2818,8 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.beginProgress(currentModule.path(), count + 1)
         self._progressCounter = 0
 
-        self.aboutToRunModule.emit()
-        logger.info(f"Running on {connectionManager.activeServerName()}")
+        ts = time.strftime("%H:%M:%S")
+        logger.info(f"Running on {connectionManager.activeServerName()} at {ts}")
 
         newModule = hostExecutor.runModule(currentModule)
 
