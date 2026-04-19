@@ -152,7 +152,14 @@ class HostClient(QObject):
 
     def _send(self, msg: dict, timeout_seconds: float = 5.0) -> dict:
         with self._lock:
-            prev_rcvtimeo = self._req.getsockopt(zmq.RCVTIMEO)
+            if self._stopping or self._req.closed:
+                return {"ok": False, "error": "connection stopping"}
+
+            try:
+                prev_rcvtimeo = self._req.getsockopt(zmq.RCVTIMEO)
+            except zmq.ZMQError:
+                return {"ok": False, "error": "socket closed or invalid"}
+
             try:
                 self._req.setsockopt(zmq.RCVTIMEO, int(timeout_seconds * 1000))
                 self._req.send_string(json.dumps(msg))
@@ -166,8 +173,14 @@ class HostClient(QObject):
                 if isGuiThread:
                     deadline = time.time() + timeout_seconds
                     while True:
-                        if self._req.poll(timeout=100):
-                            break
+                        if self._stopping or self._req.closed:
+                            return {"ok": False, "error": "connection closed"}
+
+                        try:
+                            if self._req.poll(timeout=100):
+                                break
+                        except zmq.ZMQError:
+                            return {"ok": False, "error": "socket error during poll"}
 
                         if time.time() > deadline:
                             self._recreateReqSocket()
@@ -177,12 +190,18 @@ class HostClient(QObject):
                         app.processEvents()
 
                 else:
-                    if not self._req.poll(timeout=int(timeout_seconds * 1000)):
-                        self._recreateReqSocket()
-                        self._emitConnectionLostOnce("Server stopped replying (request timed out).")
-                        return {"ok": False, "error": "server timeout (poll)"}
+                    try:
+                        if not self._req.poll(timeout=int(timeout_seconds * 1000)):
+                            self._recreateReqSocket()
+                            self._emitConnectionLostOnce("Server stopped replying (request timed out).")
+                            return {"ok": False, "error": "server timeout (poll)"}
+                    except zmq.ZMQError:
+                        return {"ok": False, "error": "socket error during poll"}
 
                 try:
+                    if self._stopping or self._req.closed:
+                        return {"ok": False, "error": "connection closed before recv"}
+
                     reply = json.loads(self._req.recv_string())
                     
                     # Drain pending PUB signals (like prints) before returning 
@@ -196,9 +215,15 @@ class HostClient(QObject):
                     self._recreateReqSocket()
                     self._emitConnectionLostOnce("Server stopped replying (request timed out).")
                     return {"ok": False, "error": "server timeout"}
+                except zmq.ZMQError:
+                    return {"ok": False, "error": "socket error during recv"}
                     
             finally:
-                self._req.setsockopt(zmq.RCVTIMEO, prev_rcvtimeo)
+                if not self._req.closed:
+                    try:
+                        self._req.setsockopt(zmq.RCVTIMEO, prev_rcvtimeo)
+                    except zmq.ZMQError:
+                        pass
 
     def _listen(self):
         """Persistent daemon thread that forwards ALL PUB events as Qt signals."""
