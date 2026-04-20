@@ -2238,7 +2238,7 @@ class RigBuilderWindow(QFrame):
         self._refreshingUI = False
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
-        self.setGeometry(0, 0, 1300, 700)
+        self.setGeometry(0, 0, 1300, 900)
 
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint)
 
@@ -2364,7 +2364,7 @@ class RigBuilderWindow(QFrame):
         self.verticalSplitter.addWidget(self.mainContentSplitter)
         self.verticalSplitter.addWidget(self.codeAndApiSplitter)
         self.verticalSplitter.addWidget(self.logWidget)
-        self.verticalSplitter.setSizes([400, 0, 0])
+        self.verticalSplitter.setSizes([400, 100, 100])
 
         self.verticalSplitter.splitterMoved.connect(self._onCodeSplitterMoved)
         self.codeWidget.setEnabled(False)
