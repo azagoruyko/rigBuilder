@@ -77,3 +77,36 @@ async def chatJSON(systemPrompt: str, userPrompt: str, model: str = DEFAULT_MODE
     except Exception as e:
         print(f"Error decoding JSON from ollama response: {e}")
         return {}
+
+async def embed(text: str, model: str = 'nomic-embed-text') -> list[float]:
+    """
+    Asynchronous coroutine to get embeddings for a single text string.
+    """
+    if not OLLAMA_AVAILABLE:
+        return []
+
+    try:
+        response = await ollama.AsyncClient().embeddings(model=model, prompt=text)
+        return response.get('embedding', [])
+    except Exception as e:
+        print(f"Ollama Embed Error: {e}")
+        return []
+
+def cosineSimilarity(v1: list[float], v2: list[float]) -> float:
+    """
+    Pure-Python cosine similarity between two vectors.
+    """
+    if not v1 or not v2 or len(v1) != len(v2):
+        return 0.0
+    
+    # Calculate dot product
+    dotProduct = sum(a * b for a, b in zip(v1, v2))
+    
+    # Calculate norms
+    normA = sum(a * a for a in v1) ** 0.5
+    normB = sum(b * b for b in v2) ** 0.5
+    
+    if normA == 0 or normB == 0:
+        return 0.0
+        
+    return dotProduct / (normA * normB)
