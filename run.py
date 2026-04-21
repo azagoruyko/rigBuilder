@@ -24,8 +24,9 @@ if __name__ == "__main__":
         QMessageBox.warning(None, "RigBuilder", "RigBuilder is already running.\n\nOnly one instance is allowed at a time.")
         sys.exit(0)
 
-    from rigBuilder.logger import setupStreamRedirection
+    from rigBuilder.logger import setupStreamRedirection, setupExcepthook
     setupStreamRedirection()
+    setupExcepthook()
 
     from rigBuilder.ui import mainWindow
     from rigBuilder.ui.utils import applyStylesheet

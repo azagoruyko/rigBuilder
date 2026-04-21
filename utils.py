@@ -84,7 +84,7 @@ def captureOutput(stream: io.TextIOBase):
     with redirect_stdout(stream), redirect_stderr(stream):
         yield stream
 
-def getErrorStack():
+def getErrorStack() -> str:
     """Get formatted error stack trace, skipping internal runner frames."""
     _, _, tb = sys.exc_info()
     if not tb:
@@ -109,7 +109,7 @@ def getErrorStack():
         tb = tb.tb_next
     
     if not out:
-        return "No stack trace available"
+        return ""
         
     return "\n".join(out)
 

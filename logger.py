@@ -78,17 +78,29 @@ class LoggerStream:
             return
             
         self._buffer += message
-        if "\n" in self._buffer:
-            lines = self._buffer.split("\n")
-            for line in lines[:-1]:
-                if line.strip():
-                    self.logger.log(self.level, line.rstrip())
-            self._buffer = lines[-1]
+        # If the message ends with a newline, it's likely a complete logical unit
+        # or a series of lines. We log it all at once to get a single timestamp.
+        if "\n" in message:
+            self.flush()
 
     def flush(self):
-        if self._buffer.strip():
-            self.logger.log(self.level, self._buffer.strip())
+        if self._buffer.rstrip():
+            self.logger.log(self.level, self._buffer.rstrip())
         self._buffer = ""
+
+def customExcepthook(exc_type, exc_value, exc_traceback):
+    """Log uncaught exceptions as a single entry with a single timestamp."""
+    import traceback
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    logger.error(error_msg.rstrip())
+
+def setupExcepthook():
+    """Install the custom excepthook."""
+    sys.excepthook = customExcepthook
 
 def setupStreamRedirection():
     """Redirect sys.stdout and sys.stderr to the rigBuilder logger."""

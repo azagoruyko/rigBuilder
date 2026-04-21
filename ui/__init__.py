@@ -2770,7 +2770,7 @@ class RigBuilderWindow(QFrame):
         self.cleanupRun()
 
     def onErrorCallback(self, text: str, tb: str):
-        print("\n".join([tb, "Error: {}".format(text)]))
+        logger.error(f"{text}\n{tb}" if tb else text)
         self.showLog()
         self.cleanupRun()
 
