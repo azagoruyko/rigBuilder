@@ -73,23 +73,32 @@ class ModuleIndexer:
         """
         Walks through the modules directory and generates embeddings for new/changed files.
         """
-        if not engine.OLLAMA_AVAILABLE:
-            print("Ollama not available, skipping semantic indexing.")
-            return
-
         self.refresh() # Ensure we have the latest cache before indexing
         changed = False
         
-        # Initial model assignment or model mismatch notification
+        # Initial model assignment
         currentModel = settings.ollamaEmbeddingModel
         cachedModel = self.cache.get("model")
         
         if not cachedModel:
             self.cache["model"] = currentModel
             changed = True
-        elif cachedModel != currentModel:
-            print(f"Note: Current embedding model ({currentModel}) differs from the index ({cachedModel}).")
-            print("Please delete 'moduleIndex.json' in your workspace to force a full re-index.")
+            
+        if cachedModel and cachedModel != currentModel:
+            if not engine.OLLAMA_AVAILABLE:
+                print(f"Note: Current embedding model ({currentModel}) differs from the index ({cachedModel}).")
+                print("Re-indexing is pending until Ollama is available.")
+            else:
+                print(f"Embedding model mismatch ({cachedModel} -> {currentModel}). Forcing full re-index...")
+                self.cache["model"] = currentModel
+                self.cache["modules"] = {} # Clear old embeddings
+                changed = True
+                force = True # Force re-indexing of all files
+
+        if not engine.OLLAMA_AVAILABLE:
+            if changed:
+                self._saveCache() # Save if we just initialized the model name
+            return
 
         moduleFiles = core.Module.listModules(folder)
 
