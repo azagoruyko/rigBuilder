@@ -6,7 +6,6 @@ import shutil
 from typing import List, Protocol, Optional
 
 from .settings import (
-    settings, 
     Settings, 
     RIG_BUILDER_USER_PATH, 
     RIG_BUILDER_PATH,
@@ -167,8 +166,14 @@ class Workspace:
         # Refresh UID Manager
         UidManager.sync()
 
-        global settings
-        settings.fromDict(self.settings.toDict()) # override global settings with workspace settings
+        # Update global settings from workspace settings
+        from .settings import settings
+        settings.fromDict(self.settings.toDict())
+
+        # Update current global workspace instance
+        global currentWorkspace
+        currentWorkspace = self
+
         return True
 
     def delete(self) -> bool:
@@ -218,5 +223,5 @@ def createDefaultWorkspace():
     ws.settings.historyPath = os.path.join(ws.folderPath(), "history")
     ws.save()
 
-ws = createDefaultWorkspace() or Workspace.load("default")
-ws.activate()
+currentWorkspace = createDefaultWorkspace() or Workspace.load("default")
+currentWorkspace.activate()
