@@ -21,7 +21,7 @@ from ..settings import settings
 from ..logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
-from ..utils import clamp
+from ..utils import clamp, getRelativeTimeString
 from ..moduleIndexer import ModuleIndexer
 from ..ai import engine
 
@@ -415,8 +415,8 @@ class ModuleBrowser(QWidget):
                     dirItem = ch
 
             mtime = os.path.getmtime(f)
-            modtime = time.strftime("%Y/%m/%d %H:%M", time.localtime(mtime))
-            item = QTreeWidgetItem([name, modtime])
+            timeLabel = getRelativeTimeString(mtime)
+            item = QTreeWidgetItem([name, timeLabel])
             item.setFlags(item.flags() | Qt.ItemIsDragEnabled)
             item.filePath = os.path.abspath(f).lower()
             

@@ -256,25 +256,34 @@ class SimpleUndo:
 
             self.undoEnabled = True
 
-def categorizeFilesByModificationTime(files: List[str], *, daysAgo: int = 1, weeksAgo: int = 1) -> dict[str, List[str]]:
-    """Categorize files by modification time into time-based groups."""
+def getRelativeTimeString(mtime: float) -> str:
+    """Return a relative time string (e.g. '1 minute ago', '1 week ago') or date."""
     now = datetime.now()
-
-    daysKey = f"Less than {daysAgo} day(s) ago"
-    weeksKey = f"Less than {weeksAgo} week(s) ago"
-    categories = {daysKey: [], weeksKey: []}
-
-    for file in files:
-        mod_time = datetime.fromtimestamp(os.path.getmtime(file))
-        time_diff = now - mod_time
-
-        if daysAgo and time_diff <= timedelta(days=daysAgo):
-            categories[daysKey].append(file)
-
-        elif weeksAgo and time_diff <= timedelta(weeks=weeksAgo):
-            categories[weeksKey].append(file)
-
-    return categories
+    dt = datetime.fromtimestamp(mtime)
+    diff = now - dt
+    
+    seconds = diff.total_seconds()
+    if seconds < 0:
+        return dt.strftime("%Y/%m/%d")
+        
+    minutes = int(seconds // 60)
+    hours = int(seconds // 3600)
+    days = diff.days
+    
+    if minutes < 60:
+        if minutes < 1:
+            return "1 minute ago"
+        return "{} minute{} ago".format(minutes, "s" if minutes > 1 else "")
+        
+    if hours < 24:
+        return "{} hour{} ago".format(hours, "s" if hours > 1 else "")
+        
+    if days < 7:
+        if days < 1:
+            return "{} hour{} ago".format(hours, "s" if hours > 1 else "")
+        return "{} day{} ago".format(days, "s" if days > 1 else "")
+        
+    return dt.strftime("%Y/%m/%d")
 
 def loadJson(path: str) -> dict:
     """Read a JSON file and return its content as a dictionary."""
