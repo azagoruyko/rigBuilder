@@ -2168,20 +2168,17 @@ class ManageHostsDialog(QDialog):
             return
 
         HostClass = host.capitalize() + "Server"
-        cmd = self.cmdPortEdit.text() or "0"
-        event = self.eventPortEdit.text() or "0"
+        cmdPort = self.cmdPortEdit.text() or "0"
+        eventPort = self.eventPortEdit.text() or "0"
 
-        try:
-            code = HOST_STARTUP_TEMPLATE.format(
-                HostClass=HostClass,
-                host=host,
-                RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
-                cmd_port=cmd,
-                event_port=event
-            )
-            self.codeEdit.setPlainText(code)
-        except Exception as e:
-            self.codeEdit.setPlainText("# Error generating code: " + str(e))
+        code = HOST_STARTUP_TEMPLATE.format(
+            HostClass=HostClass,
+            host=host,
+            RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
+            cmdPort=cmdPort,
+            eventPort=eventPort
+        )
+        self.codeEdit.setPlainText(code)
 
     def _copyCode(self):
         QApplication.clipboard().setText(self.codeEdit.toPlainText())

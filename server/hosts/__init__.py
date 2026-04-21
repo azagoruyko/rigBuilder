@@ -19,7 +19,7 @@ if RIG_BUILDER_PATH not in sys.path:
     sys.path.append(RIG_BUILDER_PATH)
 
 from rigBuilder.server.hosts.{host} import {HostClass}
-rigBuilderServer = {HostClass}({cmd_port}, {event_port})
+rigBuilderServer = {HostClass}({cmdPort}, {eventPort})
 rigBuilderServer.start()"""
 
 MODULE_EXECUTION_TIMEOUT = 86400 # 24 hours
@@ -38,9 +38,9 @@ class HostServer:
                     Command replies are emitted as {"event": "reply", "id": runId, …}
     """
 
-    def __init__(self, rep_port: int, pub_port: int):
-        self._pull_port = rep_port
-        self._pub_port = pub_port
+    def __init__(self, cmdPort: int, eventPort: int):
+        self._pullPort = cmdPort
+        self._pubPort = eventPort
         self._ctx = None
         self._running = False
         self._pubQueue = queue.Queue()
@@ -57,8 +57,8 @@ class HostServer:
         self._pull.setsockopt(zmq.LINGER, 0)
         self._pub.setsockopt(zmq.LINGER, 0)
         
-        self._pull.bind(f"tcp://*:{self._pull_port}")
-        self._pub.bind(f"tcp://*:{self._pub_port}")
+        self._pull.bind(f"tcp://*:{self._pullPort}")
+        self._pub.bind(f"tcp://*:{self._pubPort}")
         self._running = True
         t = threading.Thread(target=self._loop, daemon=True, name="rigbuilder-server")
         t.start()
@@ -69,7 +69,7 @@ class HostServer:
         hb = threading.Thread(target=self._heartbeatLoop, daemon=True, name="rigbuilder-heartbeat")
         hb.start()
         
-        print(f"[rigBuilder.server] listening — PULL:{self._pull_port}  PUB:{self._pub_port}")
+        print(f"[rigBuilder.server] listening — PULL:{self._pullPort}  PUB:{self._pubPort}")
 
     def stop(self):
         """Stop the server and release ZeroMQ resources."""

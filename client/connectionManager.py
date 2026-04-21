@@ -14,13 +14,35 @@ HOSTS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "hosts.json")
 
 logger = logging.getLogger('rigBuilder')
 
+def migrateServers():
+    """Migrate servers from old format to new format."""
+    if os.path.exists(HOSTS_FILE):
+        try:
+            data = loadJson(HOSTS_FILE)
+            for entry in data.values(): # add default values for backward compatibility
+                if entry.get("cmdPort"): # if the file already has the new format, return
+                    continue
+
+                entry["cmdPort"] = entry.get("rep_port", 51602)
+                entry["eventPort"] = entry.get("pub_port", 51603)
+                entry["host"] = entry.get("host", "Standalone")
+                entry["address"] = entry.get("address", "localhost")
+
+                del entry["rep_port"]
+                del entry["pub_port"]
+                
+            saveJson(HOSTS_FILE, data)
+        except Exception as e:
+            logger.error(f"Failed to migrate servers from {HOSTS_FILE}: {e}")
+
 class ConnectionManager:
     """Manages the list of saved host servers and the currently active connection."""
 
     def __init__(self):
         self._active = None
-        self._active_name = ""
-        self._active_host = ""
+        self._activeName = ""
+        self._activeHost = ""
+        migrateServers()
 
     # ------------------------------------------------------------------
     # Server list persistence
@@ -31,6 +53,7 @@ class ConnectionManager:
         if os.path.exists(HOSTS_FILE):
             try:
                 return loadJson(HOSTS_FILE)
+
             except Exception as e:
                 logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
         return {}
@@ -43,7 +66,7 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Failed to save servers to {HOSTS_FILE}: {e}")
 
-    def addServer(self, name: str, host: str, address: str, cmd_port: int, event_port: int):
+    def addServer(self, name: str, host: str, address: str, cmdPort: int, eventPort: int):
         """Add a new server entry. Replaces an existing entry with the same name."""
         try:
             data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
@@ -51,10 +74,7 @@ class ConnectionManager:
             logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
             data = {}
 
-        data[name] = {
-            "host": host,
-            "address": address, "cmd_port": cmd_port, "event_port": event_port,
-        }
+        data[name] = {"host": host, "address": address, "cmdPort": cmdPort, "eventPort": eventPort}
         self.saveServers(data)
 
     def removeServer(self, name: str):
@@ -79,14 +99,7 @@ class ConnectionManager:
 
         entry = data.get(name)
         if entry:
-            result = entry.copy()
-            
-            # Migration for old hosts.json formats
-            if "cmd_port" not in result and "rep_port" in result:
-                result["cmd_port"] = result.pop("rep_port")
-            if "event_port" not in result and "pub_port" in result:
-                result["event_port"] = result.pop("pub_port")
-            
+            result = entry.copy()            
             result["name"] = name
             return result
         return None
@@ -111,7 +124,7 @@ class ConnectionManager:
         if entry is None:
             raise ValueError(f"Server {name!r} not found in {HOSTS_FILE}")
 
-        conn = HostClient(entry["address"], entry["cmd_port"], entry["event_port"], parent)
+        conn = HostClient(entry["address"], entry["cmdPort"], entry["eventPort"], parent)
         reply = conn.ping()
         if not reply.get("ok"):
             err = reply.get("error")
@@ -119,8 +132,8 @@ class ConnectionManager:
             raise ConnectionError(f"Could not connect to {name!r}: {err}")
 
         self._active = conn
-        self._active_name = name
-        self._active_host = entry.get("host", "")
+        self._activeName = name
+        self._activeHost = entry.get("host", "")
         return conn
 
     def disconnect(self):
@@ -128,8 +141,8 @@ class ConnectionManager:
         if self._active:
             self._active.stop()
         self._active = None
-        self._active_name = ""
-        self._active_host = ""
+        self._activeName = ""
+        self._activeHost = ""
 
     def activeConnection(self) -> Optional[HostClient]:
         """Return the active HostClient, or None if not connected."""
@@ -137,22 +150,22 @@ class ConnectionManager:
 
     def activeServerName(self) -> str:
         """Return the name of the active server, or empty string."""
-        return self._active_name
+        return self._activeName
 
     def activeHost(self) -> str:
         """Return the host name of the active connection: i.e. maya, blender, houdini, etc.
         Returns an empty string if not connected.
         """
-        return self._active_host
+        return self._activeHost
 
 connectionManager = ConnectionManager()
 
 # Make default standalone server
 
 if not connectionManager.findServer("Default"):
-    connectionManager.addServer("Default", "standalone", "127.0.0.1", 7000, 7001)
+    connectionManager.addServer("Default", "standalone", "localhost", 51600, 51601)
 
 defaultServer = connectionManager.findServer("Default")
 
-defaultStandaloneServer = StandaloneServer(defaultServer["cmd_port"], defaultServer["event_port"])
+defaultStandaloneServer = StandaloneServer(defaultServer["cmdPort"], defaultServer["eventPort"])
 defaultStandaloneServer.start()
