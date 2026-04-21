@@ -78,13 +78,14 @@ async def chatJSON(systemPrompt: str, userPrompt: str, model: str = DEFAULT_MODE
         print(f"Error decoding JSON from ollama response: {e}")
         return {}
 
-async def embed(text: str, model: str = 'nomic-embed-text') -> list[float]:
+async def embed(text: str) -> list[float]:
     """
-    Asynchronous coroutine to get embeddings for a single text string.
+    Asynchronous coroutine to get embeddings for a single text string using the configured model.
     """
     if not OLLAMA_AVAILABLE:
         return []
 
+    model = settings.ollamaEmbeddingModel
     try:
         response = await ollama.AsyncClient().embeddings(model=model, prompt=text)
         return response.get('embedding', [])

@@ -9,23 +9,30 @@ import subprocess
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Tuple
 import markdown
+import asyncio
+import threading
+from functools import partial
 
 from ..qt import *
 from ..core import Module, MODULE_EXTS, UidManager
+from .. import workspace
 from .. import settings as settings_module
 from ..settings import settings
 from ..logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
 from ..utils import clamp
+from ..moduleIndexer import ModuleIndexer
+from ..ai import engine
 
-_DOC_CACHE: dict[str, Tuple[float, str]] = {} # path: (mtime, content)
+OLD_MODULE_THRESHOLD_DAYS = 7
+_docCache: dict[str, Tuple[float, str]] = {} # path: (mtime, content)
 
 def getDocFromFile(path: str) -> str:
     """Fetch doc content from file with caching based on mtime."""
     mtime = os.path.getmtime(path)
-    if path in _DOC_CACHE:
-        cached_mtime, content = _DOC_CACHE[path]
+    if path in _docCache:
+        cached_mtime, content = _docCache[path]
         if cached_mtime == mtime:
             return content
             
@@ -39,10 +46,8 @@ def getDocFromFile(path: str) -> str:
     except Exception:
         pass
         
-    _DOC_CACHE[path] = (mtime, content)
+    _docCache[path] = (mtime, content)
     return content
-
-OLD_MODULE_THRESHOLD_DAYS = 7
 
 class ModuleBrowserTree(QTreeWidget):
     """Tree widget for browsing module files on disk."""
@@ -167,6 +172,42 @@ class ModuleBrowserTree(QTreeWidget):
             super().wheelEvent(event)
 
 
+# Background Workers for AI
+class SearchWorker(QThread):
+    finished = Signal(str, list)
+    def __init__(self, indexer: ModuleIndexer, query: str, k: int = 5):
+        super().__init__()
+        self.setObjectName(f"SearchWorker_{query[:10]}")
+        self.indexer = indexer
+        self.query = query
+        self.k = k
+
+    def run(self):
+        try:
+            # We use a new event loop in the thread for asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            results = loop.run_until_complete(self.indexer.search(self.query, k=self.k))
+            self.finished.emit(self.query, results)
+        except Exception as e:
+            logger.error(f"Semantic Search Error: {e}")
+            self.finished.emit(self.query, [])
+
+class IndexWorker(QThread):
+    def __init__(self, indexer: ModuleIndexer, folder: str):
+        super().__init__()
+        self.setObjectName("IndexWorker")
+        self.indexer = indexer
+        self.folder = folder
+
+    def run(self):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.indexer.indexModules(self.folder))
+        except Exception as e:
+            logger.error(f"Background Indexing Error: {e}")
+
 class ModuleBrowser(QWidget):
     """Embeddable module selector with filter, source options, and module tree."""
     
@@ -174,6 +215,15 @@ class ModuleBrowser(QWidget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        # AI Semantic Search setup
+        self.indexer = ModuleIndexer()
+        self.semanticResults: List[Tuple[str, float]] = []
+        self._indexWorker: Optional[QThread] = None
+
+        self._fileItems: List[QTreeWidgetItem] = []
+        self._currentSearchWorker: Optional[SearchWorker] = None
+        self._activeThreads = set() # Instance-level thread registry
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -184,18 +234,19 @@ class ModuleBrowser(QWidget):
         self.pathLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.pathLabel.setStyleSheet("color: #AAAAAA; font-style: italic; background-color: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 4px; margin-top: 5px;")
 
-        self.maskWidget = QLineEdit()
-        self.maskWidget.setPlaceholderText("Filter modules...")
-        self.maskWidget.textChanged.connect(self.applyMask)
+        self.searchWidget = QLineEdit()
+        self.searchWidget.setPlaceholderText("Module name or description...")
+        self.searchWidget.textChanged.connect(self.applyMask)
+        self.searchWidget.returnPressed.connect(self._runSemanticSearch)
 
         self.clearFilterButton = QPushButton("🧹 Clear")
-        self.clearFilterButton.clicked.connect(self.maskWidget.clear)
+        self.clearFilterButton.clicked.connect(self.searchWidget.clear)
         self.clearFilterButton.hide()
-        self.maskWidget.textChanged.connect(self._onMaskTextChanged)
+        self.searchWidget.textChanged.connect(self._onMaskTextChanged)
 
         filterLayout = QHBoxLayout()
-        filterLayout.addWidget(QLabel("Filter"))
-        filterLayout.addWidget(self.maskWidget)
+        filterLayout.addWidget(QLabel("Search"))
+        filterLayout.addWidget(self.searchWidget)
         filterLayout.addWidget(self.clearFilterButton)
         layout.addLayout(filterLayout)
 
@@ -203,9 +254,88 @@ class ModuleBrowser(QWidget):
 
         layout.addWidget(self.treeWidget)
         layout.addWidget(self.pathLabel)
+        
+        self.searchTimer = QTimer(self)
+        self.searchTimer.setSingleShot(True)
+        self.searchTimer.timeout.connect(self._runSemanticSearch)
+
+        self.indexTimer = QTimer(self)
+        self.indexTimer.setSingleShot(True)
+        self.indexTimer.timeout.connect(self._doIndexing)
+
+        # Mask debounce timer
+        self.maskTimer = QTimer(self)
+        self.maskTimer.setSingleShot(True)
+        self.maskTimer.timeout.connect(self._applyMaskInternal)
 
         self._setupAutoReloadWatcher()
         self.refreshModules()
+
+    def _launchThread(self, worker: QThread):
+        """Safely start a thread and keep a reference in the registry until it finishes."""
+        if not worker.objectName():
+            worker.setObjectName(worker.__class__.__name__)
+            
+        self._activeThreads.add(worker)
+        worker.finished.connect(lambda *_: self._activeThreads.discard(worker))
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _startIndexing(self):
+        """Schedule background indexing with a debounce to prevent multiple triggers."""
+        self.indexTimer.start(100)
+
+    def _doIndexing(self):
+        """Actual background indexing trigger."""
+        if self._indexWorker:
+            try:
+                if self._indexWorker.isRunning():
+                    return
+            except RuntimeError:
+                # Handle case where C++ object was already deleted
+                self._indexWorker = None
+
+        self._indexWorker = IndexWorker(self.indexer, settings.modulesPath)
+        self._indexWorker.finished.connect(lambda: setattr(self, "_indexWorker", None))
+        self._launchThread(self._indexWorker)
+
+    def _runSemanticSearch(self):
+        """Perform background semantic search using the current filter text."""
+        self.searchTimer.stop() # Ensure timer is stopped if triggered manually
+        query = self.searchWidget.text().strip()
+        if not query or query.startswith("/"):
+            self.semanticResults = []
+            self.applyMask()
+            return
+
+        # Single Search Policy: Abort previous worker to prevent thread spam
+        if self._currentSearchWorker:
+             try:
+                 # Cleanly disconnect and terminate to avoid double-processing
+                 self._currentSearchWorker.finished.disconnect()
+                 if self._currentSearchWorker.isRunning():
+                     self._currentSearchWorker.terminate()
+                     self._currentSearchWorker.wait()
+             except (RuntimeError, TypeError):
+                 pass
+             self._currentSearchWorker = None
+
+        self._currentSearchWorker = SearchWorker(self.indexer, query, k=15)
+        self._currentSearchWorker.finished.connect(self._onSemanticSearchFinished)
+        self._launchThread(self._currentSearchWorker)
+        
+        # Trigger immediate feedback that we are searching
+        self.semanticResults = [] 
+        self.applyMask()
+
+    def _onSemanticSearchFinished(self, query: str, results: List[Tuple[str, float]]):
+        """Handle results from the semantic search thread."""
+        # Only apply results if they match the current search text (prevents out-of-order results)
+        if query != self.searchWidget.text().strip():
+            return
+
+        self.semanticResults = results
+        self.applyMask()
 
     def _updatePathLabel(self):
         """Update the path label with the current modules directory."""
@@ -237,16 +367,21 @@ class ModuleBrowser(QWidget):
         self.modulesAutoReloadWatcher.fileChanged.connect(lambda _: self.refreshModules())
 
     def refreshModules(self):
-        """Internal refresh used by startup and auto-reload flows."""
+        """Internal refresh used by startup and auto-reload flows. Builds the persistent tree."""
         self._updatePathLabel()
         UidManager.sync()
+
+        # Update indexer for current workspace and trigger background scan
+        self.indexer.filePath = os.path.join(workspace.currentWorkspace.folderPath(), "moduleIndex.json")
+        self.indexer.refresh()
+        self._startIndexing()
+
+        # Build persistent tree
+        self._buildTree()
         self.applyMask()
 
-    def _onMaskTextChanged(self, text: str):
-        self.clearFilterButton.setVisible(bool(text))
-
-    def applyMask(self, *_):
-        """Rebuild module tree from mask and source settings. Accepts optional args from Qt signals."""
+    def _buildTree(self):
+        """Build the full module tree once. Items are stored in self._fileItems for visibility filtering."""
         def findChildByText(text: str, parent: QTreeWidgetItem, column: int = 0):
             for i in range(parent.childCount()):
                 ch = parent.child(i)
@@ -257,52 +392,97 @@ class ModuleBrowser(QWidget):
         modules = sorted(UidManager.uids().values())
 
         self.treeWidget.clear()
+        self._fileItems = []
 
-        mask = self.maskWidget.text().split() # split by spaces, '/folder mask /other mask'
-
-        # make tree dict from module files
         for f in modules:
+            absF = os.path.normpath(f)
             relativePath = os.path.relpath(f, modulesDirectory)
             relativeDir = os.path.dirname(relativePath)
             name, _ = os.path.splitext(os.path.basename(f))
-
-            okMask = True
-            dirMask = "/"+relativePath.replace("\\", "/")+"/"
-            for m in mask:
-                if not re.search(re.escape(m), dirMask, re.IGNORECASE):
-                    okMask = False
-                    break
-
-            if not okMask:
-                continue
 
             dirItem = self.treeWidget.invisibleRootItem()
             if relativeDir:
                 for p in relativeDir.split("\\"):
                     ch = findChildByText(p, dirItem)
-                    if ch:
-                        dirItem = ch
-                    else:
+                    if not ch:
                         ch = QTreeWidgetItem([p, ""])
                         ch.setFlags((ch.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable) & ~Qt.ItemIsDragEnabled)
                         font = ch.font(0)
                         font.setBold(True)
                         ch.setForeground(0, QColor(130, 130, 230))
                         ch.setFont(0, font)
-
                         dirItem.addChild(ch)
-                        dirItem.setExpanded(True if mask else False)
-                        dirItem = ch
+                    dirItem = ch
 
             mtime = os.path.getmtime(f)
             modtime = time.strftime("%Y/%m/%d %H:%M", time.localtime(mtime))
             item = QTreeWidgetItem([name, modtime])
             item.setFlags(item.flags() | Qt.ItemIsDragEnabled)
-            item.filePath = f
+            item.filePath = os.path.abspath(f).lower()
             
             # Highlight old modification dates
             if time.time() - mtime > OLD_MODULE_THRESHOLD_DAYS * 24 * 60 * 60:
                 item.setForeground(1, QColor("#888888"))
 
             dirItem.addChild(item)
-            dirItem.setExpanded(True if mask else False)
+            self._fileItems.append(item)
+
+    def _onMaskTextChanged(self, text: str):
+        self.clearFilterButton.setVisible(bool(text))
+        
+        # Reset semantic results and trigger search timer only on REAL text changes
+        # This prevents infinite loops when _onSemanticSearchFinished calls applyMask
+        if not text.strip():
+            self.searchTimer.stop()
+            self.semanticResults = []
+            self.applyMask()
+        else:
+            self.searchTimer.start(500)
+            self.applyMask()
+
+    def applyMask(self, *_):
+        """Schedule a debounced tree visibility update."""
+        self.maskTimer.start(50)
+
+    def _applyMaskInternal(self):
+        """Update visibility of tree items. Implements exclusive semantic filtering."""
+        maskText = self.searchWidget.text().strip()
+        
+        # Determine filtering matches
+        # Threshold 0.5 ensures only relevant results are shown
+        semanticMatches = {p.lower() for p, s in self.semanticResults if s >= 0.5} if self.semanticResults else None
+        isSearching = bool(maskText)
+
+        # 1. Update file visibility
+        for item in self._fileItems:
+            absF = item.filePath
+            
+            if not isSearching:
+                showItem = True # Empty search = Show All
+            else:
+                # Show if it matches filename directly OR if AI found it
+                moduleName = os.path.splitext(os.path.basename(absF))[0]
+                isDirectMatch = any(m in moduleName for m in maskText.lower().split())
+                isSemanticMatch = (semanticMatches is not None and absF in semanticMatches)
+                showItem = isDirectMatch or isSemanticMatch
+            
+            item.setHidden(not showItem)
+
+        # 2. Update folder visibility recursively (hide folders if they have no visible children)
+        # and expand folders that contain visible items if a mask is present
+        def updateFolderVisibility(item: QTreeWidgetItem):
+            visibleChildren = 0
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child.childCount() > 0: # It's a folder
+                    updateFolderVisibility(child)
+                
+                if not child.isHidden():
+                    visibleChildren += 1
+            
+            if item != self.treeWidget.invisibleRootItem():
+                item.setHidden(visibleChildren == 0)
+                if maskText and visibleChildren > 0:
+                    item.setExpanded(True)
+
+        updateFolderVisibility(self.treeWidget.invisibleRootItem())

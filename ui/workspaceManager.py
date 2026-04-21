@@ -98,6 +98,10 @@ class WorkspaceManagerDialog(QDialog):
         self.ollamaModelEdit.editingFinished.connect(partial(self._onLineEditChanged, "ollamaModel", self.ollamaModelEdit))
         self.settingsLayout.addRow("Ollama Model:", self.ollamaModelEdit)
 
+        self.ollamaEmbeddingModelEdit = QLineEdit()
+        self.ollamaEmbeddingModelEdit.editingFinished.connect(partial(self._onLineEditChanged, "ollamaEmbeddingModel", self.ollamaEmbeddingModelEdit))
+        self.settingsLayout.addRow("Ollama Embedding Model:", self.ollamaEmbeddingModelEdit)
+
         self.autoSaveIntervalSpin = QSpinBox()
         self.autoSaveIntervalSpin.setRange(1, 60)
         self.autoSaveIntervalSpin.setSuffix(" min")
@@ -141,6 +145,7 @@ class WorkspaceManagerDialog(QDialog):
         self.trackHistoryCheck.setChecked(ws.settings.trackHistory)
         self.aiLanguageEdit.setText(ws.settings.aiLanguage)
         self.ollamaModelEdit.setText(ws.settings.ollamaModel)
+        self.ollamaEmbeddingModelEdit.setText(ws.settings.ollamaEmbeddingModel)
         self.autoSaveIntervalSpin.setValue(ws.settings.autoSaveInterval)
 
         # Populate and set Default Host

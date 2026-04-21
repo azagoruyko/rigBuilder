@@ -19,6 +19,7 @@ class Settings:
         self.vscode = "code"
         self.trackHistory = True
         self.ollamaModel = "gpt-oss:20b-cloud"
+        self.ollamaEmbeddingModel = "nomic-embed-text"
         self.aiLanguage = "English"
         self.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")
         self.historyPath = os.path.join(RIG_BUILDER_USER_PATH, "history")
