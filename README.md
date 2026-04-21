@@ -32,7 +32,8 @@ At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 - **📜 Git-Backed Module History** — Built-in version control for every module change. Track every save, view granular diffs, and restore previous versions in seconds.
 - **🔄 Native Auto-Sync** — Real-time synchronization between the application and your files on disk, ensuring your UI always reflects the latest changes.
 - **🖥️ DCC Agnostic** — Seamlessly connects to **Maya**, **Blender**, **Unreal Engine**, or any Python-capable host via a high-performance ZMQ bridge.
-- **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted script development and documentation generation.
+- **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted script development, documentation generation, and **semantic module search**.
+- **🔍 Semantic Module Indexing** — Find modules by their functionality, not just names. Uses vector embeddings to understand the context of your scripts and documentation.
 - **📝 Responsive Markdown Docs** — Author and view module documentation in native Markdown for a modern, clean documentation experience.
 
 ---
@@ -51,21 +52,21 @@ install.bat
 
 ### 2. Ollama AI Setup (Optional)
 
-To enable Local AI Assistance, install Ollama and sign in to get access to cloud models and synchronization features:
+To enable Local AI Assistance and Semantic Search, install Ollama and pull the required models:
 
 1. **Download**: Install from [ollama.com](https://ollama.com/).
 2. **Setup**: Run the installer.
-3. **Login**: Open your terminal and run:
+3. **Pull Models**:
+   - For code assistance: `ollama pull your-favorite-model` (e.g., `codellama`, `llama3`).
+   - For semantic search (REQUIRED for indexing): `ollama pull nomic-embed-text`.
 
-   ```bash
-   ollama signin
-   ```
+4. **Login (Optional)**: If using cloud models, open your terminal and run `ollama signin`.
 
-4. **Pull Models**: `ollama pull your-favorite-model`.
-
-   > Models ending in `-cloud` (like `gpt-oss:20b-cloud`) can be used instantly without pulling them to your local machine, as long as you are signed in.
+   > **Note on Indexing**: Rig Builder automatically indexes your modules using vector embeddings. This allows you to search for modules using natural language (e.g., "how to build a spine").
    >
-   > The default AI model can be customized via the `ollamaModel` key in the `settings.json` file located inside your active workspace folder (e.g., `~/rigBuilder/workspaces/<name>/settings.json`).
+   > The default models can be customized via the `settings.json` file in your active workspace:
+   > - `ollamaModel`: Model for code generation (defaults to `gpt-oss:20b-cloud`).
+   > - `ollamaEmbeddingModel`: Model for semantic search (defaults to `nomic-embed-text`).
 
 ### 3. Launch
 
