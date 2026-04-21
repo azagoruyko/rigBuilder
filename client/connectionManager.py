@@ -21,7 +21,7 @@ def migrateServers():
             data = loadJson(HOSTS_FILE)
             for entry in data.values(): # add default values for backward compatibility
                 if entry.get("cmdPort"): # if the file already has the new format, return
-                    continue
+                    return
 
                 entry["cmdPort"] = entry.get("rep_port", 51602)
                 entry["eventPort"] = entry.get("pub_port", 51603)
