@@ -2509,6 +2509,7 @@ class RigBuilderWindow(QFrame):
         self.show()
  
     def _onWorkspaceChanged(self, workspace):
+        logger.info(f"Workspace changed: {workspace.name}")
         self._refreshModuleUI()
 
     def _refreshModuleUI(self):
