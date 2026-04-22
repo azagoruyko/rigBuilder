@@ -75,7 +75,6 @@ class ModuleBrowserModel(QStandardItemModel):
 
     def __init__(self, parent=None):
         super().__init__(0, 3, parent)
-        self.setHorizontalHeaderLabels(["Module", "Modification time", "Score"])
 
     # ------------------------------------------------------------------
     # Build helpers
@@ -117,7 +116,7 @@ class ModuleBrowserModel(QStandardItemModel):
         if isOld:
             mtimeItem.setForeground(QColor("#888888"))
 
-        scoreItem = QStandardItem("0.0000")
+        scoreItem = QStandardItem("0.00")
         scoreItem.setFlags(Qt.ItemIsEnabled)
 
         return [nameItem, mtimeItem, scoreItem]
@@ -161,7 +160,7 @@ class ModuleBrowserModel(QStandardItemModel):
         parent = nameItem.parent() or self.invisibleRootItem()
         scoreItem = parent.child(row, COL_SCORE)
         if scoreItem:
-            scoreItem.setData(f"{score:.4f}", Qt.DisplayRole)
+            scoreItem.setData(f"{score:.2f}" if score > 0.1 else "", Qt.DisplayRole)
 
     def fileItems(self) -> List[QStandardItem]:
         """Return all leaf (file) name-column items in the model."""
@@ -215,10 +214,6 @@ class ModuleBrowserProxy(QSortFilterProxyModel):
             return True
         # _HIDDEN_ROLE is stored as a custom role; default False = visible
         return not item.data(_HIDDEN_ROLE)
-
-    def filterAcceptsColumn(self, sourceColumn: int, sourceParent: QModelIndex) -> bool:
-        return sourceColumn != COL_SCORE  # Score column is internal only
-
 
 # ---------------------------------------------------------------------------
 # View
