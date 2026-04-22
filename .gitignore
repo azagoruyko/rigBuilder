@@ -1,5 +1,7 @@
-__pycache__
-tmp
-temp
-backup
-.venv
+.venv/
+__pycache__/
+tmp/
+temp/
+backup/
+dist/
+build/
