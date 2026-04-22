@@ -2152,8 +2152,8 @@ class ManageHostsDialog(QDialog):
             self.hostCombo.setCurrentIndex(idx)
 
             self.addressEdit.setText(entry["address"])
-            self.cmdPortEdit.setText(str(entry.get("cmd_port", "")))
-            self.eventPortEdit.setText(str(entry.get("event_port", "")))
+            self.cmdPortEdit.setText(str(entry.get("cmdPort", "")))
+            self.eventPortEdit.setText(str(entry.get("eventPort", "")))
             self._refreshCode()
 
     def _onSelectionChanged(self):
@@ -2192,7 +2192,7 @@ class ManageHostsDialog(QDialog):
             entry = servers[name]
             label = "{} | {} | {}:{}/{}".format(
                 name, entry["host"],
-                entry["address"], entry.get("cmd_port", "0"), entry.get("event_port", "0"))
+                entry["address"], entry.get("cmdPort", "0"), entry.get("eventPort", "0"))
             
             item = QListWidgetItem(f"🖥️ {label}")
             item.setData(Qt.UserRole, name)
