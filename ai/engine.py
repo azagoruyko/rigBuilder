@@ -7,6 +7,8 @@ from json_repair import repair_json
 
 from ..settings import settings
 
+CONTEXT_LIMIT = 8192
+
 def isOllamaAvailable() -> bool:
     """Check if the Ollama server is reachable or the CLI is installed."""
     # Check if CLI is in PATH
@@ -23,11 +25,7 @@ def isOllamaAvailable() -> bool:
 # Global status for later usage
 OLLAMA_AVAILABLE = isOllamaAvailable()
 
-# Global defaults
-DEFAULT_MODEL = 'gpt-oss:20b-cloud'
-CONTEXT_LIMIT = 8192
-
-async def chat(messages: list, model: str = DEFAULT_MODEL, format: str = '', temperature: float = 0.0) -> str:
+async def chat(messages: list, format: str = '', temperature: float = 0.0) -> str:
     """
     Asynchronous coroutine to communicate with Ollama.
     """
@@ -43,7 +41,7 @@ async def chat(messages: list, model: str = DEFAULT_MODEL, format: str = '', tem
 
     try:
         response = await ollama.AsyncClient().chat(
-            model=model,
+            model=settings.ollamaModel,
             messages=additionalMessages + messages,
             format=format,
             options={'temperature': temperature}
@@ -53,7 +51,7 @@ async def chat(messages: list, model: str = DEFAULT_MODEL, format: str = '', tem
         print(f"Ollama Async API Error: {e}")
         return ""
 
-async def chatJSON(systemPrompt: str, userPrompt: str, model: str = DEFAULT_MODEL, temperature: float = 0.0) -> dict:
+async def chatJSON(systemPrompt: str, userPrompt: str, temperature: float = 0.0) -> dict:
     """
     Asynchronous coroutine to communicate with Ollama expecting a JSON response. 
     Includes automatic JSON repair and parsing.
@@ -66,7 +64,7 @@ async def chatJSON(systemPrompt: str, userPrompt: str, model: str = DEFAULT_MODE
         {'role': 'user', 'content': userPrompt}
     ]
     
-    resultText = await chat(messages, model=model, format='json', temperature=temperature)
+    resultText = await chat(messages, format='json', temperature=temperature)
     if not resultText:
         return {}
 
