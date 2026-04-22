@@ -13,15 +13,15 @@ class PythonHighlighter(QSyntaxHighlighter):
 
         assignFormat = QTextCharFormat()
         assignFormat.setForeground(QColor(200, 150, 100))
-        self.highlightingRules.append(("\\b(\\w+)\\s*(?=[-+*/]*=)", assignFormat))
+        self.highlightingRules.append((QRegularExpression("\\b(\\w+)\\s*(?=[-+*/]*=)"), assignFormat))
 
         numFormat = QTextCharFormat()
         numFormat.setForeground(QColor(150, 200, 150))
-        self.highlightingRules.append(("\\b(0x[0-9]+)\\b|\\b[0-9\\.]+f*\\b", numFormat))
+        self.highlightingRules.append((QRegularExpression("\\b(0x[0-9]+)\\b|\\b[0-9\\.]+f*\\b"), numFormat))
 
         functionFormat = QTextCharFormat()
         functionFormat.setForeground(QColor(100, 150, 200))
-        self.highlightingRules.append(("\\b\\w+(?=\\s*\\()", functionFormat))
+        self.highlightingRules.append((QRegularExpression("\\b\\w+(?=\\s*\\()"), functionFormat))
 
         keywordFormat = QTextCharFormat()
         keywordFormat.setForeground(QColor(150, 130, 200))
@@ -34,23 +34,23 @@ class PythonHighlighter(QSyntaxHighlighter):
                                              "assert", "del", "global", "not", "with",
                                              "async", "elif", "if", "or", "yield", "print", "self"]]
 
-        self.highlightingRules += [(pattern, keywordFormat) for pattern in keywords]
+        self.highlightingRules += [(QRegularExpression(pattern), keywordFormat) for pattern in keywords]
 
         boolFormat = QTextCharFormat()
         boolFormat.setForeground(QColor(200, 100, 50))
-        self.highlightingRules.append(("\\bTrue\\b|\\bFalse\\b|\\bNone\\b", boolFormat))
+        self.highlightingRules.append((QRegularExpression("\\bTrue\\b|\\bFalse\\b|\\bNone\\b"), boolFormat))
 
         attrFormat = QTextCharFormat()
         attrFormat.setForeground(QColor(100, 180, 180))
-        self.highlightingRules.append(("@\\b\\w+\\b", attrFormat))
+        self.highlightingRules.append((QRegularExpression("@\\b\\w+\\b"), attrFormat))
 
         self.quotationFormat = QTextCharFormat()
         self.quotationFormat.setForeground(QColor(130, 200, 130))
-        self.highlightingRules.append(("(\"(\\\\\"|[^\"])*\")|(\'(\\\\\'|[^\'])*\')", self.quotationFormat))
+        self.highlightingRules.append((QRegularExpression("(\"(\\\\\"|[^\"])*\")|(\'(\\\\\'|[^\'])*\')"), self.quotationFormat))
 
         singleLineCommentFormat = QTextCharFormat()
         singleLineCommentFormat.setForeground(QColor(90, 90, 90))
-        self.highlightingRules.append(("#[^\\n]*", singleLineCommentFormat))
+        self.highlightingRules.append((QRegularExpression("#[^\\n]*"), singleLineCommentFormat))
 
         self.multiLineCommentFormat = QTextCharFormat()
         self.multiLineCommentFormat.setForeground(QColor(170, 170, 100))
@@ -59,13 +59,14 @@ class PythonHighlighter(QSyntaxHighlighter):
         self.highlightedWordFormat.setForeground(QColor(200, 200, 200))
         self.highlightedWordFormat.setBackground(QBrush(QColor(100, 55, 170)))
         self.highlightedWordRegexp = None
+        self._highlightedWordExpression = None
+
+        self.triSingleQuote = QRegularExpression("'''")
+        self.triDoubleQuote = QRegularExpression('"""')
+
 
     def highlightBlock(self, text):
-        for pattern, format in self.highlightingRules:
-            if not pattern:
-                continue
-
-            expression = QRegularExpression(pattern)
+        for expression, format in self.highlightingRules:
             iterator = expression.globalMatch(text)
             while iterator.hasNext():
                 match = iterator.next()
@@ -74,25 +75,28 @@ class PythonHighlighter(QSyntaxHighlighter):
         self.setCurrentBlockState(0)
 
         # Do multi-line strings
-        in_multiline = self.match_multiline(text, "'''", 1, self.multiLineCommentFormat)
+        in_multiline = self.match_multiline(text, self.triSingleQuote, 1, self.multiLineCommentFormat)
         if not in_multiline:
-            in_multiline = self.match_multiline(text, '"""', 2, self.multiLineCommentFormat)
+            in_multiline = self.match_multiline(text, self.triDoubleQuote, 2, self.multiLineCommentFormat)
 
         if self.highlightedWordRegexp:
-            expression = QRegularExpression(self.highlightedWordRegexp)
-            iterator = expression.globalMatch(text)
+            if not self._highlightedWordExpression or self._highlightedWordExpression.pattern() != self.highlightedWordRegexp:
+                self._highlightedWordExpression = QRegularExpression(self.highlightedWordRegexp)
+
+            iterator = self._highlightedWordExpression.globalMatch(text)
             while iterator.hasNext():
                 match = iterator.next()
                 self.setFormat(match.capturedStart(), match.capturedLength(), self.highlightedWordFormat)
 
-    def match_multiline(self, text, delimiter_pattern, in_state, style):
-        """Do highlighting of multi-line strings. ``delimiter_pattern`` should be a
-        string pattern for triple-single-quotes or triple-double-quotes, and
+
+    def match_multiline(self, text, delimiter, in_state, style):
+        """Do highlighting of multi-line strings. ``delimiter`` should be a
+        QRegularExpression for triple-single-quotes or triple-double-quotes, and
         ``in_state`` should be a unique integer to represent the corresponding
         state changes when inside those strings. Returns True if we're still
         inside a multi-line string when this function is finished.
         """
-        delimiter = QRegularExpression(delimiter_pattern)
+
         
         # If inside triple-single quotes, start at 0
         if self.previousBlockState() == in_state:
@@ -168,38 +172,40 @@ class SwoopHighligher(QSyntaxHighlighter):
 
         linumFormat = QTextCharFormat()
         linumFormat.setForeground(QColor(180, 100, 120))
-        self.highlightingRules.append(("^\\s*\\d+\\s+", linumFormat))
+        self.highlightingRules.append((QRegularExpression("^\\s*\\d+\\s+"), linumFormat))
 
         headerFormat = QTextCharFormat()
         headerFormat.setForeground(QColor(120, 100, 180))
         headerFormat.setFontWeight(QFont.Bold)
-        self.highlightingRules.append(("^[a-zA-Z][\\w -]*", headerFormat))
+        self.highlightingRules.append((QRegularExpression("^[a-zA-Z][\\w -]*"), headerFormat))
 
         subHeaderFormat = QTextCharFormat()
         subHeaderFormat.setForeground(QColor(120, 180, 120))
-        self.highlightingRules.append(("\\[[\\w ]+\\]$", subHeaderFormat))
+        self.highlightingRules.append((QRegularExpression("\\[[\\w ]+\\]$"), subHeaderFormat))
 
         commentFormat = QTextCharFormat()
         commentFormat.setForeground(QColor(90, 90, 90))
-        self.highlightingRules.append(("//.*$", commentFormat))
+        self.highlightingRules.append((QRegularExpression("//.*$"), commentFormat))
 
         highlightedWordsFormat = QTextCharFormat()
         highlightedWordsFormat.setForeground(QColor(200, 200, 200))
         highlightedWordsFormat.setBackground(QBrush(QColor(100, 55, 170)))
         self.highlightingRules.append((None, highlightedWordsFormat))
+        self._highlightedWordExpression = None
+
 
     def highlightBlock(self, text):
-        for pattern, format in self.highlightingRules:
-            if not pattern:
+        for expression, format in self.highlightingRules:
+            if expression is None:
                 continue
 
-            expression = QRegularExpression(pattern)
             iterator = expression.globalMatch(text)
             while iterator.hasNext():
                 match = iterator.next()
                 self.setFormat(match.capturedStart(), match.capturedLength(), format)
 
         self.setCurrentBlockState(0)
+
 
 class SwoopSearchDialog(QDialog):
     def __init__(self, textWidget, **kwargs):
@@ -576,6 +582,8 @@ class CodeEditorWidget(QTextEdit):
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
 
+        self._cachedWords = set()
+
         self.setTabStopDistance(32)
         self.setAcceptRichText(False)
         self.setWordWrapMode(QTextOption.NoWrap)
@@ -584,7 +592,13 @@ class CodeEditorWidget(QTextEdit):
         self.verticalScrollBar().valueChanged.connect(self.scrollBarChanged)
         self.textChanged.connect(self.editorTextChanged)
 
+        self.wordUpdateTimer = QTimer()
+        self.wordUpdateTimer.setSingleShot(True)
+        self.wordUpdateTimer.setInterval(500)
+        self.wordUpdateTimer.timeout.connect(self.updateWordList)
+
         self.addActions(getActions(self.getMenu()))
+
         setActionsLocalShortcut(self)
 
     def event(self, event):
@@ -1073,31 +1087,34 @@ class CodeEditorWidget(QTextEdit):
         self.setExtraSelections(extra)
 
     def editorTextChanged(self):
-        text = self.toPlainText()
-
         cursor = self.textCursor()
-
         self._currentWord = wordAtCursor(cursor)
         currentWord, start, end = self._currentWord
 
-        if start == 0 and end - start <= 1:
+        self.wordUpdateTimer.start()
+
+        if not currentWord or (start == 0 and end - start <= 1):
+            self.completionWidget.hide()
             return
 
-        words = set(self.words)
-        words |= set(re.split("[^\\w@]+", text))
-        words -= set([currentWord])
-
+        words = self._cachedWords
         if currentWord:
             self._searchStartWord = self._currentWord
-            items = [w for w in words if re.match(currentWord, w, re.IGNORECASE)]
+            items = [w for w in words if w != currentWord and w.lower().startswith(currentWord.lower())]
 
             if items and cursor.position() == end:
                 self.showCompletions(items)
             else:
                 self.completionWidget.hide()
-
         else:
             self.completionWidget.hide()
+
+    def updateWordList(self):
+        text = self.toPlainText()
+        # Only split if text is reasonably small or we really need it.
+        # But even for 10k lines, re.split is much faster if we don't do it on every keystroke.
+        self._cachedWords = set(re.split("[^\\w@]+", text))
+        self._cachedWords |= set(self.words)
 
     def showCompletions(self, items):
         rect = self.cursorRect()
@@ -1124,32 +1141,38 @@ class NumberBarWidget(QWidget):
 
     def paintEvent(self, event):
         contents_y = self.textWidget.verticalScrollBar().value()
-        page_bottom = contents_y + self.textWidget.viewport().height()
+        viewport_height = self.textWidget.viewport().height()
+        page_bottom = contents_y + viewport_height
         font_metrics = self.fontMetrics()
-        current_block = self.textWidget.document().findBlock(self.textWidget.textCursor().position())
 
         painter = QPainter(self)
 
-        line_count = 0
-        # Iterate over all text blocks in the document.
-        block = self.textWidget.document().begin()
+        # Start from the first visible block
+        block = self.textWidget.cursorForPosition(QPoint(0, 5)).block()
+        
         while block.isValid():
-            line_count += 1
+            line_count = block.blockNumber() + 1
 
             # The top left position of the block in the document
             position = self.textWidget.document().documentLayout().blockBoundingRect(block).topLeft()
 
-            # Check if the position of the block is out side of the visible
-            # area.
+            # Check if the position of the block is outside of the visible area.
             if position.y() > page_bottom:
                 break
+            
+            # Skip if block is above the visible area (shouldn't happen with cursorForPosition(0,5))
+            if position.y() + self.textWidget.document().documentLayout().blockBoundingRect(block).height() < contents_y:
+                 block = block.next()
+                 continue
 
             # Draw the line number right justified at the y position of the
             # line. 3 is a magic padding number. drawText(x, y, text).
-            painter.drawText(self.width() - getFontWidth(font_metrics, str(line_count)) - 3, round(position.y()) - contents_y + font_metrics.ascent(), str(line_count))
+            y_pos = round(position.y()) - contents_y + font_metrics.ascent()
+            painter.drawText(self.width() - getFontWidth(font_metrics, str(line_count)) - 3, y_pos, str(line_count))
+            
             data = block.userData()
             if data and data.hasBookmark:
-                painter.drawText(3, round(position.y()) - contents_y + font_metrics.ascent(), "*")
+                painter.drawText(3, y_pos, "*")
 
             block = block.next()
 
@@ -1157,6 +1180,7 @@ class NumberBarWidget(QWidget):
         painter.end()
 
         QWidget.paintEvent(self, event)
+
 
 class CodeEditorWithNumbersWidget(QWidget):
     def __init__(self, **kwargs):
