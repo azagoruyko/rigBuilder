@@ -56,8 +56,9 @@ class ModuleBrowserTree(QTreeWidget):
         super().__init__(**kwargs)
         self.middlePressPos = QPoint()
 
-        self.setHeaderLabels(["Module", "Modification time"])
+        self.setHeaderLabels(["Module", "Modification time", "Score"])
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.setColumnHidden(2, True) # Hide the Score column
         self.setSortingEnabled(True)
         self.sortItems(1, Qt.DescendingOrder)
 
@@ -405,7 +406,7 @@ class ModuleBrowser(QWidget):
                 for p in relativeDir.split("\\"):
                     ch = findChildByText(p, dirItem)
                     if not ch:
-                        ch = QTreeWidgetItem([p, ""])
+                        ch = QTreeWidgetItem([p, "", "0"]) # 3rd column is for score
                         ch.setFlags((ch.flags() | Qt.ItemIsEnabled | Qt.ItemIsSelectable) & ~Qt.ItemIsDragEnabled)
                         font = ch.font(0)
                         font.setBold(True)
@@ -416,7 +417,7 @@ class ModuleBrowser(QWidget):
 
             mtime = os.path.getmtime(f)
             timeLabel = getRelativeTimeString(mtime)
-            item = QTreeWidgetItem([name, timeLabel])
+            item = QTreeWidgetItem([name, timeLabel, "0"])
             item.setFlags(item.flags() | Qt.ItemIsDragEnabled)
             item.filePath = os.path.abspath(f).lower()
             
@@ -453,36 +454,62 @@ class ModuleBrowser(QWidget):
         semanticMatches = {p.lower() for p, s in self.semanticResults if s >= 0.5} if self.semanticResults else None
         isSearching = bool(maskText)
 
-        # 1. Update file visibility
+        # 1. Update file scores and visibility
+        scores = {p.lower(): s for p, s in self.semanticResults} if self.semanticResults else {}
+        
         for item in self._fileItems:
             absF = item.filePath
             
-            if not isSearching:
-                showItem = True # Empty search = Show All
-            else:
-                # Show if it matches filename directly OR if AI found it
+            # Score assignment for ranking
+            score = 0.0
+            if isSearching:
                 moduleName = os.path.splitext(os.path.basename(absF))[0]
-                isDirectMatch = any(m in moduleName for m in maskText.lower().split())
-                isSemanticMatch = (semanticMatches is not None and absF in semanticMatches)
-                showItem = isDirectMatch or isSemanticMatch
+                # Direct match gets a high baseline score to stay relevant
+                if all(m in moduleName.lower() for m in maskText.lower().split()):
+                    score = 1.0
+                else:
+                    # Semantic score is used only if there's no direct name match
+                    score = scores.get(absF, 0.0)
+
+            item.setText(2, f"{score:.4f}")
+            
+            if not isSearching:
+                showItem = True
+            else:
+                # Show if score is above 0.5 (includes direct name matches @ 0.8)
+                showItem = score >= 0.5 or (semanticMatches is not None and absF in semanticMatches)
             
             item.setHidden(not showItem)
 
-        # 2. Update folder visibility recursively (hide folders if they have no visible children)
-        # and expand folders that contain visible items if a mask is present
-        def updateFolderVisibility(item: QTreeWidgetItem):
+        def updateFolderVisibilityAndScore(item: QTreeWidgetItem) -> float:
+            """Recursively update folder visibility and return its highest child score."""
             visibleChildren = 0
+            maxChildScore = 0.0
+            
             for i in range(item.childCount()):
                 child = item.child(i)
                 if child.childCount() > 0: # It's a folder
-                    updateFolderVisibility(child)
+                    childScore = updateFolderVisibilityAndScore(child)
+                    maxChildScore = max(maxChildScore, childScore)
+                else:
+                    # It's a file, get its score from column 2
+                    maxChildScore = max(maxChildScore, float(child.text(2)))
                 
                 if not child.isHidden():
                     visibleChildren += 1
             
             if item != self.treeWidget.invisibleRootItem():
                 item.setHidden(visibleChildren == 0)
+                item.setText(2, f"{maxChildScore:.4f}")
                 if maskText and visibleChildren > 0:
                     item.setExpanded(True)
+            
+            return maxChildScore
 
-        updateFolderVisibility(self.treeWidget.invisibleRootItem())
+        updateFolderVisibilityAndScore(self.treeWidget.invisibleRootItem())
+
+        # 3. Dynamic Sorting
+        if isSearching and (self.semanticResults or self.searchWidget.text().strip()):
+            self.treeWidget.sortItems(2, Qt.DescendingOrder) # Sort by score
+        else:
+            self.treeWidget.sortItems(1, Qt.DescendingOrder) # Sort by modification time
