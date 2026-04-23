@@ -78,25 +78,9 @@ run.bat
 
 ### 4. Host Setup (Connectivity)
 
-To execute scripts inside a host, you must install **`zmq`** (or `pyzmq`) in that host's Python environment. Replace `<path>` with your specific installation directory.
+To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment.
 
-#### 🎨 Maya
-
-- **Python**: `C:\Program Files\Autodesk\Maya<version>\bin\mayapy.exe`
-- **Install**: `mayapy.exe -m pip install zmq`
-
-#### 🎨 Blender
-
-- **Python**: `C:\Program Files\Blender Foundation\Blender<version>\python\bin\python.exe`
-- **Install**: `.\python.exe -m pip install zmq`
-- **In case of troubles**: try `.\python.exe -m pip install --upgrade --target="BLENDER-PATH\python\lib\site-packages" pyzmq`
-
-#### 🎮 Unreal Engine (5.6+)
-
-1. Enable the **"Python Editor Script Plugin"** in Settings.
-2. **Python**: `C:\Program Files\Epic Games\UE_<version>\Engine\Binaries\ThirdParty\Python3\Win64\python.exe`
-3. **Install**: `.\python.exe -m pip install zmq`
-4. 💡 **Tip**: Install `unreal-stub` for autocompletion in your IDE.
+💡`zmq` will be automatically installed in case you don't have it on the first host connection (use the snippet provided by the Host Manager).
 
 ### 5. Usage
 
