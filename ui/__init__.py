@@ -2587,31 +2587,19 @@ class RigBuilderWindow(QFrame):
             return "def {}({}):pass".format(name or f.__name__, ", ".join(args))
 
         def getVariableValue(v: object) -> Optional[object]:
-            if type(v) == str:
-                return '"' + v + '"'
             try:
                 jv = copyJson(v) # check if v is JSON serializable
             except Exception:
                 return None
+
+            if isinstance(jv, str):
+                return '\'' + jv.replace("\n", "\\n") + '\''
             return jv
 
-        def onRunCodeFileChanged(filePath: str, uid: str, modulePath: str):
+        def onRunCodeFileChanged(filePath: str, modulePath: str):
             # Try to find the "live" module in the tree (it might have been replaced)
             root = self.treeWidget.moduleModel.rootModule()
-            targetModule = None
-
-            def findByUid(m, uid):
-                if m.uid() == uid: return m
-                for ch in m.children():
-                    res = findByUid(ch, uid)
-                    if res: return res
-                return None
-
-            if uid:
-                targetModule = findByUid(root, uid)
-            
-            if not targetModule:
-                targetModule = root.findModuleByPath(modulePath)
+            targetModule = root.findModuleByPath(modulePath)
 
             if not targetModule:
                 logger.error("Could not find module for path: {}".format(modulePath))
@@ -2672,8 +2660,8 @@ class RigBuilderWindow(QFrame):
             importLine = "from .{} import * # must be the first line".format(headerModule)
             f.write("\n".join([importLine, code]))
 
-        # Use partial to bind uid and modulePath, filePath will come from the signal
-        callback = partial(onRunCodeFileChanged, uid=module.uid(), modulePath=module.path())
+        # Use partial to bind modulePath, filePath will come from the signal
+        callback = partial(onRunCodeFileChanged, modulePath=module.path())
         startTrackedFileThread(runCodeFilePath, callback)
 
         try:
