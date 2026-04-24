@@ -190,12 +190,13 @@ def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit
 
 
 class Attribute(object):
-    def __init__(self):
-        self._name = ""
-        self._category = ""
-        self._template = ""
-        self._connect = "" # attribute connection, format: /a/b/c, where c is attr, a/b is a parent relative path
-        self._expression = "" # python code
+    def __init__(self, name="", template="", category="", connect="", expression=""):
+        self._name = name
+        self._template = template
+        self._category = category
+        self._connect = connect # attribute connection, format: /a/b/c, where c is attr, a/b is a parent relative path
+        self._expression = expression # python code
+
         self._module = None
         self._data = {}
 
@@ -476,19 +477,18 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
 class Module(object):
     glob = DictExt() # global memory
 
-    def __init__(self):
-        self._uid = "" # unique ids are assigned while saving
-
-        self._name = ""
-        self._runCode = ""
-        self._doc = ""
+    def __init__(self, name="", runCode="", doc="", children=None, attributes=None, muted=False):
+        self._name = name
+        self._runCode = runCode
+        self._doc = doc
 
         self._parent = None
-        self._children = []
-        self._attributes = []
+        self._children = children or []
+        self._attributes = attributes or []
 
-        self._muted = False
+        self._muted = muted
 
+        self._uid = "" # unique ids are assigned while saving
         self.attr = AttrsWrapper(self) # attributes accessor
 
     def copy(self) -> Module:
