@@ -20,6 +20,7 @@ from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
 from ..utils import clamp, getRelativeTimeString
 from ..moduleIndexer import ModuleIndexer
+from ..ai.engine import IS_OLLAMA_AVAILABLE
 
 OLD_MODULE_THRESHOLD_DAYS = 7
 _docCache: dict[str, Tuple[float, str]] = {} # path: (mtime, content)
@@ -124,7 +125,7 @@ class ModuleBrowserModel(QStandardItemModel):
     def rebuild(self, modulesDirectory: str, modules: List[str]):
         """Clear and repopulate the model from a list of file paths."""
         self.clear()
-        self.setHorizontalHeaderLabels(["Module", "Modification time", "Score"])
+        self.setHorizontalHeaderLabels(["Module", "Modified", "Score"])
 
         # Map folder path -> QStandardItem (name column of the folder row)
         folderItems: dict[str, QStandardItem] = {}
@@ -215,6 +216,10 @@ class ModuleBrowserProxy(QSortFilterProxyModel):
         # _HIDDEN_ROLE is stored as a custom role; default False = visible
         return not item.data(_HIDDEN_ROLE)
 
+    def filterAcceptsColumn(self, sourceColumn, sourceParent):
+        if not IS_OLLAMA_AVAILABLE and sourceColumn == COL_SCORE:
+            return False
+        return True
 # ---------------------------------------------------------------------------
 # View
 # ---------------------------------------------------------------------------
