@@ -437,7 +437,11 @@ class SwoopSearchDialog(QDialog):
                 lines.append("{0:<5} {1}".format(n, text.strip()))
 
             self.resultsWidget.setText("\n".join(lines))
-            self.resultsWidget.syntax.highlightingRules[-1] = (pattern, self.resultsWidget.syntax.highlightingRules[-1][1])
+            expression = QRegularExpression(pattern) if pattern else None
+            if expression and not caseSensitive:
+                expression.setPatternOptions(QRegularExpression.CaseInsensitiveOption)
+
+            self.resultsWidget.syntax.highlightingRules[-1] = (expression, self.resultsWidget.syntax.highlightingRules[-1][1])
             self.resultsWidget.syntax.rehighlight()
 
         else: # search mode
@@ -471,7 +475,11 @@ class SwoopSearchDialog(QDialog):
 
             self.resultsWidget.setText("\n".join(self.previousLines))
 
-            self.resultsWidget.syntax.highlightingRules[-1] = (currentFilter, self.resultsWidget.syntax.highlightingRules[-1][1])
+            expression = QRegularExpression(currentFilter) if currentFilter else None
+            if expression and not caseSensitive:
+                expression.setPatternOptions(QRegularExpression.CaseInsensitiveOption)
+
+            self.resultsWidget.syntax.highlightingRules[-1] = (expression, self.resultsWidget.syntax.highlightingRules[-1][1])
             self.resultsWidget.syntax.rehighlight()
 
             highlightLine(self.resultsWidget, currentIndex)
