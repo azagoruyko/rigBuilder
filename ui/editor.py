@@ -555,8 +555,6 @@ class TextBlockData(QTextBlockUserData):
 
 class CodeEditorWidget(QTextEdit):
     numberBarUpdateRequested = Signal()
-    executeRequested = Signal(str)
-    exposeAsAttributeRequested = Signal(str)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -580,6 +578,8 @@ class CodeEditorWidget(QTextEdit):
         self.swoopSearchDialog = SwoopSearchDialog(self, parent=self)
 
         self.syntax = PythonHighlighter(self.document())
+
+        self.customMenuActions = []
         
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
@@ -726,12 +726,18 @@ class CodeEditorWidget(QTextEdit):
                 data = b.userData()
                 if data and data.hasBookmark:
                     state["bookmarks"].append(i)
-    
+
+    def addCustomAction(self, action: QAction):
+        self.customMenuActions.append(action)
+        self.addAction(action)
+        setActionsLocalShortcut(self)
+
     def getMenu(self):
         menu = QMenu(self)
-        menu.addAction("Execute", self.executeCode, "Ctrl+Return")
-        menu.addAction("Expose as attribute", self.exposeAsAttribute, "Ctrl+E")
-        menu.addSeparator()
+        if self.customMenuActions:
+            menu.addActions(self.customMenuActions)
+            menu.addSeparator()
+        
         menu.addAction("Swoop search", self.swoopSearch, "F3")
         menu.addAction("Highlight selected", self.highlightSelected, "Ctrl+H")
         menu.addSeparator()
@@ -747,20 +753,6 @@ class CodeEditorWidget(QTextEdit):
         menu.addSeparator()
         menu.addAction("Select All", self.selectAll, "Ctrl+A")
         return menu
-
-    def executeCode(self):
-        cursor = self.textCursor()
-        code = cursor.selectedText().replace("\u2029", "\n").strip()
-        if not code:
-            code = self.toPlainText().strip()
-        if code:
-            self.executeRequested.emit(code)
-
-    def exposeAsAttribute(self):
-        cursor = self.textCursor()
-        sel = cursor.selectedText().replace("\u2029", "\n").strip()
-        if sel:
-            self.exposeAsAttributeRequested.emit(sel)
 
     def contextMenuEvent(self, event):
         menu = self.getMenu()
@@ -801,9 +793,6 @@ class CodeEditorWidget(QTextEdit):
                 self.completionWidget.hide()
             else:
                 super().keyPressEvent(event)
-
-        elif key in (Qt.Key_Return, Qt.Key_Enter) and (ctrl or key == Qt.Key_Enter):
-            self.execute()
 
         elif key == Qt.Key_Return:
             if self.completionWidget.isVisible():

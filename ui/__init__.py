@@ -2253,9 +2253,15 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget = CodeEditorWidget()
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
-        self.codeEditorWidget.editorWidget.executeRequested.connect(self._onExecuteCode)
-        self.codeEditorWidget.editorWidget.exposeAsAttributeRequested.connect(self._onExposeAsAttribute)
 
+        for label, func, hotkey in [
+            ("Execute", self._onExecuteCode, "Ctrl+Enter"),
+            ("Expose as Attribute", self._onExposeAsAttribute, "Ctrl+E")]:            
+            action = QAction(label, self.codeEditorWidget.editorWidget)
+            action.setShortcut(hotkey)
+            action.triggered.connect(lambda *_, f=func: f())
+            self.codeEditorWidget.editorWidget.addCustomAction(action)
+        
         self.apiBrowserWidget = ApiBrowserWidget()
 
         self.attributesTabWidget = AttributesTabWidget()
@@ -2402,10 +2408,17 @@ class RigBuilderWindow(QFrame):
             self.treeWidget.replaceModule(idx, newModule)
             self.attributesTabWidget.updateTabs(newModule)
 
-    def _onExecuteCode(self, code: str):
-        """Execute lines interactively with accumulated context."""
+    def _onExecuteCode(self):
+        """Execute lines interactively with accumulated context."""        
         module = self.treeWidget.currentModule()
         if not module:
+            return
+
+        cursor = self.codeEditorWidget.editorWidget.textCursor()
+        code = cursor.selectedText().replace("\u2029", "\n").strip()
+        if not code:
+            code = self.codeEditorWidget.editorWidget.toPlainText().strip()
+        if not code:
             return
 
         self.showLog()
@@ -2429,7 +2442,16 @@ class RigBuilderWindow(QFrame):
             self.treeWidget.replaceModule(idx, newModule)
             self.attributesTabWidget.updateTabs(newModule)
 
-    def _onExposeAsAttribute(self, code):
+    def _onExposeAsAttribute(self):
+        module = self.treeWidget.currentModule()
+        if not module:
+            return
+
+        cursor = self.codeEditorWidget.editorWidget.textCursor()
+        code = cursor.selectedText().replace("\u2029", "\n").strip()
+        if not code:
+            return
+
         try:
             v = copyJson(eval(code))
         except:
@@ -2443,8 +2465,7 @@ class RigBuilderWindow(QFrame):
         if not name:
             QMessageBox.critical(self, "Rig Builder", "Attribute name must be specified")
             return
-
-        module = self.treeWidget.currentModule()
+        
         if module.findAttribute(name):
             QMessageBox.critical(self, "Rig Builder", "Attribute with this name already exists")
             return        
@@ -2470,6 +2491,7 @@ class RigBuilderWindow(QFrame):
         attr.set(v)
 
         module.addAttribute(attr)
+
         self.attributesTabWidget.updateTabs(module)
         self.codeEditorWidget.editorWidget.textCursor().insertText(f"@{name}")
         logger.info(f"Attribute '{name}' exposed.")
