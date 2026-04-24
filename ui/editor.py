@@ -810,7 +810,16 @@ class CodeEditorWidget(QTextEdit):
             else:
                 cursor = self.textCursor()
                 block = cursor.block().text()
+                
+                # Get current indentation
                 spc = re.search("^(\\s*)", block).groups("")[0]
+                
+                # Check if the line before the cursor ends with a colon (ignoring comments)
+                lineToCursor = block[:cursor.positionInBlock()]
+                codeBefore = lineToCursor.split('#')[0].rstrip()
+                
+                if codeBefore.endswith(":"):
+                    spc += self.tabSpaces
 
                 super().keyPressEvent(event)
 
