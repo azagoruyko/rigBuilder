@@ -11,7 +11,7 @@ import markdown
 import asyncio
 
 from ..qt import *
-from ..core import Module, MODULE_EXTS, UidManager
+from ..core import Module, MODULE_EXT, MODULE_EXTS, UidManager
 from .. import workspace
 from .. import settings as settings_module
 from ..settings import settings
@@ -248,7 +248,8 @@ class ModuleBrowserTree(QTreeView):
     # Drag
     # ------------------------------------------------------------------
 
-    def _collectDraggedModulePaths(self) -> List[str]:
+    def selectedModulePaths(self) -> List[str]:
+        """Return a list of file paths for all selected module leaf items."""
         paths = []
         for proxyIdx in self.selectionModel().selectedRows(COL_NAME):
             srcIdx = self.proxyModel.mapToSource(proxyIdx)
@@ -260,7 +261,7 @@ class ModuleBrowserTree(QTreeView):
         return paths
 
     def _startModuleDrag(self):
-        paths = self._collectDraggedModulePaths()
+        paths = self.selectedModulePaths()
         if not paths:
             return
         mimeData = QMimeData()
@@ -301,20 +302,67 @@ class ModuleBrowserTree(QTreeView):
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
-        menu.addAction("Locate", self.browseModuleDirectory)
+        
+        selectedPaths = self.selectedModulePaths()
+
+        renameAction = menu.addAction("Rename")
+        renameAction.triggered.connect(self.renameModule)
+        renameAction.setEnabled(len(selectedPaths) == 1)
+        
+        deleteAction = menu.addAction("Delete")
+        deleteAction.triggered.connect(self.deleteModule)
+        deleteAction.setEnabled(len(selectedPaths) > 0)
+        
+        menu.addSeparator()
+
+        browseAction = menu.addAction("Show in Explorer")
+        browseAction.triggered.connect(self.browseModuleDirectory)
+        browseAction.setEnabled(len(selectedPaths) > 0)
+
         menu.addAction("Open modules folder", self.openModulesFolder)
         menu.addSeparator()
         menu.addAction("Refresh", self.parent().refreshModules)
         menu.popup(event.globalPos())
 
+    def renameModule(self):
+        paths = self.selectedModulePaths()
+        if not paths:
+            return
+            
+        fp = paths[0]
+        oldName = os.path.splitext(os.path.basename(fp))[0]
+        newName, ok = QInputDialog.getText(
+            self, "Rename Module", "New module name:", QLineEdit.Normal, oldName)
+
+        if ok and newName and newName != oldName:
+            newFp = os.path.join(os.path.dirname(fp), newName + MODULE_EXT)
+            try:
+                os.rename(fp, newFp)
+            except Exception as e:
+                QMessageBox.critical(self, "Rename Error", f"Failed to rename:\n{e}")
+
+    def deleteModule(self):
+        paths_to_delete = self.selectedModulePaths()
+        if not paths_to_delete:
+            return
+            
+        msg = f"Are you sure you want to delete {len(paths_to_delete)} module(s)?"
+        if len(paths_to_delete) == 1:
+            msg = f"Are you sure you want to delete the module '{os.path.basename(paths_to_delete[0])}'?"
+            
+        reply = QMessageBox.question(
+            self, "Delete Module", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            
+        if reply == QMessageBox.Yes:
+            for fp in paths_to_delete:
+                try:
+                    os.remove(fp)
+                except Exception as e:
+                    QMessageBox.critical(self, "Delete Error", f"Failed to delete {fp}:\n{e}")
+
     def browseModuleDirectory(self):
-        for proxyIdx in self.selectionModel().selectedRows(COL_NAME):
-            srcIdx = self.proxyModel.mapToSource(proxyIdx)
-            item = self.browserModel.itemFromIndex(srcIdx)
-            if item and not item.data(IS_DIR_ROLE):
-                fp = item.data(FILEPATH_ROLE)
-                if fp:
-                    subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(fp)))
+        for fp in self.selectedModulePaths():
+            subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(fp)))
 
     def openModulesFolder(self):
         subprocess.call("explorer \"{}\"".format(settings.modulesPath))

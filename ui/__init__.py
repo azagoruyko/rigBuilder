@@ -2527,7 +2527,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Save", self.treeWidget.saveModules, "Ctrl+S")
         menu.addAction("Save as", partial(self.treeWidget.saveModules, forceDialog=True, generateNewUids=True))
-        menu.addAction("Locate file", self.locateModuleFile)
+        menu.addAction("Show in Explorer", self.browseModuleFile)
         menu.addAction("View edit history", self.showModuleInHistory, "Ctrl+H")
         menu.addAction("Diff vs File", self.diffModule, "Alt+D")        
         menu.addSeparator()
@@ -2704,7 +2704,7 @@ class RigBuilderWindow(QFrame):
         if added:
             self.selectModule(added)
 
-    def locateModuleFile(self):
+    def browseModuleFile(self):
         for module in self.treeWidget.selectedModules():
             path = UidManager.resolve(module.uid())
             if module and os.path.exists(path):
