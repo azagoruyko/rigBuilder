@@ -2414,7 +2414,8 @@ class RigBuilderWindow(QFrame):
         lines = code.splitlines()
         log = [f">> {line}" for line in lines[:maxLines]]
         if len(lines) > maxLines:
-            log.append(">> ...")
+            if len(lines) > maxLines + 1:
+                log.append(">> ...")
             log.append(f">> {lines[-1]}") # last line is always shown
             
         logger.info("\n".join(log))
