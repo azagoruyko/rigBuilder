@@ -23,13 +23,13 @@ def isOllamaAvailable() -> bool:
         return False
 
 # Global status for later usage
-OLLAMA_AVAILABLE = isOllamaAvailable()
+IS_OLLAMA_AVAILABLE = isOllamaAvailable()
 
 async def chat(messages: list, format: str = '', temperature: float = 0.0) -> str:
     """
     Asynchronous coroutine to communicate with Ollama.
     """
-    if not OLLAMA_AVAILABLE:
+    if not IS_OLLAMA_AVAILABLE:
         return ""
 
     additionalMessages = [
@@ -56,7 +56,7 @@ async def chatJSON(systemPrompt: str, userPrompt: str, temperature: float = 0.0)
     Asynchronous coroutine to communicate with Ollama expecting a JSON response. 
     Includes automatic JSON repair and parsing.
     """
-    if not OLLAMA_AVAILABLE:
+    if not IS_OLLAMA_AVAILABLE:
         return {}
 
     messages = [
@@ -80,7 +80,7 @@ async def embed(text: str) -> list[float]:
     """
     Asynchronous coroutine to get embeddings for a single text string using the configured model.
     """
-    if not OLLAMA_AVAILABLE:
+    if not IS_OLLAMA_AVAILABLE:
         return []
 
     model = settings.ollamaEmbeddingModel

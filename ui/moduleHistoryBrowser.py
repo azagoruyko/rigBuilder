@@ -370,7 +370,7 @@ class ModuleHistoryWidget(QWidget):
         genButton.setToolTip("Generate commit message from changes using AI")
         hLayout.addWidget(genButton)
 
-        if not engine.OLLAMA_AVAILABLE or not diffText:
+        if not engine.IS_OLLAMA_AVAILABLE or not diffText:
             genButton.hide()
 
         layout.addLayout(hLayout)

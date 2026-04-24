@@ -241,7 +241,7 @@ class DiffBrowserDialog(QDialog):
         layout.addWidget(closeBtn)
 
         # Hide AI group if Ollama is not available or if there is no diff
-        if not engine.OLLAMA_AVAILABLE or not diffText.strip():
+        if not engine.IS_OLLAMA_AVAILABLE or not diffText.strip():
             self.aiGroup.hide()
         else:
             # Create worker without parent so it's not destroyed with the dialog

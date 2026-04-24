@@ -85,7 +85,7 @@ class ModuleIndexer:
             changed = True
             
         if cachedModel and cachedModel != currentModel:
-            if not engine.OLLAMA_AVAILABLE:
+            if not engine.IS_OLLAMA_AVAILABLE:
                 print(f"Note: Current embedding model ({currentModel}) differs from the index ({cachedModel}).")
                 print("Re-indexing is pending until Ollama is available.")
             else:
@@ -95,7 +95,7 @@ class ModuleIndexer:
                 changed = True
                 force = True # Force re-indexing of all files
 
-        if not engine.OLLAMA_AVAILABLE:
+        if not engine.IS_OLLAMA_AVAILABLE:
             if changed:
                 self._saveCache() # Save if we just initialized the model name
             return

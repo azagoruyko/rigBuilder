@@ -82,7 +82,7 @@ class DocBrowser(QWidget):
         self.module = None
         self._worker = None
 
-        if not engine.OLLAMA_AVAILABLE:
+        if not engine.IS_OLLAMA_AVAILABLE:
             self.genButton.hide()
 
     def updateDoc(self, module: Optional[Module] = None):
