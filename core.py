@@ -997,7 +997,8 @@ UidManager.sync()
 
 def printError(msg: str):
     """Raise a RuntimeError and stop execution."""
-    raise RuntimeError(msg)
+    print("Error: "+msg)
+    exitModule()
 
 def printWarning(msg: str):
     """Print a warning message to the log."""
