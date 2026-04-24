@@ -2301,7 +2301,7 @@ class RigBuilderWindow(QFrame):
         self.windowPinBtn = QPushButton("📌")
         self.windowPinBtn.setCheckable(True)
         self.windowPinBtn.setToolTip("Pin window (stays on top)")
-        self.windowPinBtn.clicked.connect(self._onTogglePin)
+        self.windowPinBtn.clicked.connect(self.pinWindow)
         self.windowPinBtn.setStyleSheet("QPushButton:checked { background-color: #3e7bd6; border-color: #6ea7ff; color: #ffffff; }")
 
         headerRow = QHBoxLayout()
@@ -2503,9 +2503,9 @@ class RigBuilderWindow(QFrame):
         dialog.hostsChanged.connect(self._refreshHostCombo)
         dialog.exec()
 
-    def _onTogglePin(self, checked: bool):
-        """Toggle 'Stay on Top' window flag and update opacity."""
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, checked)
+    def pinWindow(self, state: bool):
+        """Toggle 'Stay on Top' window flag."""
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, state)
         self.show()
  
     def _onWorkspaceChanged(self, workspace):
@@ -2775,8 +2775,6 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
-
-
     def runModule(self):
         """Run module on the host server."""
         def getChildrenCount(m: Module) -> int:
@@ -2837,13 +2835,14 @@ class RigBuilderWindow(QFrame):
         settings = QSettings("RigBuilder")
         settings.setValue("activeWorkspace", self.workspaceWidget._currentWorkspaceName)
         settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("pinned", self.windowPinBtn.isChecked())
         
         # Save splitter states
         settings.setValue("verticalSplitter", self.verticalSplitter.saveState())
         settings.setValue("mainContentSplitter", self.mainContentSplitter.saveState())
         settings.setValue("leftSplitter", self.leftSplitter.saveState())
         settings.setValue("rightSplitter", self.rightSplitter.saveState())
-        settings.setValue("codeAndApiSplitter", self.codeAndApiSplitter.saveState())
+        settings.setValue("codeAndApiSplitter", self.codeAndApiSplitter.saveState())        
 
     def loadAppSettings(self):
         """Load app-specific settings."""
@@ -2853,6 +2852,10 @@ class RigBuilderWindow(QFrame):
         geometry = settings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
+
+        pinned = settings.value("pinned", False, type=bool)
+        self.windowPinBtn.setChecked(pinned)
+        self.pinWindow(pinned)
         
         # Restore splitter states
         for key, splitter in [
