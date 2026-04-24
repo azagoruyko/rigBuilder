@@ -556,8 +556,7 @@ class TextBlockData(QTextBlockUserData):
 class CodeEditorWidget(QTextEdit):
     numberBarUpdateRequested = Signal()
     executeRequested = Signal(str)
-    editorState = {}
-    TabSpaces = 4
+    exposeAsAttributeRequested = Signal(str)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -565,26 +564,27 @@ class CodeEditorWidget(QTextEdit):
         self.preset = "default"
         self.commentChar = "#"
         self.ignoreStates = False # don't save/load states
-
-        self.syntax = PythonHighlighter(self.document())
+        
+        self.tabSize = 4
+        self.tabSpaces = " "*self.tabSize
 
         self._editorState = {}
 
         self._canShowCompletions = True
 
-        self.words = []
+        self.words = set()
         self._currentWord = ("", 0, 0)
 
         self._searchStartWord = ("", 0, 0)
         self._prevCursorPosition = 0
         self.swoopSearchDialog = SwoopSearchDialog(self, parent=self)
 
+        self.syntax = PythonHighlighter(self.document())
+        
         self.completionWidget = CompletionWidget([], parent=self)
         self.completionWidget.hide()
 
-        self._cachedWords = set()
-
-        self.setTabStopDistance(32)
+        self.setTabStopDistance(self.tabSize*8)
         self.setAcceptRichText(False)
         self.setWordWrapMode(QTextOption.NoWrap)
 
@@ -605,23 +605,22 @@ class CodeEditorWidget(QTextEdit):
         if event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Tab:
                 cursor = self.textCursor()
-                tabSpaces = " "*CodeEditorWidget.TabSpaces
                 start = cursor.selectionStart()
                 end = cursor.selectionEnd()
 
                 cursor.beginEditBlock()
                 if end == start:
-                    cursor.insertText(tabSpaces)
+                    cursor.insertText(self.tabSpaces)
                 else:
                     cursor.clearSelection()
                     cursor.setPosition(start)
 
                     while cursor.position() < end:
                         cursor.movePosition(QTextCursor.StartOfLine)
-                        cursor.insertText(tabSpaces)
+                        cursor.insertText(self.tabSpaces)
                         if not cursor.movePosition(QTextCursor.Down):
                             break
-                        end += len(tabSpaces)
+                        end += len(self.tabSpaces)
 
                 cursor.endEditBlock()
 
@@ -730,7 +729,8 @@ class CodeEditorWidget(QTextEdit):
     
     def getMenu(self):
         menu = QMenu(self)
-        menu.addAction("Execute", self.execute, "Ctrl+Return")
+        menu.addAction("Execute", self.executeCode, "Ctrl+Return")
+        menu.addAction("Expose as attribute", self.exposeAsAttribute, "Ctrl+E")
         menu.addSeparator()
         menu.addAction("Swoop search", self.swoopSearch, "F3")
         menu.addAction("Highlight selected", self.highlightSelected, "Ctrl+H")
@@ -748,13 +748,19 @@ class CodeEditorWidget(QTextEdit):
         menu.addAction("Select All", self.selectAll, "Ctrl+A")
         return menu
 
-    def execute(self):
+    def executeCode(self):
         cursor = self.textCursor()
         code = cursor.selectedText().replace("\u2029", "\n").strip()
         if not code:
             code = self.toPlainText().strip()
         if code:
             self.executeRequested.emit(code)
+
+    def exposeAsAttribute(self):
+        cursor = self.textCursor()
+        sel = cursor.selectedText().replace("\u2029", "\n").strip()
+        if sel:
+            self.exposeAsAttributeRequested.emit(sel)
 
     def contextMenuEvent(self, event):
         menu = self.getMenu()
@@ -832,7 +838,6 @@ class CodeEditorWidget(QTextEdit):
 
     def decreaseIndent(self):
         cursor = self.textCursor()
-        tabSpaces = " "*CodeEditorWidget.TabSpaces
         start, end = cursor.selectionStart(), cursor.selectionEnd()
         cursor.clearSelection()
 
@@ -845,9 +850,9 @@ class CodeEditorWidget(QTextEdit):
             selText = cursor.selectedText()
 
             # if the text starts with the tab_char, replace it
-            if selText.startswith(tabSpaces):
-                text = selText.replace(tabSpaces, "", 1)
-                end -= len(tabSpaces)
+            if selText.startswith(self.tabSpaces):
+                text = selText.replace(self.tabSpaces, "", 1)
+                end -= len(self.tabSpaces)
                 cursor.insertText(text)
 
             if not cursor.movePosition(QTextCursor.Down):
@@ -1097,10 +1102,9 @@ class CodeEditorWidget(QTextEdit):
             self.completionWidget.hide()
             return
 
-        words = self._cachedWords
         if currentWord:
             self._searchStartWord = self._currentWord
-            items = [w for w in words if w != currentWord and w.lower().startswith(currentWord.lower())]
+            items = [w for w in self.words if w != currentWord and w.lower().startswith(currentWord.lower())]
 
             if items and cursor.position() == end:
                 self.showCompletions(items)
@@ -1111,10 +1115,8 @@ class CodeEditorWidget(QTextEdit):
 
     def updateWordList(self):
         text = self.toPlainText()
-        # Only split if text is reasonably small or we really need it.
-        # But even for 10k lines, re.split is much faster if we don't do it on every keystroke.
-        self._cachedWords = set(re.split("[^\\w@]+", text))
-        self._cachedWords |= set(self.words)
+        self.words = set(self.words) # convert to set
+        self.words.update(re.split("[^\\w@]+", text))
 
     def showCompletions(self, items):
         rect = self.cursorRect()

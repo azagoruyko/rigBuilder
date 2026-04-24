@@ -2254,6 +2254,7 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
         self.codeEditorWidget.editorWidget.executeRequested.connect(self._onExecuteCode)
+        self.codeEditorWidget.editorWidget.exposeAsAttributeRequested.connect(self._onExposeAsAttribute)
 
         self.apiBrowserWidget = ApiBrowserWidget()
 
@@ -2426,6 +2427,51 @@ class RigBuilderWindow(QFrame):
         if idx.isValid():
             self.treeWidget.replaceModule(idx, newModule)
             self.attributesTabWidget.updateTabs(newModule)
+
+    def _onExposeAsAttribute(self, code):
+        try:
+            v = copyJson(eval(code))
+        except:
+            QMessageBox.critical(self, "Rig Builder", "Selected value is not JSON-compatible.")
+            return
+
+        name, ok = QInputDialog.getText(self, "Rig Builder", "Attribute name to expose:", QLineEdit.Normal)
+        if not ok:
+            return
+
+        if not name:
+            QMessageBox.critical(self, "Rig Builder", "Attribute name must be specified")
+            return
+
+        module = self.treeWidget.currentModule()
+        if module.findAttribute(name):
+            QMessageBox.critical(self, "Rig Builder", "Attribute with this name already exists")
+            return        
+
+        template = "lineEditAndButton"
+        if type(v) == bool:
+            template = "checkBox"
+        elif type(v) == dict:
+            template = "json"
+        elif type(v) == list and len(v) in [2, 3] and all(type(x) in [int, float] for x in v):
+            template = "vector"
+        elif type(v) == list:
+            template = "listBox"
+        
+        templateWidget = TemplateWidgets[template]()
+        data = templateWidget.getDefaultData()
+        if template == "lineEditAndButton":
+            data["buttonEnabled"] = False
+
+        category = self.attributesTabWidget.tabText(self.attributesTabWidget.currentIndex())
+        attr = Attribute(name, template, category or "General")
+        attr.setData(data)
+        attr.set(v)
+
+        module.addAttribute(attr)
+        self.attributesTabWidget.updateTabs(module)
+        self.codeEditorWidget.editorWidget.textCursor().insertText(f"@{name}")
+        logger.info(f"Attribute '{name}' exposed.")
 
     def _refreshHostCombo(self):
         """Repopulate the host dropdown from hosts.json."""
