@@ -189,11 +189,11 @@ class DiffDescriptionWorker(QThread):
             self.finished.emit("")
 
 
-class DiffBrowserDialog(QDialog):
-    """Modal dialog showing inline unified diff with git-style coloring."""
+class DiffBrowserWidget(QWidget):
+    """Widget showing inline unified diff with git-style coloring."""
 
-    def __init__(self, originalText="", currentText="", fromDesc="", toDesc="", *, diffText="", **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, originalText="", currentText="", fromDesc="", toDesc="", *, diffText="", parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
 
         if not diffText:
             diffLines = difflib.unified_diff(
@@ -205,11 +205,8 @@ class DiffBrowserDialog(QDialog):
             )
             diffText = "\n".join(diffLines)        
 
-        self.setWindowTitle("Diff: {} vs {}".format(fromDesc, toDesc))
-        self.setMinimumSize(700, 450)
-        self.resize(900, 550)
-
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         self.worker = None
 
         # Create Splitter
@@ -236,10 +233,6 @@ class DiffBrowserDialog(QDialog):
 
         self.splitter.setSizes([400, 400])
 
-        closeBtn = QPushButton("Close")
-        closeBtn.clicked.connect(self.accept)
-        layout.addWidget(closeBtn)
-
         # Hide AI group if Ollama is not available or if there is no diff
         if not engine.IS_OLLAMA_AVAILABLE or not diffText.strip():
             self.aiGroup.hide()
@@ -255,8 +248,6 @@ class DiffBrowserDialog(QDialog):
             worker.start()
             self.worker = worker
 
-        centerWindow(self)
-
     def _onAiFinished(self, summary: str):
         if summary:
             self.aiText.setMarkdown(summary)
@@ -264,3 +255,53 @@ class DiffBrowserDialog(QDialog):
         else:
             self.aiGroup.hide()
         self.worker = None
+
+
+class DiffBrowserDialog(QDialog):
+    """Modal dialog showing inline unified diff with git-style coloring."""
+
+    def __init__(self, originalText="", currentText="", fromDesc="", toDesc="", *, diffText="", parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
+
+        self.setWindowTitle("Diff: {} vs {}".format(fromDesc, toDesc))
+        self.setMinimumSize(700, 450)
+        self.resize(900, 550)
+
+        layout = QVBoxLayout(self)
+        self.browserWidget = DiffBrowserWidget(originalText, currentText, fromDesc, toDesc, diffText=diffText)
+        layout.addWidget(self.browserWidget)
+
+        closeBtn = QPushButton("Close")
+        closeBtn.clicked.connect(self.accept)
+        layout.addWidget(closeBtn)
+
+        centerWindow(self)
+
+
+class DiffBrowserDialogWithConfirm(QDialog):
+    """Modal dialog showing diff with Confirm/Cancel buttons."""
+
+    def __init__(self, originalText="", currentText="", fromDesc="", toDesc="", *, diffText="", parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
+
+        self.setWindowTitle("Confirm Changes: {} vs {}".format(fromDesc, toDesc))
+        self.setMinimumSize(700, 450)
+        self.resize(900, 550)
+
+        layout = QVBoxLayout(self)
+        self.browserWidget = DiffBrowserWidget(originalText, currentText, fromDesc, toDesc, diffText=diffText)
+        layout.addWidget(self.browserWidget)
+
+        btnLayout = QHBoxLayout()
+        confirmBtn = QPushButton("Confirm")
+        confirmBtn.clicked.connect(self.accept)
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.clicked.connect(self.reject)
+        
+        btnLayout.addStretch()
+        btnLayout.addWidget(confirmBtn)
+        btnLayout.addWidget(cancelBtn)
+
+        layout.addLayout(btnLayout)
+
+        centerWindow(self)
