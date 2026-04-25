@@ -32,7 +32,7 @@ from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
 from .workspaceManager import WorkspaceWidget
-from .aichat import AIChatDialog
+from .aichat import AIChatDialog, AITools
 from ..logger import logger, logHandler
 from ..ai.engine import IS_OLLAMA_AVAILABLE
 
@@ -2284,7 +2284,9 @@ class RigBuilderWindow(QFrame):
         self.logger = logger
         self._refreshingUI = False
         self._progressCounter = 0
+        
         self.aiChatDialog = AIChatDialog(parent=self)
+        self.setupAIChatTools()
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 900)
@@ -2654,6 +2656,76 @@ class RigBuilderWindow(QFrame):
         dialog.hostsChanged.connect(self._refreshHostCombo)
         dialog.exec()
 
+    def setupAIChatTools(self):
+        def getCurrentState() -> str:
+            """
+            Get the current state of Rig Builder.
+            Useful for understanding the context the user is currently working in.
+            Returns the selected host, the active workspace, the currently selected module in the tree (its name and documentation),
+            and the python imports defined in the module's run code.
+            Use this to understand what the user is currently selecting or working on.
+            """
+            m = self.treeWidget.currentModule()
+            imports = []
+            if m:
+                for l in m.runCode().splitlines():
+                    if not l.strip():
+                        continue
+                    if l.startswith("import") or l.startswith("from"):
+                        imports.append(l)
+                    else:
+                        break
+
+            from ..workspace import currentWorkspace
+
+            state = f'''
+            Host: {settings.host}, use appropriate coding standards for this host.
+            Workspace: {currentWorkspace.name}
+            Current Module: {m.name() if m else 'No module'}
+            Module Doc: {m.doc() if m else 'No documentation'}
+            Imports: {'; '.join(imports) if imports else 'No imports'}
+            Selected lines in editor: {self.codeEditorWidget.editorWidget.textCursor().selectedText()}
+            '''
+            return state
+
+        def getExampleModule() -> str:
+            """
+            Get a demonstration module of Rig Builder modules API in XML.
+            This is extremely useful when you need to understand how Rig Builder modules are structured,
+            what attributes they use, and how they define context and logic. 
+            Use this as a reference or template when generating new Rig Builder modules or fixing existing ones.
+            """
+            exampleModulePath = os.path.join(RIG_BUILDER_PATH, "modules", "example.rb")
+            import xml.dom.minidom
+            with open(exampleModulePath, "r", encoding="utf-8") as f:
+                dom = xml.dom.minidom.parseString(f.read())
+                return dom.toprettyxml(indent="  ")
+
+        def getRigBuilderCore() -> str:
+            """
+            Get Rig Builder python core module for all the logic of the program.
+            This tool provides the source code of `core.py`, which contains the foundational logic,
+            classes, and methods for Rig Builder. 
+            Use this when you need deep understanding of how Rig Builder operates under the hood,
+            or when you need to know exactly how core APIs are implemented.
+            """
+            coreModulePath = os.path.join(RIG_BUILDER_PATH, "core.py")
+            with open(coreModulePath, "r", encoding="utf-8") as f:
+                return f.read()
+
+        def getSelectedCodeLines() -> str:
+            """
+            Get the selected lines from the code editor.
+            Use this when you need to understand the current code selection in the editor.
+            Returns the selected lines as a string.
+            """
+            return self.codeEditorWidget.editorWidget.textCursor().selectedText()
+       
+        AITools.getCurrentState = getCurrentState
+        AITools.getExampleModule = getExampleModule
+        AITools.getRigBuilderCore = getRigBuilderCore
+        AITools.getSelectedCodeLines = getSelectedCodeLines
+
     def _onOpenAIChat(self):
         """Open the AI Chat dialog."""
         self.aiChatDialog.show()
@@ -2668,6 +2740,7 @@ class RigBuilderWindow(QFrame):
     def _onWorkspaceChanged(self, workspace):
         logger.info(f"Workspace changed: {workspace.name}")
         self._refreshModuleUI()
+        self.aiChatDialog.loadChat()
 
     def _refreshModuleUI(self):
         """Update UI components that depend on current settings/workspace."""
