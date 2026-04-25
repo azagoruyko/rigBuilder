@@ -5,20 +5,6 @@ from contextlib import contextmanager
 
 from ..qt import *
 
-RootDirectory = os.path.dirname(__file__)
-
-
-def applyStylesheet(widget):
-    """Load and apply stylesheet.css to the given widget (main window when inside a host application)."""
-    stylesheetPath = os.path.join(RootDirectory, "stylesheet.css")
-    if os.path.isfile(stylesheetPath):
-        with open(stylesheetPath, "r", encoding="utf-8") as f:
-            content = f.read()
-        rootPath = os.path.abspath(os.path.join(RootDirectory, '..')).replace("\\", "/")
-        content = content.replace("{ROOT}", rootPath)
-        widget.setStyleSheet(content)
-
-
 def getFontWidth(fontMetrics, text: str) -> int:
     """Get text width using appropriate method for Qt version."""
     if hasattr(fontMetrics, 'horizontalAdvance'):

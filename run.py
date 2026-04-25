@@ -15,8 +15,21 @@ def updatePalette(app: QApplication):
     palette.setColor(QPalette.LinkVisited, QColor("#55aaee"))
     app.setPalette(palette)
 
+def applyStylesheet(widget):
+    """Load and apply stylesheet."""
+    stylesheetPath = os.path.join(directory, "stylesheet.css")
+    with open(stylesheetPath, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    rootPath = os.path.abspath(directory).replace("\\", "/")
+    content = content.replace("{ROOT}", rootPath)
+    widget.setStyleSheet(content)
+
 if __name__ == "__main__":
     app = QApplication([])
+
+    applyStylesheet(app)
+    updatePalette(app)
     
     # Prevent multiple instances
     sharedMemory = QSharedMemory("RigBuilder_Unique_Lock")
@@ -29,11 +42,6 @@ if __name__ == "__main__":
     setupExcepthook()
 
     from rigBuilder.ui import mainWindow
-    from rigBuilder.ui.utils import applyStylesheet
-
-    applyStylesheet(app)
-    updatePalette(app)
-
     mainWindow.show()
 
     app.exec()
