@@ -32,7 +32,9 @@ from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
 from .workspaceManager import WorkspaceWidget
+from .aichat import AIChatDialog
 from ..logger import logger, logHandler
+from ..ai.engine import IS_OLLAMA_AVAILABLE
 
 
 class AttributesWidget(QWidget):
@@ -2310,6 +2312,10 @@ class RigBuilderWindow(QFrame):
         self.syncBtn = QPushButton("🔄")
         self.syncBtn.setToolTip("Sync all modules (reset local changes)")
         self.syncBtn.clicked.connect(self._onSyncRequested)
+
+        self.aiChatBtn = QPushButton("💬")
+        self.aiChatBtn.setToolTip("AI Chat (Ollama)")
+        self.aiChatBtn.clicked.connect(self._onOpenAIChat)
  
         self.workspaceWidget = WorkspaceWidget(self)
         self.workspaceWidget.workspaceChanged.connect(self._onWorkspaceChanged)
@@ -2324,6 +2330,9 @@ class RigBuilderWindow(QFrame):
         headerRow.addWidget(self.workspaceWidget)
         headerRow.addWidget(self.syncBtn)
         headerRow.addStretch()
+        if IS_OLLAMA_AVAILABLE:
+            headerRow.addWidget(self.aiChatBtn)
+            headerRow.addStretch()
         headerRow.addWidget(self.hostCombo)
         headerRow.addWidget(self.hostConnectBtn)
         headerRow.addWidget(self.hostManageBtn)
@@ -2643,6 +2652,15 @@ class RigBuilderWindow(QFrame):
         dialog = ManageHostsDialog(parent=self)
         dialog.hostsChanged.connect(self._refreshHostCombo)
         dialog.exec()
+
+    def _onOpenAIChat(self):
+        """Open the AI Chat dialog."""
+        if not hasattr(self, "_aiChatDialog") or self._aiChatDialog is None:
+            self._aiChatDialog = AIChatDialog(parent=self)
+        
+        self._aiChatDialog.show()
+        self._aiChatDialog.raise_()
+        self._aiChatDialog.activateWindow()
 
     def pinWindow(self, state: bool):
         """Toggle 'Stay on Top' window flag."""

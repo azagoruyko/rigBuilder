@@ -51,6 +51,32 @@ async def chat(messages: list, format: str = '', temperature: float = 0.0) -> st
         print(f"Ollama Async API Error: {e}")
         return ""
 
+async def chatStream(messages: list, temperature: float = 0.0):
+    """
+    Asynchronous generator to communicate with Ollama with streaming support.
+    Yields chunks of the response.
+    """
+    if not IS_OLLAMA_AVAILABLE:
+        return
+
+    additionalMessages = [
+        {
+            'role': 'system',
+            'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
+        }
+    ]
+
+    try:
+        async for chunk in await ollama.AsyncClient().chat(
+            model=settings.ollamaModel,
+            messages=additionalMessages + messages,
+            stream=True,
+            options={'temperature': temperature}
+        ):
+            yield chunk.get('message', {}).get('content', '')
+    except Exception as e:
+        print(f"Ollama Async Streaming API Error: {e}")
+
 async def chatJSON(systemPrompt: str, userPrompt: str, temperature: float = 0.0) -> dict:
     """
     Asynchronous coroutine to communicate with Ollama expecting a JSON response. 
