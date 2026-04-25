@@ -17,9 +17,10 @@ from ..qt import *
 from .. import __version__
 from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..core import *
-from .editor import CodeEditorWithNumbersWidget
+from ..widgets.core import getWidgetTemplateFromValue, DEFAULT_WIDGET_DATA
 from .apiBrowser import ApiBrowserWidget
 from .docBrowser import DocBrowser
+from .editor import CodeEditorWithNumbersWidget
 from .moduleBrowser import ModuleBrowser
 from .moduleHistoryBrowser import ModuleHistoryWidget
 from .diffBrowser import DiffBrowserDialog, calculateModulesDiff
@@ -328,9 +329,8 @@ class AttributesWidget(QWidget):
     def resetAttr(self, attrWidgetIndex: int):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
-        tmp = TemplateWidgets[attr.template()]()
         attr.setConnect("")
-        attr.setData(tmp.getDefaultData())
+        attr.setData(copyJson(DEFAULT_WIDGET_DATA[attr.template()]))
         self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 
@@ -2554,18 +2554,9 @@ class RigBuilderWindow(QFrame):
             QMessageBox.critical(self, "Rig Builder", "Attribute with this name already exists")
             return        
 
-        template = "lineEditAndButton"
-        if type(v) == bool:
-            template = "checkBox"
-        elif type(v) == dict:
-            template = "json"
-        elif type(v) == list and len(v) in [2, 3] and all(type(x) in [int, float] for x in v):
-            template = "vector"
-        elif type(v) == list:
-            template = "listBox"
+        template = getWidgetTemplateFromValue(v)
         
-        templateWidget = TemplateWidgets[template]()
-        data = templateWidget.getDefaultData()
+        data = copyJson(DEFAULT_WIDGET_DATA[template])
         if template == "lineEditAndButton":
             data["buttonEnabled"] = False
 
