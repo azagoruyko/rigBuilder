@@ -48,11 +48,11 @@ class AIChatWorker(QThread):
         self._isRunning = False
 
 
-
 class AIChatDialog(QDialog):
     beforeSendMessage = Signal()
     addAttributeRequested = Signal(object) 
-    writeCodeRequested = Signal(str)
+    replaceCodeRequested = Signal(str)
+    setSelectedCodeRequested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -344,9 +344,9 @@ class AIChatDialog(QDialog):
             Host: {self.aicontext["host"].name}, use appropriate coding standards for this host.
             Workspace: {self.aicontext["workspace"].name}
             Selected module: {m.name() if m else 'No module'}
-            Module documentation: {m.doc() if m else 'No documentation'}
+            Module documentation:{'\n' + m.doc() if m else 'No documentation'}
             Imports: {'; '.join(imports) if imports else 'No imports'}
-            Selected code: {self.aicontext["selectedCode"] if m else "(Nothing selected)"}
+            Selected code:{'\n' + self.aicontext["selectedCode"] if m else "Nothing selected"}
             '''
             return state
 
@@ -396,7 +396,7 @@ class AIChatDialog(QDialog):
 
             return self.aicontext["code"]
 
-        def writeCode(text: str) -> str:
+        def setSelectedCode(text: str) -> str:
             """
             Writes the given text to the code editor, replacing the selected code if any.
             Returns 'ok' if successful.
@@ -405,7 +405,18 @@ class AIChatDialog(QDialog):
             if not m:
                 return "(No module selected)"
 
-            self.writeCodeRequested.emit(text)
+            self.setSelectedCodeRequested.emit(text)
+            return "ok"
+
+        def replaceCode(newText: str) -> str:
+            """
+            Replaces the entire code in the code editor with the given text.
+            Returns 'ok' if successful.
+            """
+            if not self.aicontext["selectedModule"]:
+                return "(No module selected)"
+
+            self.replaceCodeRequested.emit(newText)
             return "ok"
 
         def getModuleAttributes() -> str:
@@ -448,6 +459,7 @@ class AIChatDialog(QDialog):
         engine.AITools.getRigBuilderCore = getRigBuilderCore
         engine.AITools.getSelectedCode = getSelectedCode
         engine.AITools.readCode = readCode
-        engine.AITools.writeCode = writeCode
+        engine.AITools.replaceCode = replaceCode
+        engine.AITools.setSelectedCode = setSelectedCode
         engine.AITools.getModuleAttributes = getModuleAttributes
         engine.AITools.addModuleAttribute = addModuleAttribute

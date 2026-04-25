@@ -28,7 +28,7 @@ from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGETS_DATA
 from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowserWidget
-from .diffBrowser import DiffBrowserDialog, calculateModulesDiff
+from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
 from .docBrowser import DocBrowser
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
@@ -2395,7 +2395,8 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.hide()        
 
         self.aiChatDialog = AIChatDialog(parent=self)
-        self.aiChatDialog.writeCodeRequested.connect(self._onWriteCodeRequested)
+        self.aiChatDialog.replaceCodeRequested.connect(self._onReplaceCodeRequested)
+        self.aiChatDialog.setSelectedCodeRequested.connect(self._onSetSelectedCodeRequested)
         self.aiChatDialog.addAttributeRequested.connect(self._onAddAttributeRequested)
         self.aiChatDialog.beforeSendMessage.connect(self.prepareContextForChat)
 
@@ -2662,11 +2663,78 @@ class RigBuilderWindow(QFrame):
         m.addAttribute(attr)
         self.attributesTabWidget.updateTabs(m)
 
-    def _onWriteCodeRequested(self, code: str):
-        cursor = self.codeEditorWidget.editorWidget.textCursor()
-        if cursor.hasSelection():
+    def _onReplaceCodeRequested(self, code: str):
+        editor = self.codeEditorWidget.editorWidget
+        originalText = editor.toPlainText()
+        
+        dialog = DiffBrowserDialogWithConfirm(
+            originalText=originalText, 
+            currentText=code, 
+            fromDesc="Current Code", 
+            toDesc="AI Suggestion", 
+            parent=self
+        )
+        if dialog.exec() == QDialog.Accepted:
+            editor.beginEditBlock()
+            cursor = editor.textCursor()
+            cursor.movePosition(QTextCursor.Start)
+            cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
             cursor.removeSelectedText()
-        cursor.insertText(code)
+            cursor.insertText(code)
+            editor.endEditBlock()
+
+    def _onSetSelectedCodeRequested(self, code: str):
+        editor = self.codeEditorWidget.editorWidget
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return
+            
+        import textwrap
+        
+        startPos = cursor.selectionStart()
+        endPos = cursor.selectionEnd()
+        
+        doc = cursor.document()
+        startBlock = doc.findBlock(startPos)
+        endBlock = doc.findBlock(endPos)
+        
+        # If the endPos is exactly at the start of a block, the user selected up to the end of the previous block
+        if endPos == endBlock.position() and startPos != endPos:
+            endBlock = endBlock.previous()
+            
+        # Get indentation of the start block
+        blockText = startBlock.text()
+        indentation = ""
+        for char in blockText:
+            if char in (' ', '\t'):
+                indentation += char
+            else:
+                break
+                
+        # Format the new code
+        code = textwrap.dedent(code).strip('\n')
+        indentedLines = [(indentation + line if line.strip() else line) for line in code.split('\n')]
+        indentedCode = '\n'.join(indentedLines)
+        
+        # Expand selection to full blocks
+        editCursor = QTextCursor(cursor)
+        editCursor.setPosition(startBlock.position())
+        editCursor.setPosition(endBlock.position(), QTextCursor.KeepAnchor)
+        editCursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        
+        originalSnippet = editCursor.selectedText().replace('\u2029', '\n')
+        
+        dialog = DiffBrowserDialogWithConfirm(
+            originalText=originalSnippet, 
+            currentText=indentedCode, 
+            fromDesc="Current Selection", 
+            toDesc="AI Suggestion", 
+            parent=self
+        )
+        if dialog.exec() == QDialog.Accepted:
+            editCursor.beginEditBlock()
+            editCursor.insertText(indentedCode)
+            editCursor.endEditBlock()
 
     def _onOpenAIChat(self):
         """Open the AI Chat dialog."""
