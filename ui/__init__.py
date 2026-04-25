@@ -2278,6 +2278,7 @@ class RigBuilderWindow(QFrame):
         self.codeWidget.layout().addWidget(self.vscodeBtn)
 
         self.runBtn = QPushButton("🚀 Run")
+        self.runBtn.setToolTip("Execute modules from top down in their own context.")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
         self.runBtn.clicked.connect(self.runModule)
         self.runBtn.hide()

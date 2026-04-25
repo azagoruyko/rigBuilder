@@ -10,7 +10,6 @@ from ..utils import captureOutput, jsonifyContext, getErrorStack, executeWithRes
 # Persistent execution contexts for interactive (line-by-line) code execution.
 # Keyed by a client-supplied contextKey so variables accumulate across calls.
 _interactiveContexts = {}
-DEFAULT_CONTEXT_KEY = "default"
 
 class _StreamCapture(io.TextIOBase):
     """Captures stdout/stderr produced during module run or code execution
@@ -68,7 +67,7 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
     if not module:
         return _emitError(emitFn, runId, f"Module not found at path: {modulePath}")
 
-    extraContext = _interactiveContexts.get(contextKey or DEFAULT_CONTEXT_KEY, {})
+    extraContext = _interactiveContexts.get(contextKey) or {}
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -77,7 +76,8 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
         except Exception as e:
             return _emitError(emitFn, runId, str(e), getErrorStack())
 
-    _interactiveContexts[contextKey or DEFAULT_CONTEXT_KEY] = ctx
+    if contextKey:
+        _interactiveContexts[contextKey] = ctx
 
     try:
         xmlOut = root.toXml()
@@ -116,7 +116,7 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Execute host-side Python code and return JSON-serializable context."""
 
     # Retrieve or create the accumulated interactive context.
-    context = _interactiveContexts.get(contextKey or DEFAULT_CONTEXT_KEY, {})
+    context = _interactiveContexts.get(contextKey) or {}
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -131,7 +131,8 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
             return {"ok": False, "error": msg, "traceback": tb, "id": runId}
 
     # Store surviving user variables for the next interactive call.
-    _interactiveContexts[contextKey or DEFAULT_CONTEXT_KEY] = context
+    if contextKey:
+        _interactiveContexts[contextKey] = context
 
     emitFn({"event": "finished", "id": runId})
     return {"ok": True, "context": jsonifyContext(context), "id": runId}

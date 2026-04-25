@@ -138,11 +138,9 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return
 
-        contextKey = "global"
-
         self._ensureBoundConnection(conn)
         moduleXml = module.toXml()
-        reply = conn.runModule(moduleXml, ".", contextKey=contextKey)
+        reply = conn.runModule(moduleXml, ".", contextKey=None) # no global context here
 
         if reply:
             if reply.get("ok"):
