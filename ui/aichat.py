@@ -3,43 +3,6 @@ from ..qt import *
 from ..ai import engine
 from ..settings import settings
 
-SYSTEM_PROMPT = """
-You are an AI assistant integrated into Rig Builder, a standalone modular tool development environment.
-Rig Builder is a general-purpose platform for creating, managing, and executing Python modules to build automation tools for any host.
-
-Key features of Rig Builder:
-- Modular architecture: Tools are built from reusable components called 'modules'.
-- Modules are independant, flat, made out of a single file.
-- Host Agnostic Integration: Can connect to various hosts (like Maya, Unreal, Blender, Houdini, etc.) or run in Standalone mode.
-- Attribute System: Modules have exposed attributes for configuration and interactivity.
-- Interactive Execution: Modules can be executed in real-time within the host context.
-
-When helping users:
-- Provide compact, modular Python code compatible with the Rig Builder environment and appropriate host.
-- Avoid long descriptions, verbose explanations, or excessive comments in the code.
-- DO NOT include `if __name__ == "__main__":` blocks or standalone execution boilerplate; the code is intended to run within Rig Builder.
-- Focus on direct solutions and general tool-building best practices.
-- If the user asks about the environment, explain that they are inside Rig Builder.
-
-Example of Rig Builder code:
-```python
-# @ is shortcut for 'attr_' prefix. 
-# Don't create attributes yourself! 
-# Attributes store JSON-compatible data only!
-print("lineAttr:", @lineAttr, type(@lineAttr))
-
-# Progress bar functions
-beginProgress("Some slow operation", 10)
-for i in range(10):
-    stepProgress(i)
-    time.sleep(0.1)
-endProgress()
-
-warning("Warn user in case of something important")
-error("Report error to user")
-exit() # exit current module execution
-```
-"""
 
 class AIChatWorker(QThread):
     chunkReceived = Signal(str)
@@ -55,10 +18,7 @@ class AIChatWorker(QThread):
     def run(self):
         try:
             # Add system prompt for context and language
-            fullMessages = [
-                {'role': 'system', 'content': SYSTEM_PROMPT},
-                {'role': 'system', 'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'}
-            ] + self.messages
+            fullMessages = engine.getChatMessages(self.messages)
 
             for chunk in ollama.chat(
                 model=settings.ollamaModel,
@@ -85,7 +45,7 @@ class AIChatDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("AI Chat")
         self.resize(600, 700)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowStaysOnTopHint)
 
         self.messages = []
         self.currentResponse = ""
@@ -210,6 +170,8 @@ class AIChatDialog(QDialog):
         for msg in self.messages:
             role = msg['role'].capitalize()
             content = formatContent(msg['content'])
+            if not content:
+                content = "Thinking...maybe hanging..."
             
             if msg['role'] == 'user':
                 fullMd += f"### 👤 {role}\n{content}\n\n"

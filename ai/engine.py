@@ -7,6 +7,7 @@ from json_repair import repair_json
 
 from ..settings import settings
 
+RootDirectory = os.path.dirname(__file__)
 CONTEXT_LIMIT = 8192
 
 def isOllamaAvailable() -> bool:
@@ -25,6 +26,23 @@ def isOllamaAvailable() -> bool:
 # Global status for later usage
 IS_OLLAMA_AVAILABLE = isOllamaAvailable()
 
+with open(os.path.join(RootDirectory, 'chat_prompt.md'), 'r', encoding='utf-8') as f:
+    CHAT_PROMPT = f.read()
+
+def getChatMessages(messages: list) -> list:
+    """Prepare messages by injecting system prompts."""
+    systemMessages = [
+        {
+            'role': 'system',
+            'content': CHAT_PROMPT
+        },
+        {
+            'role': 'system',
+            'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
+        }
+    ]
+    return systemMessages + messages
+
 async def chat(messages: list, format: str = '', temperature: float = 0.0) -> str:
     """
     Asynchronous coroutine to communicate with Ollama.
@@ -32,17 +50,10 @@ async def chat(messages: list, format: str = '', temperature: float = 0.0) -> st
     if not IS_OLLAMA_AVAILABLE:
         return ""
 
-    additionalMessages = [
-        {
-            'role': 'system',
-            'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
-        }
-    ]
-
     try:
         response = await ollama.AsyncClient().chat(
             model=settings.ollamaModel,
-            messages=additionalMessages + messages,
+            messages=getChatMessages(messages),
             format=format,
             options={'temperature': temperature}
         )
@@ -59,17 +70,10 @@ async def chatStream(messages: list, temperature: float = 0.0):
     if not IS_OLLAMA_AVAILABLE:
         return
 
-    additionalMessages = [
-        {
-            'role': 'system',
-            'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
-        }
-    ]
-
     try:
         async for chunk in await ollama.AsyncClient().chat(
             model=settings.ollamaModel,
-            messages=additionalMessages + messages,
+            messages=getChatMessages(messages),
             stream=True,
             options={'temperature': temperature}
         ):
