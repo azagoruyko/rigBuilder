@@ -88,12 +88,14 @@ class EditJsonDialog(QDialog):
 class TemplateWidget(QFrame):
     somethingChanged = Signal()
     moduleCodeExecutionRequested = Signal(str)
+    
+    template = ""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def getDefaultData(self):
-        return self.getJsonData()
+        return copyJson(DEFAULT_WIDGET_DATA[self.template])
 
     def getJsonData(self):
         raise Exception("getJsonData must be implemented")
@@ -102,6 +104,8 @@ class TemplateWidget(QFrame):
         raise Exception("setJsonData must be implemented")
 
 class LabelTemplateWidget(TemplateWidget):
+    template = "label"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -131,9 +135,6 @@ class LabelTemplateWidget(TemplateWidget):
         editTextDialog.saved.connect(save)
         editTextDialog.show()        
 
-    def getDefaultData(self):
-        return {"text": "Description", "default": "text"}
-
     def getJsonData(self):
         return {"text": self._actualText, "default": "text"}
 
@@ -141,6 +142,8 @@ class LabelTemplateWidget(TemplateWidget):
         self.setLabelText(data.get("text", ""))
 
 class ButtonTemplateWidget(TemplateWidget):
+    template = "button"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -215,10 +218,7 @@ class ButtonTemplateWidget(TemplateWidget):
             self.moduleCodeExecutionRequested.emit(self.buttonCommand)
 
     def getDefaultData(self):
-        return {"command": 'chset("/someAttr", 1)',
-                "label": "Press me",
-                "color": "",
-                "default": "command"}
+        return copyJson(DEFAULT_WIDGET_DATA["button"])
 
     def getJsonData(self):
         return {"command": self.buttonCommand,
@@ -233,6 +233,8 @@ class ButtonTemplateWidget(TemplateWidget):
         self._updateButtonStyle()
 
 class CheckBoxTemplateWidget(TemplateWidget):
+    template = "checkBox"
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -252,6 +254,8 @@ class CheckBoxTemplateWidget(TemplateWidget):
             w.setChecked(True if data.get("checked", False) else False)
 
 class ComboBoxTemplateWidget(TemplateWidget):
+    template = "comboBox"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -314,9 +318,6 @@ class ComboBoxTemplateWidget(TemplateWidget):
 
         self.somethingChanged.emit()
 
-    def getDefaultData(self):
-        return {"items": ["a", "b"], "current": "a", "default": "current"}
-
     def getJsonData(self):
         return {"items": self.getItems(),
                 "current": smartConversion(self.comboBox.currentText()),
@@ -374,6 +375,7 @@ class LineEditOptionsDialog(QDialog):
 class LineEditAndButtonTemplateWidget(TemplateWidget):
     defaultMin = 0
     defaultMax = 100
+    template = "lineEditAndButton"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -620,6 +622,8 @@ class ListBoxItem(QListWidgetItem):
         super().setData(role, value)
 
 class ListBoxTemplateWidget(TemplateWidget):
+    template = "listBox"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -741,9 +745,6 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         self.somethingChanged.emit()  
 
-    def getDefaultData(self):
-        return {"items": ["a", "b"], "current":0, "default": "items"}
-
     def getJsonData(self):
         return {"items": self.getItems(), "default": "items"}
 
@@ -752,6 +753,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):
+    template = "radioButton"
     Columns = [2,3,4,5]
 
     def __init__(self, **kwargs):
@@ -814,9 +816,6 @@ class RadioButtonTemplateWidget(TemplateWidget):
             self.setJsonData(data)
             self.somethingChanged.emit()
 
-    def getDefaultData(self):
-        return {"items": ["Helpers", "Run"], "current": 0, "default": "current", "columns": self.numColumns}
-
     def getJsonData(self):
         return {"items": [b.text() for b in self.buttonsGroupWidget.buttons()],
                 "current": self.buttonsGroupWidget.checkedId(),
@@ -848,6 +847,8 @@ class RadioButtonTemplateWidget(TemplateWidget):
         self.colorizeButtons()
 
 class TableTemplateWidget(TemplateWidget):
+    template = "table"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -971,9 +972,6 @@ class TableTemplateWidget(TemplateWidget):
 
         self.resizeWidget()
 
-    def getDefaultData(self):
-        return {"items": [["a", "1"]], "header": ["name", "value"], "default": "items"}
-
     def getJsonData(self):
         sortedColumns = sorted([c for c in range(self.tableWidget.columnCount())], key=lambda c: self.tableWidget.visualColumn(c))
         header = [self.tableWidget.horizontalHeaderItem(c).text() for c in sortedColumns]
@@ -1020,6 +1018,8 @@ class TableTemplateWidget(TemplateWidget):
         self.resizeWidget()
 
 class TextTemplateWidget(TemplateWidget):
+    template = "text"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1057,9 +1057,6 @@ class TextTemplateWidget(TemplateWidget):
         self.textWidget.setFixedHeight(self.textWidget.height() - 50)
         self.somethingChanged.emit()
 
-    def getDefaultData(self):
-        return {"text": "", "height": 200, "default": "text"}
-
     def getJsonData(self):
         return {"text": self.textWidget.toPlainText().strip(),
                 "height": self.textWidget.height(),
@@ -1072,6 +1069,8 @@ class TextTemplateWidget(TemplateWidget):
             w.setFixedHeight(h)
 
 class VectorTemplateWidget(TemplateWidget):
+    template = "vector"
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1126,9 +1125,6 @@ class VectorTemplateWidget(TemplateWidget):
         self.precision = prec
         self.setJsonData(self.getJsonData())
         self.somethingChanged.emit()
-
-    def getDefaultData(self):
-        return {"value": [0.0, 0.0, 0.0], "default": "value", "dimension": self.vectorDim, "columns": self.numColumns, "precision": self.precision}
 
     def getJsonData(self):
         return {"value": [float(w.text() or 0.0) for w in self.widgets], 
@@ -1431,6 +1427,8 @@ class CurveView(QGraphicsView):
         self.fitInView(self.scene().sceneRect(), Qt.KeepAspectRatio)
 
 class CurveTemplateWidget(TemplateWidget):
+    template = "curve"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1441,11 +1439,6 @@ class CurveTemplateWidget(TemplateWidget):
         self.curveView = CurveView()
         self.curveView.somethingChanged.connect(self.somethingChanged.emit)
         layout.addWidget(self.curveView)
-
-    def getDefaultData(self):
-        return {'default': 'cvs', 'cvs': [[0.0, 1.0], [0.13973423457023273, 0.722154453101879], 
-                                          [0.3352803473835302, -0.0019584480764515554], [0.5029205210752953, -0.0], 
-                                          [0.6686136807168636, 0.0019357021806590401], [0.8623842449806401, 0.7231513901834298], [1.0, 1.0]]}
 
     def getJsonData(self):
         return {"cvs": self.curveView.scene().cvs, "default": "cvs"}
@@ -1465,6 +1458,8 @@ class CurveTemplateWidget(TemplateWidget):
                     item.fixedX = item.pos().x()
 
 class FileSelectorTemplateWidget(TemplateWidget):
+    template = "fileSelector"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1545,9 +1540,6 @@ class FileSelectorTemplateWidget(TemplateWidget):
             self.colorizeValue()
             self.somethingChanged.emit()
 
-    def getDefaultData(self):
-        return {"value": "", "mode": "openFile", "filter": "All Files (*.*)", "title": "Select File", "default": "value"}
-
     def getJsonData(self):
         return {"value": self.value, "mode": self.mode, "filter": self.filter, "title": self.title, "default": "value"}
 
@@ -1563,6 +1555,8 @@ class FileSelectorTemplateWidget(TemplateWidget):
         self.colorizeValue()
 
 class JsonTemplateWidget(TemplateWidget):
+    template = "json"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1621,9 +1615,6 @@ class JsonTemplateWidget(TemplateWidget):
     def _onDecSizeClicked(self):
         self.jsonWidget.setFixedHeight(self.jsonWidget.height() - 50)
         self.somethingChanged.emit()
-
-    def getDefaultData(self):
-        return {"data": [{"a": 1, "b": 2}], "height":200, "readonly": False, "default": "data"}
 
     def getJsonData(self):
         return {"data": self.jsonWidget.toJsonList(), 
@@ -1703,6 +1694,8 @@ class EditCompountWidgetsDialog(QDialog):
         self.accept()
 
 class CompoundTemplateWidget(TemplateWidget):
+    template = "compound"
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -1741,11 +1734,6 @@ class CompoundTemplateWidget(TemplateWidget):
                 widgets.append(w)
         return widgets
 
-    def getDefaultData(self):
-        d1 = ListBoxTemplateWidget().getDefaultData()
-        d2 = ButtonTemplateWidget().getDefaultData()
-        return {"widgets": [d1, d2], "values": [d1[d1["default"]], d2[d2["default"]]], "templates":["listBox", "button"], "default": "values"}
-
     def getJsonData(self):
         values, widgets, templates = [], [], []
         for w in self.getWidgets():
@@ -1779,18 +1767,7 @@ class CompoundTemplateWidget(TemplateWidget):
 
         layout.addStretch()
 
-TemplateWidgets = {
-    "button": ButtonTemplateWidget,
-    "checkBox": CheckBoxTemplateWidget,
-    "comboBox": ComboBoxTemplateWidget,
-    "curve": CurveTemplateWidget,
-    "compound": CompoundTemplateWidget,
-    "fileSelector": FileSelectorTemplateWidget,
-    "json": JsonTemplateWidget,
-    "label": LabelTemplateWidget,
-    "lineEditAndButton": LineEditAndButtonTemplateWidget,
-    "listBox": ListBoxTemplateWidget,
-    "radioButton": RadioButtonTemplateWidget,
-    "table": TableTemplateWidget,
-    "text": TextTemplateWidget,
-    "vector": VectorTemplateWidget}
+TemplateWidgets = {}
+for sub in TemplateWidget.__subclasses__():
+    if sub.template != "":
+        TemplateWidgets[sub.template] = sub

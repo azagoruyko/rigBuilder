@@ -4,6 +4,57 @@ from ..utils import *
 
 if TYPE_CHECKING:
     from ..core import Module
+    
+DEFAULT_WIDGET_DATA = {
+    "button": {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"},
+    "checkBox": {"checked": False, "default": "checked"},
+    "comboBox": {"items": ["a", "b"], "current": "a", "default": "current"},
+    "curve": {"default": "cvs", "cvs": [[0.0, 1.0], [0.13973423457023273, 0.722154453101879], 
+                                      [0.3352803473835302, -0.0019584480764515554], [0.5029205210752953, -0.0], 
+                                      [0.6686136807168636, 0.0019357021806590401], [0.8623842449806401, 0.7231513901834298], [1.0, 1.0]]},
+    "compound": {
+        "widgets": [
+            {"items": ["a", "b"], "current": 0, "default": "items"},
+            {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"}
+        ],
+        "values": [["a", "b"], 'chset("/someAttr", 1)'],
+        "templates": ["listBox", "button"],
+        "default": "values"
+    },
+    "fileSelector": {"value": "", "mode": "openFile", "filter": "All Files (*.*)", "title": "Select File", "default": "value"},
+    "json": {"data": [{"a": 1, "b": 2}], "height": 200, "readonly": False, "default": "data"},
+    "label": {"text": "Description", "default": "text"},
+    "lineEditAndButton": {
+        "value": "",
+        "placeholder": "",
+        "buttonCommand": 'print("Hello, world!")',
+        "buttonLabel": "Button",
+        "buttonEnabled": True,
+        "min": 0,
+        "max": 100,
+        "validator": 0,
+        "default": "value"
+    },
+    "listBox": {"items": ["a", "b"], "current": 0, "default": "items"},
+    "radioButton": {"items": ["Helpers", "Run"], "current": 0, "default": "current", "columns": 3},
+    "table": {"items": [["a", "1"]], "header": ["name", "value"], "default": "items"},
+    "text": {"text": "", "height": 200, "default": "text"},
+    "vector": {"value": [0.0, 0.0, 0.0], "default": "value", "dimension": 3, "columns": 3, "precision": 4}
+}
+
+def getWidgetTemplateFromValue(v: any) -> str:
+    """Get widget template from value."""
+    template = "lineEditAndButton"
+    if type(v) == bool:
+        template = "checkBox"
+    elif type(v) == dict:
+        template = "json"
+    elif type(v) == list and len(v) in [2, 3] and all(type(x) in [int, float] for x in v):
+        template = "vector"
+    elif type(v) == list:
+        template = "listBox"
+    
+    return template
 
 # curve functions
 
