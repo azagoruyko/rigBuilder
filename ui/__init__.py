@@ -24,7 +24,7 @@ from ..qt import *
 from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..utils import *
-from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGET_DATA
+from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGETS_DATA
 from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowserWidget
@@ -331,7 +331,7 @@ class AttributesWidget(QWidget):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         attr.setConnect("")
-        attr.setData(copyJson(DEFAULT_WIDGET_DATA[attr.template()]))
+        attr.setData(copyJson(DEFAULT_WIDGETS_DATA[attr.template()]))
         self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 

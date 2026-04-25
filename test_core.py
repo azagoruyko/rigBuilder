@@ -119,9 +119,9 @@ class TestAttribute:
     def testAttributeCreation(self):
         """Test basic attribute creation with default values."""
         attr = Attribute()
-        assert attr.name() == ""
-        assert attr.category() == ""
-        assert attr.template() == ""
+        assert attr.name() == "attr"
+        assert attr.category() == "General"
+        assert attr.template() == "lineEditAndButton"
         assert attr.connect() == ""
         assert attr.expression() == ""
         assert attr.module() is None
@@ -254,10 +254,6 @@ class TestAttribute:
         assert simpleAttribute.isSyncRequired(ref) is True
         simpleAttribute.setName(ref.name())
 
-        # Template change detected
-        simpleAttribute.setTemplate("int")
-        assert simpleAttribute.isSyncRequired(ref) is True
-        simpleAttribute.setTemplate(ref.template())
 
         # Connect/Expression changes should now be IGNORED
         simpleAttribute.setConnect("/new/connection")
@@ -279,6 +275,27 @@ class TestAttribute:
         
         # Verify default key protection (sync required if other data changes, even if value is same)
         simpleAttribute._data.pop("enabled")
+        assert simpleAttribute.isSyncRequired(ref) is False
+
+    def testAttributeSetTemplate(self, simpleAttribute):
+        """Test changing template clears data and correctly triggers sync requirement."""
+        from rigBuilder.widgets.core import DEFAULT_WIDGETS_DATA
+        ref = simpleAttribute.copy()
+        
+        # Template change detected
+        simpleAttribute.setTemplate("checkBox")
+        assert simpleAttribute.isSyncRequired(ref) is True
+        
+        # Verify data is reset to the new template's default data
+        assert simpleAttribute.localData() == DEFAULT_WIDGETS_DATA["checkBox"]
+        
+        # Template not in defaults will result in empty dict
+        simpleAttribute.setTemplate("invalid_template_name")
+        assert simpleAttribute.localData() == {}
+        
+        # Reset back
+        simpleAttribute.setTemplate(ref.template())
+        simpleAttribute.setLocalData(ref.localData())
         assert simpleAttribute.isSyncRequired(ref) is False
 
 class TestAttributeConnections:
@@ -450,7 +467,7 @@ class TestModule:
         """Test basic module creation with default values."""
         module = Module()
         assert module.uid() == ""
-        assert module.name() == ""
+        assert module.name() == "module"
         assert module.runCode() == ""
         assert module.parent() is None
         assert module.children() == []

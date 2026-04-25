@@ -95,7 +95,7 @@ class TemplateWidget(QFrame):
         super().__init__(**kwargs)
 
     def getDefaultData(self):
-        return copyJson(DEFAULT_WIDGET_DATA[self.template])
+        return copyJson(DEFAULT_WIDGETS_DATA[self.template])
 
     def getJsonData(self):
         raise Exception("getJsonData must be implemented")
@@ -218,7 +218,7 @@ class ButtonTemplateWidget(TemplateWidget):
             self.moduleCodeExecutionRequested.emit(self.buttonCommand)
 
     def getDefaultData(self):
-        return copyJson(DEFAULT_WIDGET_DATA["button"])
+        return copyJson(DEFAULT_WIDGETS_DATA["button"])
 
     def getJsonData(self):
         return {"command": self.buttonCommand,

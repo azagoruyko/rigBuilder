@@ -190,7 +190,14 @@ def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit
 
 
 class Attribute(object):
-    def __init__(self, name="", template="", category="", connect="", expression=""):
+    def __init__(
+        self,
+        name:str = "attr", 
+        template:str = "lineEditAndButton", 
+        category:str = "General", 
+        connect:str = "", 
+        expression:str = ""
+    ):
         self._name = name
         self._template = template
         self._category = category
@@ -198,7 +205,7 @@ class Attribute(object):
         self._expression = expression # python code
 
         self._module = None
-        self._data = {}
+        self._data = copyJson(widgets_core.DEFAULT_WIDGETS_DATA.get(template, {}))
 
     def copy(self) -> Attribute:
         """Create a deep copy of the attribute."""
@@ -215,6 +222,7 @@ class Attribute(object):
     def name(self) -> str:
         """Get attribute name."""
         return self._name
+
     def setName(self, name: str):
         """Set attribute name."""
         if name != self._name:
@@ -237,6 +245,7 @@ class Attribute(object):
         """Set attribute widget template type."""
         if template != self._template:
             self._template = template
+            self._data = copyJson(widgets_core.DEFAULT_WIDGETS_DATA.get(template, {}))
     
     def connect(self) -> str:
         """Get attribute connection path."""
@@ -477,7 +486,15 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
 class Module(object):
     glob = DictExt() # global memory
 
-    def __init__(self, name="", runCode="", doc="", children=None, attributes=None, muted=False):
+    def __init__(
+        self,
+        name: str = "module",
+        runCode: str = "",
+        doc: str = "",
+        children: Optional[List[Module]] = None,
+        attributes: Optional[List[Attribute]] = None,
+        muted: bool = False
+    ):
         self._name = name
         self._runCode = runCode
         self._doc = doc

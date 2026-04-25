@@ -2,7 +2,7 @@ import math
 from typing import Any, Optional, Tuple, TYPE_CHECKING
 from ..utils import *
 
-DEFAULT_WIDGET_DATA = {
+DEFAULT_WIDGETS_DATA = {
     "button": {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"},
     "checkBox": {"checked": False, "default": "checked"},
     "comboBox": {"items": ["a", "b"], "current": "a", "default": "current"},
@@ -56,7 +56,7 @@ def getAttributeFromValue(name: str, v: any, category: str = "") -> 'Attribute':
         template = "listBox"
     
     attr = Attribute(name, template, category or "General")
-    data = copyJson(DEFAULT_WIDGET_DATA[template])
+    data = copyJson(DEFAULT_WIDGETS_DATA[template])
     
     if template == "lineEditAndButton":
         data["buttonEnabled"] = False
