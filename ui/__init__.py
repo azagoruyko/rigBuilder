@@ -2284,6 +2284,7 @@ class RigBuilderWindow(QFrame):
         self.logger = logger
         self._refreshingUI = False
         self._progressCounter = 0
+        self.aiChatDialog = AIChatDialog(parent=self)
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 900)
@@ -2655,12 +2656,9 @@ class RigBuilderWindow(QFrame):
 
     def _onOpenAIChat(self):
         """Open the AI Chat dialog."""
-        if not hasattr(self, "_aiChatDialog") or self._aiChatDialog is None:
-            self._aiChatDialog = AIChatDialog(parent=self)
-        
-        self._aiChatDialog.show()
-        self._aiChatDialog.raise_()
-        self._aiChatDialog.activateWindow()
+        self.aiChatDialog.show()
+        self.aiChatDialog.raise_()
+        self.aiChatDialog.activateWindow()
 
     def pinWindow(self, state: bool):
         """Toggle 'Stay on Top' window flag."""

@@ -39,10 +39,7 @@ class AIChatWorker(QThread):
             stats = {}
             if lastChunk:
                 statKeys = ['total_duration', 'load_duration', 'prompt_eval_count', 'prompt_eval_duration', 'eval_count', 'eval_duration']
-                if isinstance(lastChunk, dict):
-                    stats = {k: lastChunk.get(k) for k in statKeys if k in lastChunk}
-                else:
-                    stats = {k: getattr(lastChunk, k, None) for k in statKeys if hasattr(lastChunk, k)}
+                stats = {k: getattr(lastChunk, k, None) for k in statKeys if hasattr(lastChunk, k)}
 
             self.finished.emit(stats)
         except Exception as e:
