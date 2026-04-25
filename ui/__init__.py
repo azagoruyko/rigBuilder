@@ -1998,6 +1998,54 @@ class LogWidget(QTextEdit):
         return
 
 
+class REPLWidget(QLineEdit):
+    executionRequested = Signal(str)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.setPlaceholderText("Python REPL (host side)...")
+        self._history = []
+        self._historyIndex = -1
+        self._currentText = ""
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            code = self.text().strip()
+            if code:
+                if not self._history or self._history[-1] != code:
+                    self._history.append(code)
+                self._historyIndex = -1
+                self.executionRequested.emit(code)
+                self.clear()
+            return
+
+        if event.key() == Qt.Key_Up:
+            if not self._history:
+                return
+            if self._historyIndex == -1:
+                self._currentText = self.text()
+                self._historyIndex = len(self._history) - 1
+            elif self._historyIndex > 0:
+                self._historyIndex -= 1
+            
+            self.setText(self._history[self._historyIndex])
+            return
+
+        if event.key() == Qt.Key_Down:
+            if self._historyIndex == -1:
+                return
+            
+            if self._historyIndex < len(self._history) - 1:
+                self._historyIndex += 1
+                self.setText(self._history[self._historyIndex])
+            else:
+                self._historyIndex = -1
+                self.setText(self._currentText)
+            return
+
+        super().keyPressEvent(event)
+
+
 class WideSplitterHandle(QSplitterHandle):
     def __init__(self, orientation: Qt.Orientation, parent: QWidget, **kwargs):
         super().__init__(orientation, parent, **kwargs)
@@ -2330,6 +2378,9 @@ class RigBuilderWindow(QFrame):
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
 
+        self.replWidget = REPLWidget()
+        self.replWidget.executionRequested.connect(self._onReplExecute)
+
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()        
 
@@ -2372,7 +2423,15 @@ class RigBuilderWindow(QFrame):
 
         layoutSplitter = WideSplitter(Qt.Vertical)
         layoutSplitter.addWidget(mainSplitter)
-        layoutSplitter.addWidget(self.logWidget)
+        
+        logContainer = QWidget()
+        logContainerLayout = QVBoxLayout(logContainer)
+        logContainerLayout.setContentsMargins(0, 0, 0, 0)
+        logContainerLayout.setSpacing(2)
+        logContainerLayout.addWidget(self.logWidget)
+        logContainerLayout.addWidget(self.replWidget)
+        
+        layoutSplitter.addWidget(logContainer)
         layoutSplitter.setSizes([500, 100])
 
         layout.addWidget(layoutSplitter)
@@ -2410,6 +2469,16 @@ class RigBuilderWindow(QFrame):
         if idx.isValid():
             self.treeWidget.replaceModule(idx, newModule)
             self.attributesTabWidget.updateTabs(newModule)
+
+    def _onReplExecute(self, code: str):
+        """Execute general code from REPL on host."""
+        if not code:
+            return
+
+        self.showLog()
+        logger.info(f">> {code}")
+
+        hostExecutor.executeCode(code)
 
     def _onExecuteCode(self):
         """Execute lines interactively with accumulated context."""        
