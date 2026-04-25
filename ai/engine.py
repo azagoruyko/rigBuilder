@@ -153,3 +153,126 @@ def cosineSimilarity(v1: list[float], v2: list[float]) -> float:
         return 0.0
         
     return dotProduct / (normA * normB)
+
+
+class AITools:
+    """Registry for AI tools. Add new staticmethods here with type hints and docstrings."""
+
+    @classmethod
+    def getTools(cls):
+        tools = []
+        for name in dir(cls):
+            if not name.startswith('_') and name not in ['getTools', 'execute']:
+                attr = getattr(cls, name)
+                if callable(attr):
+                    tools.append(attr)
+        return tools
+
+    @classmethod
+    def execute(cls, name: str, args: dict):
+        if hasattr(cls, name):
+            func = getattr(cls, name)
+            if callable(func):
+                try:
+                    return func(**args)
+                except Exception as e:
+                    return f"Error executing {name}: {str(e)}"
+        return f"Unknown tool: {name}"
+
+def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int = 5):
+    """
+    Generator that yields events from the chat loop with tools:
+    ('chunk', content)
+    ('tool_calls', list_of_tool_calls)
+    ('tool_result', tool_msg_dict)
+    ('stats', stats_dict)
+    """
+    totalMessages = getChatMessages(messages)
+    tools = AITools.getTools()
+
+    lastChunk = None
+    
+    for turn in range(turnLimit):
+        hasToolCalls = False
+        currentToolCalls = []
+        streamedContent = ""
+
+        for chunk in ollama.chat(
+            model=settings.ollamaModel,
+            messages=totalMessages,
+            stream=True,
+            options={'temperature': temperature},
+            tools=tools
+        ):
+            lastChunk = chunk
+            
+            if isinstance(chunk, dict):
+                msg = chunk.get('message', {})
+                content = msg.get('content', '')
+                tc = msg.get('tool_calls', [])
+            else:
+                msg = getattr(chunk, 'message', None)
+                content = getattr(msg, 'content', '') if msg else ''
+                tc = getattr(msg, 'tool_calls', []) if msg else []
+            
+            if tc:
+                hasToolCalls = True
+                for call in tc:
+                    if isinstance(call, dict):
+                        currentToolCalls.append(call)
+                    else:
+                        func_obj = getattr(call, 'function', None)
+                        funcName = getattr(func_obj, 'name', None)
+                        args = getattr(func_obj, 'arguments', {})
+                        currentToolCalls.append({
+                            'function': {
+                                'name': funcName,
+                                'arguments': args
+                            }
+                        })
+            
+            if content:
+                streamedContent += content
+                yield ('chunk', content)
+                
+        if hasToolCalls:
+            assistantMsg = {
+                'role': 'assistant',
+                'content': streamedContent,
+                'tool_calls': currentToolCalls
+            }
+            totalMessages.append(assistantMsg)
+            yield ('tool_calls', currentToolCalls)
+            
+            for call in currentToolCalls:
+                if isinstance(call, dict):
+                    funcName = call.get('function', {}).get('name')
+                    args = call.get('function', {}).get('arguments', {})
+                else:
+                    funcName = getattr(getattr(call, 'function', None), 'name', None)
+                    args = getattr(getattr(call, 'function', None), 'arguments', {})
+
+                if funcName:
+                    result = AITools.execute(funcName, args)
+                    
+                    toolMsg = {
+                        'role': 'tool',
+                        'content': str(result),
+                        'name': funcName
+                    }
+                    totalMessages.append(toolMsg)
+                    yield ('tool_result', toolMsg)
+                    
+            continue # Re-run chat with new tool messages
+        else:
+            break # No tool calls, finish
+
+    stats = {}
+    if lastChunk:
+        statKeys = ['total_duration', 'load_duration', 'prompt_eval_count', 'prompt_eval_duration', 'eval_count', 'eval_duration']
+        if isinstance(lastChunk, dict):
+            stats = {k: lastChunk.get(k) for k in statKeys if k in lastChunk}
+        else:
+            stats = {k: getattr(lastChunk, k, None) for k in statKeys if hasattr(lastChunk, k)}
+
+    yield ('stats', stats)

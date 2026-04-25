@@ -13,29 +13,30 @@ import xml.etree.ElementTree as ET
 from functools import partial
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 
-from ..qt import *
 from .. import __version__
-from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
-from ..core import *
-from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGET_DATA
-from .apiBrowser import ApiBrowserWidget
-from .docBrowser import DocBrowser
-from .editor import CodeEditorWithNumbersWidget
-from .moduleBrowser import ModuleBrowser
-from .moduleHistoryBrowser import ModuleHistoryWidget
-from .diffBrowser import DiffBrowserDialog, calculateModulesDiff
-from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
-from ..utils import *
-from .utils import *
+from .. import workspace
+from ..ai.engine import IS_OLLAMA_AVAILABLE
 from ..client.connectionManager import connectionManager
 from ..client.hostExecutor import hostExecutor
-from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
-from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
-from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
-from .workspaceManager import WorkspaceWidget
-from .aichat import AIChatDialog, AITools
+from ..core import *
 from ..logger import logger, logHandler
-from ..ai.engine import IS_OLLAMA_AVAILABLE
+from ..qt import *
+from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
+from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..utils import *
+from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGET_DATA
+from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
+from .aichat import AIChatDialog
+from .apiBrowser import ApiBrowserWidget
+from .diffBrowser import DiffBrowserDialog, calculateModulesDiff
+from .docBrowser import DocBrowser
+from .editor import CodeEditorWithNumbersWidget
+from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
+from .moduleBrowser import ModuleBrowser
+from .moduleHistoryBrowser import ModuleHistoryWidget
+from .utils import *
+from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
+from .workspaceManager import WorkspaceWidget
 
 
 class AttributesWidget(QWidget):
@@ -2285,9 +2286,6 @@ class RigBuilderWindow(QFrame):
         self._refreshingUI = False
         self._progressCounter = 0
         
-        self.aiChatDialog = AIChatDialog(parent=self)
-        self.setupAIChatTools()
-
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 900)
 
@@ -2395,6 +2393,11 @@ class RigBuilderWindow(QFrame):
 
         self.progressBarWidget = MyProgressBar()
         self.progressBarWidget.hide()        
+
+        self.aiChatDialog = AIChatDialog(parent=self)
+        self.aiChatDialog.writeCodeRequested.connect(self._onWriteCodeRequested)
+        self.aiChatDialog.addAttributeRequested.connect(self._onAddAttributeRequested)
+        self.aiChatDialog.beforeSendMessage.connect(self.prepareContextForChat)
 
         # layout
 
@@ -2639,75 +2642,31 @@ class RigBuilderWindow(QFrame):
         dialog.hostsChanged.connect(self._refreshHostCombo)
         dialog.exec()
 
-    def setupAIChatTools(self):
-        def getCurrentState() -> str:
-            """
-            Get the current state of Rig Builder.
-            Useful for understanding the context the user is currently working in.
-            Returns the selected host, the active workspace, the currently selected module in the tree (its name and documentation),
-            and the python imports defined in the module's run code.
-            Use this to understand what the user is currently selecting or working on.
-            """
-            m = self.treeWidget.currentModule()
-            imports = []
-            if m:
-                for l in m.runCode().splitlines():
-                    if not l.strip():
-                        continue
-                    if l.startswith("import") or l.startswith("from"):
-                        imports.append(l)
-                    else:
-                        break
+    def prepareContextForChat(self):
+        """Prepare tools for AI to avoid threading issues."""
+        m = self.treeWidget.currentModule()
+        editor = self.codeEditorWidget.editorWidget
+        
+        self.aiChatDialog.aicontext = {
+            "code": editor.toPlainText(),
+            "selectedCode":editor.textCursor().selectedText(),
+            "host":self.hostCombo.currentData(),
+            "workspace":workspace.currentWorkspace.name,
+            "selectedModule":m
+        }
 
-            from ..workspace import currentWorkspace
+    def _onAddAttributeRequested(self, attr: Attribute):
+        m = self.treeWidget.currentModule()
+        if not m:
+            return
+        m.addAttribute(attr)
+        self.attributesTabWidget.updateTabs(m)
 
-            state = f'''
-            Host: {settings.host}, use appropriate coding standards for this host.
-            Workspace: {currentWorkspace.name}
-            Current Module: {m.name() if m else 'No module'}
-            Module Doc: {m.doc() if m else 'No documentation'}
-            Imports: {'; '.join(imports) if imports else 'No imports'}
-            Selected lines in editor: {self.codeEditorWidget.editorWidget.textCursor().selectedText()}
-            '''
-            return state
-
-        def getExampleModule() -> str:
-            """
-            Get a demonstration module of Rig Builder modules API in XML.
-            This is extremely useful when you need to understand how Rig Builder modules are structured,
-            what attributes they use, and how they define context and logic. 
-            Use this as a reference or template when generating new Rig Builder modules or fixing existing ones.
-            """
-            exampleModulePath = os.path.join(RIG_BUILDER_PATH, "modules", "example.rb")
-            import xml.dom.minidom
-            with open(exampleModulePath, "r", encoding="utf-8") as f:
-                dom = xml.dom.minidom.parseString(f.read())
-                return dom.toprettyxml(indent="  ")
-
-        def getRigBuilderCore() -> str:
-            """
-            Get Rig Builder python core module for all the logic of the program.
-            This tool provides the source code of `core.py`, which contains the foundational logic,
-            classes, and methods for Rig Builder. 
-            Use this when you need deep understanding of how Rig Builder operates under the hood,
-            or when you need to know exactly how core APIs are implemented.
-            """
-            coreModulePath = os.path.join(RIG_BUILDER_PATH, "core.py")
-            with open(coreModulePath, "r", encoding="utf-8") as f:
-                return f.read()
-
-        def getSelectedCodeLines() -> str:
-            """
-            Get the selected lines from the code editor.
-            Use this when you need to understand the current code selection in the editor.
-            Returns the selected lines as a string.
-            """
-            return self.codeEditorWidget.editorWidget.textCursor().selectedText()
-       
-        AITools.getCurrentState = getCurrentState
-        AITools.getExampleModule = getExampleModule
-        AITools.getRigBuilderCore = getRigBuilderCore
-        AITools.getSelectedCodeLines = getSelectedCodeLines
+    def _onWriteCodeRequested(self, code: str):
+        cursor = self.codeEditorWidget.editorWidget.textCursor()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()
+        cursor.insertText(code)
 
     def _onOpenAIChat(self):
         """Open the AI Chat dialog."""

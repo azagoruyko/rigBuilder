@@ -1,37 +1,17 @@
 import ollama
 import os
 import json
+import copy
+
+import markdown
+
+from .. import workspace
 from ..qt import *
 from ..ai import engine
 from ..settings import settings
-from .. import workspace
-import markdown
+
 from pygments.formatters import HtmlFormatter
-import copy
-
-class AITools:
-    """Registry for AI tools. Add new staticmethods here with type hints and docstrings."""
-
-    @classmethod
-    def getTools(cls):
-        tools = []
-        for name in dir(cls):
-            if not name.startswith('_') and name not in ['getTools', 'execute']:
-                attr = getattr(cls, name)
-                if callable(attr):
-                    tools.append(attr)
-        return tools
-
-    @classmethod
-    def execute(cls, name: str, args: dict):
-        if hasattr(cls, name):
-            func = getattr(cls, name)
-            if callable(func):
-                try:
-                    return func(**args)
-                except Exception as e:
-                    return f"Error executing {name}: {str(e)}"
-        return f"Unknown tool: {name}"
+from ..logger import logger
 
 class AIChatWorker(QThread):
     chunkReceived = Signal(str)
@@ -45,105 +25,22 @@ class AIChatWorker(QThread):
         self.messages = copy.deepcopy(messages)
         self.temperature = temperature
         self._isRunning = True
+        self.numToolCalls = 7
 
     def run(self):
         try:
-            totalMessages = engine.getChatMessages(self.messages)
-            tools = AITools.getTools()
-
-            lastChunk = None
-            
-            for turn in range(5): # Allow several tool-calling turns
-                hasToolCalls = False
-                currentToolCalls = []
-                streamedContent = ""
-
-                for chunk in ollama.chat(
-                    model=settings.ollamaModel,
-                    messages=totalMessages,
-                    stream=True,
-                    options={'temperature': self.temperature},
-                    tools=tools
-                ):
-                    if not self._isRunning:
-                        return
-                    
-                    lastChunk = chunk
-                    
-                    if isinstance(chunk, dict):
-                        msg = chunk.get('message', {})
-                        content = msg.get('content', '')
-                        tc = msg.get('tool_calls', [])
-                    else:
-                        msg = getattr(chunk, 'message', None)
-                        content = getattr(msg, 'content', '') if msg else ''
-                        tc = getattr(msg, 'tool_calls', []) if msg else []
-                    
-                    if tc:
-                        hasToolCalls = True
-                        for call in tc:
-                            if isinstance(call, dict):
-                                currentToolCalls.append(call)
-                            else:
-                                func_obj = getattr(call, 'function', None)
-                                funcName = getattr(func_obj, 'name', None)
-                                args = getattr(func_obj, 'arguments', {})
-                                currentToolCalls.append({
-                                    'function': {
-                                        'name': funcName,
-                                        'arguments': args
-                                    }
-                                })
-                    
-                    if content:
-                        streamedContent += content
-                        self.chunkReceived.emit(content)
-                        
-                if hasToolCalls:
-                    assistantMsg = {
-                        'role': 'assistant',
-                        'content': streamedContent,
-                        'tool_calls': currentToolCalls
-                    }
-                    totalMessages.append(assistantMsg)
-                    self.toolCallUpdate.emit(currentToolCalls)
-                    
-                    for call in currentToolCalls:
-                        if not self._isRunning:
-                            return
-                            
-                        if isinstance(call, dict):
-                            funcName = call.get('function', {}).get('name')
-                            args = call.get('function', {}).get('arguments', {})
-                        else:
-                            funcName = getattr(getattr(call, 'function', None), 'name', None)
-                            args = getattr(getattr(call, 'function', None), 'arguments', {})
-
-                        if funcName:
-                            result = AITools.execute(funcName, args)
-                            
-                            toolMsg = {
-                                'role': 'tool',
-                                'content': str(result),
-                                'name': funcName
-                            }
-                            totalMessages.append(toolMsg)
-                            self.toolResultUpdate.emit(toolMsg)
-                            
-                    continue # Re-run chat with new tool messages
-                else:
-                    break # No tool calls, finish
-
-            # Extract statistics from the last chunk
-            stats = {}
-            if lastChunk:
-                statKeys = ['total_duration', 'load_duration', 'prompt_eval_count', 'prompt_eval_duration', 'eval_count', 'eval_duration']
-                if isinstance(lastChunk, dict):
-                    stats = {k: lastChunk.get(k) for k in statKeys if k in lastChunk}
-                else:
-                    stats = {k: getattr(lastChunk, k, None) for k in statKeys if hasattr(lastChunk, k)}
-
-            self.finished.emit(stats)
+            for eventType, data in engine.chatStreamWithTools(self.messages, self.temperature, self.numToolCalls):
+                if not self._isRunning:
+                    return
+                
+                if eventType == 'chunk':
+                    self.chunkReceived.emit(data)
+                elif eventType == 'tool_calls':
+                    self.toolCallUpdate.emit(data)
+                elif eventType == 'tool_result':
+                    self.toolResultUpdate.emit(data)
+                elif eventType == 'stats':
+                    self.finished.emit(data)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -151,7 +48,12 @@ class AIChatWorker(QThread):
         self._isRunning = False
 
 
+
 class AIChatDialog(QDialog):
+    beforeSendMessage = Signal()
+    addAttributeRequested = Signal(object) 
+    writeCodeRequested = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI Chat")
@@ -161,6 +63,7 @@ class AIChatDialog(QDialog):
         self.messages = []
         self.currentResponse = ""
         self.worker = None
+        self.aicontext = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -219,7 +122,8 @@ class AIChatDialog(QDialog):
 
         layout.addLayout(bottomLayout)
 
-        self.input.setFocus()        
+        self.input.setFocus()
+        self.setupAIChatTools()
 
     def saveChat(self):
         ws = workspace.currentWorkspace
@@ -253,6 +157,8 @@ class AIChatDialog(QDialog):
         text = self.input.toPlainText().strip()
         if not text or self.worker:
             return
+
+        self.beforeSendMessage.emit()
 
         self.input.clear()
         self.messages.append({'role': 'user', 'content': text})
@@ -413,3 +319,135 @@ class AIChatDialog(QDialog):
             self.worker.stop()
             self.worker.wait()
         super().closeEvent(event)
+
+    def setupAIChatTools(self):
+        def getCurrentState() -> str:
+            """
+            Get the current state of Rig Builder.
+            Useful for understanding the context the user is currently working in.
+            Returns the selected host, the active workspace, the currently selected module in the tree (its name and documentation),
+            and the python imports defined in the module's run code.
+            Use this to understand what the user is currently selecting or working on.
+            """
+            m = self.aicontext["selectedModule"]
+            imports = []
+            if m:
+                for l in m.runCode().splitlines():
+                    if not l.strip():
+                        continue
+                    if l.startswith("import") or l.startswith("from"):
+                        imports.append(l)
+                    else:
+                        break
+
+            state = f'''
+            Host: {self.aicontext["host"].name}, use appropriate coding standards for this host.
+            Workspace: {self.aicontext["workspace"].name}
+            Selected module: {m.name() if m else 'No module'}
+            Module documentation: {m.doc() if m else 'No documentation'}
+            Imports: {'; '.join(imports) if imports else 'No imports'}
+            Selected code: {self.aicontext["selectedCode"] if m else "(Nothing selected)"}
+            '''
+            return state
+
+        def getExampleModule() -> str:
+            """
+            Get a demonstration module of Rig Builder modules API in XML.
+            This is extremely useful when you need to understand how Rig Builder modules are structured,
+            what attributes they use, and how they define context and logic. 
+            Use this as a reference or template when generating new Rig Builder modules or fixing existing ones.
+            """
+            exampleModulePath = os.path.join(RIG_BUILDER_PATH, "modules", "example.rb")
+            import xml.dom.minidom
+            with open(exampleModulePath, "r", encoding="utf-8") as f:
+                dom = xml.dom.minidom.parseString(f.read())
+                return dom.toprettyxml(indent="  ")
+
+        def getRigBuilderCore() -> str:
+            """
+            Get Rig Builder python core module for all the logic of the program.
+            This tool provides the source code of `core.py`, which contains the foundational logic,
+            classes, and methods for Rig Builder. 
+            Use this when you need deep understanding of how Rig Builder operates under the hood,
+            or when you need to know exactly how core APIs are implemented.
+            """
+            coreModulePath = os.path.join(RIG_BUILDER_PATH, "core.py")
+            with open(coreModulePath, "r", encoding="utf-8") as f:
+                return f.read()
+
+        def getSelectedCode() -> str:
+            """
+            Get the selected lines from the code editor.
+            Use this when you need to understand the current code selection in the editor.
+            Returns the selected lines as a string.
+            """
+            if not self.aicontext["selectedModule"]:
+                return "(Nothing selected)"
+                
+            return self.aicontext["selectedCode"]
+
+        def readCode() -> str:
+            """
+            Reads the entire code from the code editor.
+            Returns the code as a string.
+            """
+            if not self.aicontext["selectedModule"]:
+                return "(Code is not available)"
+
+            return self.aicontext["code"]
+
+        def writeCode(text: str) -> str:
+            """
+            Writes the given text to the code editor, replacing the selected code if any.
+            Returns 'ok' if successful.
+            """
+            m = self.aicontext["selectedModule"]
+            if not m:
+                return "(No module selected)"
+
+            self.writeCodeRequested.emit(text)
+            return "ok"
+
+        def getModuleAttributes() -> str:
+            """
+            Get the attributes of the currently selected module.
+            Use this when you need to understand the attributes of the currently selected module.
+            Returns the attributes as a string.
+            """
+            m = self.aicontext["selectedModule"]
+            if not m:
+                return "(No attributes)"
+            
+            attrs = []
+            for a in m.attributes():
+                if a.name():
+                    attrs.append(f"name: {a.name()} template: {a.template()} value: {a.get()}")
+            
+            return '\n'.join(attrs) if attrs else "(No attributes)"
+
+        def addModuleAttribute(name: str, jsonValue: str) -> str:
+            """
+            Add attribute to the current module based on its JSON-compatible value.
+            Use this when you need to add attribute to the current module.
+            It supports: dict, list, list, str, int, float, bool.
+            Returns 'ok' if successful.
+            """
+            m = self.aicontext["selectedModule"]
+            if not m:
+                return "(No module)"
+
+            from ..widgets.core import getAttributeFromValue
+
+            a = getAttributeFromValue(name, jsonValue)
+
+            self.addAttributeRequested.emit(a)
+            return "ok"
+
+        engine.AITools.getCurrentState = getCurrentState
+        engine.AITools.getExampleModule = getExampleModule
+        engine.AITools.getRigBuilderCore = getRigBuilderCore
+        engine.AITools.getSelectedCode = getSelectedCode
+        engine.AITools.readCode = readCode
+        engine.AITools.writeCode = writeCode
+        engine.AITools.getModuleAttributes = getModuleAttributes
+        engine.AITools.addModuleAttribute = addModuleAttribute
