@@ -2687,6 +2687,7 @@ class RigBuilderWindow(QFrame):
     def _refreshModuleUI(self):
         """Update UI components that depend on current settings/workspace."""
         self._refreshHostCombo()
+        self.moduleHistoryWidget.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
 
