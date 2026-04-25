@@ -8,7 +8,7 @@ from json_repair import repair_json
 from ..settings import settings
 
 RootDirectory = os.path.dirname(__file__)
-CONTEXT_LIMIT = 8192
+DEFAULT_CONTEXT_LIMIT = 8192
 
 def isOllamaAvailable() -> bool:
     """Check if the Ollama server is reachable or the CLI is installed."""
@@ -28,6 +28,39 @@ IS_OLLAMA_AVAILABLE = isOllamaAvailable()
 
 with open(os.path.join(RootDirectory, 'chat_prompt.md'), 'r', encoding='utf-8') as f:
     CHAT_PROMPT = f.read()
+
+_contextLimitCache = {}
+
+def getContextLimit(model: str = None) -> int:
+    """Get the context limit for a specific model from Ollama."""
+    if model is None:
+        model = settings.ollamaModel
+    
+    if model in _contextLimitCache:
+        return _contextLimitCache[model]
+    
+    limit = DEFAULT_CONTEXT_LIMIT # Fallback
+    try:
+        info = ollama.show(model)
+        modelinfo = getattr(info, 'modelinfo', {})
+        # Look for keys like 'llama.context_length', 'gptoss.context_length', etc.
+        for key, value in modelinfo.items():
+            if key.endswith('.context_length'):
+                limit = int(value)
+                break
+    except Exception as e:
+        print(f"Error fetching context limit for {model}: {e}")
+    
+    _contextLimitCache[model] = limit
+    return limit
+
+def getMaxChars(model: str = None) -> int:
+    """
+    Get the estimated maximum character limit for an input prompt based on the token limit.
+    Heuristic: 1 token is roughly 3 characters for code.
+    Leave 20% headroom for prompts and safety (3.0 * 0.8 = 2.4).
+    """
+    return int(getContextLimit(model) * 2.4)
 
 def getChatMessages(messages: list) -> list:
     """Prepare messages by injecting system prompts."""

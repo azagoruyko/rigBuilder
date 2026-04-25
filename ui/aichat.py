@@ -6,7 +6,7 @@ from ..settings import settings
 
 class AIChatWorker(QThread):
     chunkReceived = Signal(str)
-    finished = Signal()
+    finished = Signal(dict)
     error = Signal(str)
 
     def __init__(self, messages, temperature=0.7):
@@ -20,6 +20,7 @@ class AIChatWorker(QThread):
             # Add system prompt for context and language
             fullMessages = engine.getChatMessages(self.messages)
 
+            lastChunk = None
             for chunk in ollama.chat(
                 model=settings.ollamaModel,
                 messages=fullMessages,
@@ -29,10 +30,21 @@ class AIChatWorker(QThread):
                 if not self._isRunning:
                     break
                 
+                lastChunk = chunk
                 content = chunk.get('message', {}).get('content', '') if isinstance(chunk, dict) else getattr(chunk.message, 'content', '')
                 if content:
                     self.chunkReceived.emit(content)
-            self.finished.emit()
+            
+            # Extract statistics from the last chunk
+            stats = {}
+            if lastChunk:
+                statKeys = ['total_duration', 'load_duration', 'prompt_eval_count', 'prompt_eval_duration', 'eval_count', 'eval_duration']
+                if isinstance(lastChunk, dict):
+                    stats = {k: lastChunk.get(k) for k in statKeys if k in lastChunk}
+                else:
+                    stats = {k: getattr(lastChunk, k, None) for k in statKeys if hasattr(lastChunk, k)}
+
+            self.finished.emit(stats)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -96,9 +108,17 @@ class AIChatDialog(QDialog):
         
         layout.addLayout(inputLayout)
 
+        bottomLayout = QHBoxLayout()
         self.statusLabel = QLabel("Ready")
         self.statusLabel.setStyleSheet("color: #7a8699; font-style: italic;")
-        layout.addWidget(self.statusLabel)
+        bottomLayout.addWidget(self.statusLabel)
+
+        self.statsLabel = QLabel("")
+        self.statsLabel.setStyleSheet("color: #7a8699; font-style: italic;")
+        self.statsLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        bottomLayout.addWidget(self.statsLabel)
+
+        layout.addLayout(bottomLayout)
 
         self.input.setFocus()
 
@@ -130,6 +150,7 @@ class AIChatDialog(QDialog):
             self.currentResponse = ""
             self.history.clear()
             self.statusLabel.setText("Chat cleared")
+            self.statsLabel.clear()
 
     def onChunkReceived(self, chunk):
         if not self.worker:
@@ -137,13 +158,28 @@ class AIChatDialog(QDialog):
         self.currentResponse += chunk
         self.updateHistory(streaming=True)
 
-    def onFinished(self):
+    def onFinished(self, stats):
         if not self.worker:
             return
-        self.messages.append({'role': 'assistant', 'content': self.currentResponse})
+        self.messages.append({'role': 'assistant', 'content': self.currentResponse, 'stats': stats})
         self.worker = None
         self.currentResponse = ""
         self.statusLabel.setText("Ready")
+        
+        if stats:
+            promptTokens = stats.get('prompt_eval_count', 0)
+            evalTokens = stats.get('eval_count', 0)
+            totalUsed = promptTokens + evalTokens
+            contextLimit = engine.getContextLimit()
+            residual = contextLimit - totalUsed
+            percent = (residual / contextLimit * 100) if contextLimit > 0 else 0
+            statsLine = (
+                f"Context: {totalUsed} tokens "
+                f"({promptTokens} prompt, {evalTokens} response) • "
+                f"{percent:.1f}% free"
+            )
+            self.statsLabel.setText(statsLine)
+        
         self.sendBtn.setEnabled(True)
         self.updateHistory()
 

@@ -11,8 +11,9 @@ async def run(inputText: str) -> str:
     """
     Asynchronous function to summarize a diff patch into a brief commit-style description.
     """
-    if len(inputText) > engine.CONTEXT_LIMIT:
-        inputText = inputText[:engine.CONTEXT_LIMIT]
+    limit = engine.getMaxChars()
+    if len(inputText) > limit:
+        inputText = inputText[:limit]
 
     if "{{diff}}" in systemPrompt:
         formattedPrompt = systemPrompt.replace("{{diff}}", inputText)

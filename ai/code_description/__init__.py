@@ -3,7 +3,6 @@ import sys
 from .. import engine
 
 PROMPT_FILE = os.path.join(os.path.dirname(__file__), 'prompt.md')
-MAX_CHUNK_SIZE = engine.CONTEXT_LIMIT
 
 def loadPrompt():
     if not os.path.exists(PROMPT_FILE):
@@ -11,11 +10,14 @@ def loadPrompt():
     with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
         return f.read()
 
-def getChunks(code, maxChars=MAX_CHUNK_SIZE):
+def getChunks(code, maxChars=None):
     """
     Splits Python code into logical chunks.
     Identifies logical blocks (def, class, if, for, etc.) using indentation.
     """
+    if maxChars is None:
+        maxChars = engine.getMaxChars()
+
     lines = code.splitlines()
     chunks = []
     currentChunkLines = []
