@@ -2233,6 +2233,7 @@ class RigBuilderWindow(QFrame):
 
         self.logger = logger
         self._refreshingUI = False
+        self._progressCounter = 0
 
         self.setWindowTitle("Rig Builder {}".format(__version__))
         self.setGeometry(0, 0, 1300, 900)
@@ -2241,47 +2242,6 @@ class RigBuilderWindow(QFrame):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-
-        self.logWidget = LogWidget()
-        self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        
-        self._progressCounter = 0
-
-        self.treeWidget = ModuleTreeWidget()
-        self.treeWidget.selectionModel().selectionChanged.connect(self._onTreeSelectionChanged)
-
-        self.codeEditorWidget = CodeEditorWidget()
-        self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
-
-        for label, func, hotkey in [
-            ("Execute", self._onExecuteCode, "Ctrl+Enter"),
-            ("Expose as Attribute", self._onExposeAsAttribute, "Ctrl+E")]:            
-            action = QAction(label, self.codeEditorWidget.editorWidget)
-            action.setShortcut(hotkey)
-            action.triggered.connect(lambda *_, f=func: f())
-            self.codeEditorWidget.editorWidget.addCustomAction(action)
-        
-        self.apiBrowserWidget = ApiBrowserWidget()
-
-        self.attributesTabWidget = AttributesTabWidget()
-        self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
-        self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
-        self.attributesTabWidget.attributesChanged.connect(self.codeEditorWidget.updateState)
-
-        self.vscodeBtn = QPushButton("📝 Edit in VSCode")
-        self.vscodeBtn.clicked.connect(self.editInVSCode)
-
-        self.codeWidget = QWidget()
-        self.codeWidget.setLayout(QVBoxLayout())
-        self.codeWidget.layout().addWidget(self.codeEditorWidget)
-        self.codeWidget.layout().addWidget(self.vscodeBtn)
-
-        self.runBtn = QPushButton("🚀 Run")
-        self.runBtn.setToolTip("Execute modules from top down in their own context.")
-        self.runBtn.setStyleSheet("background-color: #3e4f89")
-        self.runBtn.clicked.connect(self.runModule)
-        self.runBtn.hide()
 
         # --- Host picker row ---
         self.hostCombo = QComboBox()
@@ -2313,7 +2273,6 @@ class RigBuilderWindow(QFrame):
         self.windowPinBtn.setStyleSheet("QPushButton:checked { background-color: #3e7bd6; border-color: #6ea7ff; color: #ffffff; }")
 
         headerRow = QHBoxLayout()
-        headerRow.setContentsMargins(0, 0, 0, 5)
         headerRow.addWidget(self.workspaceWidget)
         headerRow.addWidget(self.syncBtn)
         headerRow.addStretch()
@@ -2321,75 +2280,118 @@ class RigBuilderWindow(QFrame):
         headerRow.addWidget(self.hostConnectBtn)
         headerRow.addWidget(self.hostManageBtn)
         headerRow.addWidget(self.windowPinBtn)
+        layout.addLayout(headerRow)
 
-        self.moduleHistoryWidget = ModuleHistoryWidget(self)
-        self.moduleHistoryWidget.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
-
-        self.docBrowser = DocBrowser()
-        self.docBrowser.moduleRequested.connect(self.selectModuleBySpec)
-
-        self.rightSplitter = WideSplitter(Qt.Vertical)
-        self.rightSplitter.addWidget(self.attributesTabWidget)
-        self.rightSplitter.addWidget(self.docBrowser)
-        self.rightSplitter.setSizes([400, 100])
-        self.rightSplitter.hide()
-
-        rightWidget = QWidget()
-        rightWidget.setLayout(QVBoxLayout())
-        rightWidgetLayout = rightWidget.layout()
-        rightWidgetLayout.setContentsMargins(0, 0, 0, 0)
-        rightWidgetLayout.addWidget(self.moduleHistoryWidget)
-        rightWidgetLayout.addWidget(self.rightSplitter)
-        rightWidgetLayout.addWidget(self.runBtn)
-
-        self.treeContainer = QWidget()
-        self.treeContainer.setLayout(QVBoxLayout())
-        self.treeContainer.layout().setContentsMargins(0, 0, 0, 0)
-        self.treeContainer.layout().addWidget(self.treeWidget)
-
-        self.moduleBrowser = ModuleBrowser()
-        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.syncModule)
-
-        self.leftSplitter = WideSplitter(Qt.Vertical)
-        self.leftSplitter.addWidget(self.treeContainer)
-        self.leftSplitter.addWidget(self.moduleBrowser)
-        self.leftSplitter.setSizes([300, 200])
-
-        self.mainContentSplitter = WideSplitter(Qt.Horizontal)
-        self.mainContentSplitter.addWidget(self.leftSplitter)
-        self.mainContentSplitter.addWidget(rightWidget)
-        self.mainContentSplitter.setSizes([400, 600])
-
-        self.codeAndApiSplitter = WideSplitter(Qt.Horizontal)
-        self.codeAndApiSplitter.addWidget(self.codeWidget)
-        self.codeAndApiSplitter.addWidget(self.apiBrowserWidget)
-        self.codeAndApiSplitter.setSizes([800, 200])
-
-        self.verticalSplitter = WideSplitter(Qt.Vertical)
-        self.verticalSplitter.addWidget(self.mainContentSplitter)
-        self.verticalSplitter.addWidget(self.codeAndApiSplitter)
-        self.verticalSplitter.addWidget(self.logWidget)
-        self.verticalSplitter.setSizes([400, 100, 100])
-
-        self.verticalSplitter.splitterMoved.connect(self._onCodeSplitterMoved)
-        self.codeWidget.setEnabled(False)
-
-        self.progressBarWidget = MyProgressBar()
-        self.progressBarWidget.hide()        
+        self.treeWidget = ModuleTreeWidget()
+        self.treeWidget.selectionModel().selectionChanged.connect(self._onTreeSelectionChanged)
         self.treeWidget.addActions(getActions(self.menu()))
         self.treeWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.treeWidget.customContextMenuRequested.connect(self._onTreeContextMenu)
         setActionsLocalShortcut(self.treeWidget)
 
-        layout.addLayout(headerRow)
-        layout.addWidget(self.verticalSplitter)
+        self.codeEditorWidget = CodeEditorWidget()
+        self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
+
+        for label, func, hotkey in [
+            ("Execute", self._onExecuteCode, "Ctrl+Enter"),
+            ("Expose as Attribute", self._onExposeAsAttribute, "Ctrl+E")]:            
+            action = QAction(label, self.codeEditorWidget.editorWidget)
+            action.setShortcut(hotkey)
+            action.triggered.connect(lambda *_, f=func: f())
+            self.codeEditorWidget.editorWidget.addCustomAction(action)
+        
+        self.vscodeBtn = QPushButton("📝 Edit in VSCode")
+        self.vscodeBtn.clicked.connect(self.editInVSCode)
+
+        self.apiBrowserWidget = ApiBrowserWidget()
+
+        self.attributesTabWidget = AttributesTabWidget()
+        self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
+        self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
+        self.attributesTabWidget.attributesChanged.connect(self.codeEditorWidget.updateState)
+
+        self.runBtn = QPushButton("🚀 Run")
+        self.runBtn.setToolTip("Execute module from top down in their own context.")
+        self.runBtn.setStyleSheet("background-color: #3e4f89")
+        self.runBtn.clicked.connect(self.runModule)
+        self.runBtn.setEnabled(False)
+
+        self.moduleHistoryWidget = ModuleHistoryWidget()
+        self.moduleHistoryWidget.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
+
+        self.docBrowser = DocBrowser()
+        self.docBrowser.moduleRequested.connect(self.selectModuleBySpec)
+        self.docBrowser.setEnabled(False)
+
+        self.moduleBrowser = ModuleBrowser()
+        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.syncModule)
+
+        self.logWidget = LogWidget()
+        self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+        self.progressBarWidget = MyProgressBar()
+        self.progressBarWidget.hide()        
+
+        # layout
+
+        treeWithBtnWidget = QWidget()
+        treeWithBtnWidget.setLayout(QVBoxLayout())
+        treeWithBtnWidget.layout().addWidget(self.treeWidget)
+        treeWithBtnWidget.layout().addWidget(self.runBtn)
+
+        leftSplitter = WideSplitter(Qt.Vertical)
+        leftSplitter.addWidget(treeWithBtnWidget)
+        leftSplitter.addWidget(self.docBrowser)
+        leftSplitter.addWidget(self.moduleBrowser)
+
+        codeWithBtnWidget = QWidget()
+        codeWithBtnWidget.setLayout(QVBoxLayout())
+        codeWithBtnWidget.layout().addWidget(self.codeEditorWidget)
+        codeWithBtnWidget.layout().addWidget(self.vscodeBtn)
+
+        codeSplitter = WideSplitter(Qt.Horizontal)
+        codeSplitter.addWidget(codeWithBtnWidget)
+        codeSplitter.addWidget(self.apiBrowserWidget)
+        codeSplitter.setSizes([500, 200])
+
+        self.rightModuleSplitter = WideSplitter(Qt.Vertical)
+        self.rightModuleSplitter.addWidget(self.attributesTabWidget)
+        self.rightModuleSplitter.addWidget(codeSplitter)
+        self.rightModuleSplitter.setSizes([500, 500])
+        self.rightModuleSplitter.hide()
+
+        rightSplitter = WideSplitter(Qt.Vertical)
+        rightSplitter.addWidget(self.moduleHistoryWidget)
+        rightSplitter.addWidget(self.rightModuleSplitter)   
+
+        mainSplitter = WideSplitter(Qt.Horizontal)
+        mainSplitter.addWidget(leftSplitter)
+        mainSplitter.addWidget(rightSplitter)
+        mainSplitter.setSizes([300, 700])
+
+        layoutSplitter = WideSplitter(Qt.Vertical)
+        layoutSplitter.addWidget(mainSplitter)
+        layoutSplitter.addWidget(self.logWidget)
+        layoutSplitter.setSizes([500, 100])
+
+        layout.addWidget(layoutSplitter)
         layout.addWidget(self.progressBarWidget)
 
         centerWindow(self)
+
         self.moduleHistoryWidget.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
 
+        self._splitters = [
+            layoutSplitter,
+            mainSplitter,
+            leftSplitter,
+            rightSplitter,
+            codeSplitter,
+            self.rightModuleSplitter,
+        ]
         self.loadAppSettings()
 
     def _onTreeContextMenu(self, pos):
@@ -2786,41 +2788,20 @@ class RigBuilderWindow(QFrame):
     def _onTreeSelectionChanged(self, selected, deselected):
         module = self.treeWidget.currentModule()
         en = module is not None
-        self.rightSplitter.setVisible(en)
-        self.runBtn.setVisible(en)
+        
+        self.runBtn.setEnabled(en)
+        self.rightModuleSplitter.setVisible(en)
         self.moduleHistoryWidget.setVisible(not en)
-        self.docBrowser.setVisible(en)
-        self.codeWidget.setEnabled(en and not self.isCodeEditorHidden())
+        
+        self.docBrowser.setEnabled(en)
+        self.docBrowser.updateDoc(module)
 
         if module:
             self.attributesTabWidget.updateTabs(module)
-
-            if self.codeWidget.isEnabled():
-                self.codeEditorWidget.module = module
-                self.codeEditorWidget.updateState()
-            
-        self.docBrowser.updateDoc(module)
-
-
-    def isCodeEditorHidden(self) -> bool:
-        return self.verticalSplitter.sizes()[1] == 0 # code section size
-
-    def _onCodeSplitterMoved(self, sz: int, n: int):
-        if self.isCodeEditorHidden():
-            self.codeWidget.setEnabled(False)
-
-        elif not self.codeWidget.isEnabled():
-            module = self.treeWidget.currentModule()
-            if module:
-                self.codeEditorWidget.module = module
-                self.codeEditorWidget.updateState()
-                self.codeWidget.setEnabled(True)
+            self.codeEditorWidget.module = module
+            self.codeEditorWidget.updateState()            
 
     def showLog(self):
-        sizes = self.verticalSplitter.sizes()
-        if sizes[-1] < 10:
-            sizes[-1] = 200
-            self.verticalSplitter.setSizes(sizes)
         self.logWidget.ensureCursorVisible()
 
     def onConnectionErrorCallback(self, text: str):
@@ -2908,11 +2889,8 @@ class RigBuilderWindow(QFrame):
         settings.setValue("pinned", self.windowPinBtn.isChecked())
         
         # Save splitter states
-        settings.setValue("verticalSplitter", self.verticalSplitter.saveState())
-        settings.setValue("mainContentSplitter", self.mainContentSplitter.saveState())
-        settings.setValue("leftSplitter", self.leftSplitter.saveState())
-        settings.setValue("rightSplitter", self.rightSplitter.saveState())
-        settings.setValue("codeAndApiSplitter", self.codeAndApiSplitter.saveState())        
+        for idx, splitter in enumerate(self._splitters):
+            settings.setValue(f"splitter{idx}", splitter.saveState())
 
     def loadAppSettings(self):
         """Load app-specific settings."""
@@ -2928,14 +2906,8 @@ class RigBuilderWindow(QFrame):
         self.pinWindow(pinned)
         
         # Restore splitter states
-        for key, splitter in [
-            ("verticalSplitter", self.verticalSplitter),
-            ("mainContentSplitter", self.mainContentSplitter),
-            ("leftSplitter", self.leftSplitter),
-            ("rightSplitter", self.rightSplitter),
-            ("codeAndApiSplitter", self.codeAndApiSplitter)
-        ]:
-            state = settings.value(key)
+        for idx, splitter in enumerate(self._splitters):
+            state = settings.value(f"splitter{idx}")
             if state:
                 splitter.restoreState(state)
 
