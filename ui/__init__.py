@@ -3042,7 +3042,7 @@ class RigBuilderWindow(QFrame):
     def saveAppSettings(self):
         """Save app-specific settings like active workspace and window geometry."""
         settings = QSettings("RigBuilder")
-        settings.setValue("activeWorkspace", self.workspaceWidget._currentWorkspaceName)
+        settings.setValue("activeWorkspace", workspace.currentWorkspace.name)
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("pinned", self.windowPinBtn.isChecked())
         

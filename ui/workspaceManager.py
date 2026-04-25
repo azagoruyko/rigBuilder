@@ -11,6 +11,7 @@ from ..settings import (
     RIG_BUILDER_PATH,
     RIG_BUILDER_WORKSPACES_PATH
 )
+from .. import workspace
 from ..workspace import Workspace, flattenModules
 from ..utils import replaceSpecialChars
 from ..client.connectionManager import connectionManager
@@ -27,9 +28,8 @@ class WorkspaceMainWindow(Protocol):
 
 class WorkspaceManagerDialog(QDialog):
     """Dialog for listing, creating, and removing workspaces."""
-    def __init__(self, currentWorkspaceName: str, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.currentWorkspaceName = currentWorkspaceName
         self.setWindowTitle("Workspace Manager")
         self.setMinimumSize(700, 400)
         
@@ -174,7 +174,7 @@ class WorkspaceManagerDialog(QDialog):
             ws.save() # Workspace.save saves both workspace file and settings.json
             
             # If this is the active workspace, sync global settings immediately
-            if self.currentWorkspaceName == ws.name:
+            if workspace.currentWorkspace.name == ws.name:
                 settings.fromDict(ws.settings.toDict())
                 self.parent().mainWindow._refreshHostCombo()
                 self.parent()._refreshModuleBrowserSource()
@@ -205,7 +205,7 @@ class WorkspaceManagerDialog(QDialog):
             item.setData(Qt.UserRole, ws.name)
             self.listWidget.addItem(item)
             
-            if ws.name == self.currentWorkspaceName:
+            if ws.name == workspace.currentWorkspace.name:
                 self.listWidget.setCurrentItem(item)
 
     def selectedWorkspace(self) -> Optional[Workspace]:
@@ -241,7 +241,7 @@ class WorkspaceManagerDialog(QDialog):
         if res != QMessageBox.Yes:
             return
 
-        if ws.name == self.currentWorkspaceName:
+        if ws.name == workspace.currentWorkspace.name:
             self.parent().switchWorkspace("default")
 
         if ws.delete():
@@ -260,7 +260,6 @@ class WorkspaceWidget(QWidget):
         super().__init__(parent)
         self.mainWindow = mainWindow
         self._blockSignals = False
-        self._currentWorkspaceName = ""
 
         self.combo = QComboBox()
         self.combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -285,7 +284,8 @@ class WorkspaceWidget(QWidget):
 
     def toWorkspace(self) -> Workspace:
         """Capture current UI state into a Workspace object."""
-        ws = Workspace.load(self._currentWorkspaceName) or Workspace(self._currentWorkspaceName)
+
+        ws = Workspace.load(workspace.currentWorkspace.name)
         
         # Sync current global settings into workspace settings before saving
         ws.settings.fromDict(settings.toDict())
@@ -329,7 +329,7 @@ class WorkspaceWidget(QWidget):
         for ws in Workspace.list():
             self.combo.addItem(f"💼 {ws.name}", ws.name)
         
-        idx = self.combo.findData(self._currentWorkspaceName)
+        idx = self.combo.findData(workspace.currentWorkspace.name)
         if idx >= 0:
             self.combo.setCurrentIndex(idx)
         self._blockSignals = False
@@ -343,7 +343,7 @@ class WorkspaceWidget(QWidget):
             return
 
         # Save current IF one was active and it's a DIFFERENT workspace
-        if self._currentWorkspaceName and self._currentWorkspaceName != name:
+        if workspace.currentWorkspace.name != name:
             self.toWorkspace().save()
 
         # Check for recovery
@@ -373,7 +373,7 @@ class WorkspaceWidget(QWidget):
         # Load and activate
         ws = Workspace.load(name, recovery=recovery)
         if ws:
-            self._currentWorkspaceName = name
+            workspace.currentWorkspace = ws
             ws.activate()
             self._refreshModuleBrowserSource()
             self.fromWorkspace(ws)
@@ -386,7 +386,7 @@ class WorkspaceWidget(QWidget):
         self.switchWorkspace(name)
 
     def _onManage(self):
-        dialog = WorkspaceManagerDialog(self._currentWorkspaceName, self)
+        dialog = WorkspaceManagerDialog(self)
         if dialog.exec_():
             sel = dialog.selectedWorkspace()
             if sel:
@@ -396,14 +396,10 @@ class WorkspaceWidget(QWidget):
 
     def _onAutoSaveTimer(self):
         """Triggered by the timer. Saves the current workspace state to a sidecar file."""
-        # Don't autosave if no workspace or if it's the default one (optional?)
-        if not self._currentWorkspaceName:
-            return
-        
-        self.toWorkspace().autosave()
+        workspace.currentWorkspace.autosave()
         
         timestamp = datetime.now().strftime("%H:%M")
-        print(f"Workspace '{self._currentWorkspaceName}' autosaved at {timestamp}")
+        print(f"Workspace '{workspace.currentWorkspace.name}' autosaved at {timestamp}")
 
     def _updateAutoSaveInterval(self):
         """Update timer interval from global settings."""
