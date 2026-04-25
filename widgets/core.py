@@ -2,9 +2,6 @@ import math
 from typing import Any, Optional, Tuple, TYPE_CHECKING
 from ..utils import *
 
-if TYPE_CHECKING:
-    from ..core import Module
-    
 DEFAULT_WIDGET_DATA = {
     "button": {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"},
     "checkBox": {"checked": False, "default": "checked"},
@@ -42,9 +39,13 @@ DEFAULT_WIDGET_DATA = {
     "vector": {"value": [0.0, 0.0, 0.0], "default": "value", "dimension": 3, "columns": 3, "precision": 4}
 }
 
-def getWidgetTemplateFromValue(v: any) -> str:
-    """Get widget template from value."""
+def getAttributeFromValue(name: str, v: any, category: str = "") -> 'Attribute':
+    """Get an attribute with proper widget template and default data from a value."""
+    from ..core import Attribute
+
     template = "lineEditAndButton"
+
+    v = fromSmartConversion(v)
     if type(v) == bool:
         template = "checkBox"
     elif type(v) == dict:
@@ -54,7 +55,15 @@ def getWidgetTemplateFromValue(v: any) -> str:
     elif type(v) == list:
         template = "listBox"
     
-    return template
+    attr = Attribute(name, template, category or "General")
+    data = copyJson(DEFAULT_WIDGET_DATA[template])
+    
+    if template == "lineEditAndButton":
+        data["buttonEnabled"] = False
+        
+    attr.setData(data)
+    attr.set(v)
+    return attr
 
 # curve functions
 
