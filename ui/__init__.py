@@ -17,7 +17,7 @@ from ..qt import *
 from .. import __version__
 from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..core import *
-from ..widgets.core import getWidgetTemplateFromValue, DEFAULT_WIDGET_DATA
+from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGET_DATA
 from .apiBrowser import ApiBrowserWidget
 from .docBrowser import DocBrowser
 from .editor import CodeEditorWithNumbersWidget
@@ -2554,16 +2554,8 @@ class RigBuilderWindow(QFrame):
             QMessageBox.critical(self, "Rig Builder", "Attribute with this name already exists")
             return        
 
-        template = getWidgetTemplateFromValue(v)
-        
-        data = copyJson(DEFAULT_WIDGET_DATA[template])
-        if template == "lineEditAndButton":
-            data["buttonEnabled"] = False
-
         category = self.attributesTabWidget.tabText(self.attributesTabWidget.currentIndex())
-        attr = Attribute(name, template, category or "General")
-        attr.setData(data)
-        attr.set(v)
+        attr = getAttributeFromValue(name, v, category)
 
         module.addAttribute(attr)
 
