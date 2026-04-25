@@ -2,7 +2,8 @@ import ollama
 from ..qt import *
 from ..ai import engine
 from ..settings import settings
-
+import markdown
+from pygments.formatters import HtmlFormatter
 
 class AIChatWorker(QThread):
     chunkReceived = Signal(str)
@@ -214,8 +215,22 @@ class AIChatDialog(QDialog):
         if streaming:
             content = formatContent(self.currentResponse)
             fullMd += f"### 🤖 Assistant\n{content}\n\n"
+            self.history.setMarkdown(fullMd)
 
-        self.history.setMarkdown(fullMd)
+        else:
+            formatter = HtmlFormatter(style='monokai')
+            css = formatter.get_style_defs('.codehilite')
+            css += "\n.codehilite { background-color: transparent !important; }"
+            
+            htmlContent = markdown.markdown(
+                fullMd, 
+                extensions=['fenced_code', 'codehilite', 'tables', 'sane_lists']
+            )
+            
+            fullHtml = f"""<style>{css}</style><body>{htmlContent}</body>"""
+            
+            self.history.setHtml(fullHtml)
+
         # Scroll to bottom
         self.history.verticalScrollBar().setValue(self.history.verticalScrollBar().maximum())
 

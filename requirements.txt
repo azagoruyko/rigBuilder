@@ -5,6 +5,7 @@ PySide6>=6.0.0
 
 # Markdown rendering for module docs
 markdown>=3.0.0
+Pygments>=2.19.2
 
 # Client-server networking (Host-agnostic execution)
 pyzmq>=24.0.0
