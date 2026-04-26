@@ -43,7 +43,7 @@ class WorkspaceManagerDialog(QDialog):
         self.newBtn.setAutoDefault(False)
         self.newBtn.clicked.connect(self._onNew)
 
-        self.removeBtn = QPushButton("🗑️")
+        self.removeBtn = QPushButton("❌")
         self.removeBtn.setAutoDefault(False)
         self.removeBtn.clicked.connect(self._onRemove)
 

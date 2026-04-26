@@ -2143,7 +2143,7 @@ class ManageHostsDialog(QDialog):
 
         btnLayout = QHBoxLayout()
         addBtn = QPushButton("➕")
-        removeBtn = QPushButton("🗑️")
+        removeBtn = QPushButton("❌")
         btnLayout.addWidget(addBtn)
         btnLayout.addWidget(removeBtn)
         btnLayout.addStretch()
