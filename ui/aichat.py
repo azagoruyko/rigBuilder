@@ -610,6 +610,10 @@ class AIChatDialog(QDialog):
             m.setName(name.strip())
             m.setRunCode(runCode)
 
+            # update active module for chat
+            self.aiToolsContext["selectedModule"] = m
+            self.aiToolsContext["selectedCode"] = runCode
+
             self.createModuleRequested.emit(m)
             return "ok"
 
