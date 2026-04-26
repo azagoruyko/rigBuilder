@@ -63,7 +63,7 @@ class AIChatDialog(QDialog):
         self.messages = []
         self.currentResponse = ""
         self.worker = None
-        self.aicontext = {}
+        self.aiToolsContext = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -329,7 +329,7 @@ class AIChatDialog(QDialog):
             and the python imports defined in the module's run code.
             Use this to understand what the user is currently selecting or working on.
             """
-            m = self.aicontext["selectedModule"]
+            m = self.aiToolsContext["selectedModule"]
             imports = []
             if m:
                 for l in m.runCode().splitlines():
@@ -341,12 +341,12 @@ class AIChatDialog(QDialog):
                         break
 
             state = f'''
-            Host: {self.aicontext["host"].name}, use appropriate coding standards for this host.
-            Workspace: {self.aicontext["workspace"].name}
+            Host: {self.aiToolsContext["host"].name}, use appropriate coding standards for this host.
+            Workspace: {self.aiToolsContext["workspace"].name}
             Selected module: {m.name() if m else 'No module'}
             Module documentation:{'\n' + m.doc() if m else 'No documentation'}
             Imports: {'; '.join(imports) if imports else 'No imports'}
-            Selected code:{'\n' + self.aicontext["selectedCode"] if m else "Nothing selected"}
+            Selected code:{'\n' + self.aiToolsContext["selectedCode"] if m else "Nothing selected"}
             '''
             return state
 
@@ -381,27 +381,27 @@ class AIChatDialog(QDialog):
             Use this when you need to understand the current code selection in the editor.
             Returns the selected lines as a string.
             """
-            if not self.aicontext["selectedModule"]:
+            if not self.aiToolsContext["selectedModule"]:
                 return "(Nothing selected)"
                 
-            return self.aicontext["selectedCode"]
+            return self.aiToolsContext["selectedCode"]
 
         def readCode() -> str:
             """
             Reads the entire code from the code editor.
             Returns the code as a string.
             """
-            if not self.aicontext["selectedModule"]:
+            if not self.aiToolsContext["selectedModule"]:
                 return "(Code is not available)"
 
-            return self.aicontext["code"]
+            return self.aiToolsContext["code"]
 
         def replaceSelectedCode(text: str) -> str:
             """
             Replace the selected code in the editor with the given text.
             Returns 'ok' if successful.
             """
-            m = self.aicontext["selectedModule"]
+            m = self.aiToolsContext["selectedModule"]
             if not m:
                 return "(No module selected)"
 
@@ -413,7 +413,7 @@ class AIChatDialog(QDialog):
             Replaces the entire code in the code editor with the given text.
             Returns 'ok' if successful.
             """
-            if not self.aicontext["selectedModule"]:
+            if not self.aiToolsContext["selectedModule"]:
                 return "(No module selected)"
 
             self.replaceCodeRequested.emit(newText)
@@ -425,7 +425,7 @@ class AIChatDialog(QDialog):
             Use this when you need to understand the attributes of the currently selected module.
             Returns the attributes as a string.
             """
-            m = self.aicontext["selectedModule"]
+            m = self.aiToolsContext["selectedModule"]
             if not m:
                 return "(No attributes)"
             
@@ -443,7 +443,7 @@ class AIChatDialog(QDialog):
             It supports: dict, list, list, str, int, float, bool.
             Returns 'ok' if successful.
             """
-            m = self.aicontext["selectedModule"]
+            m = self.aiToolsContext["selectedModule"]
             if not m:
                 return "(No module)"
 

@@ -2666,7 +2666,7 @@ class RigBuilderWindow(QFrame):
         m = self.treeWidget.currentModule()
         editor = self.codeEditorWidget.editorWidget
         
-        self.aiChatDialog.aicontext = {
+        self.aiChatDialog.aiToolsContext = {
             "code": editor.toPlainText(),
             "selectedCode":editor.textCursor().selectedText(),
             "host":self.hostCombo.currentData(),
