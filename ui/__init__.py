@@ -2693,13 +2693,13 @@ class RigBuilderWindow(QFrame):
             parent=self
         )
         if dialog.exec() == QDialog.Accepted:
-            editor.beginEditBlock()
             cursor = editor.textCursor()
+            cursor.beginEditBlock()
             cursor.movePosition(QTextCursor.Start)
             cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
             cursor.removeSelectedText()
             cursor.insertText(code)
-            editor.endEditBlock()
+            cursor.endEditBlock()
 
     def _onReplaceSelectedCodeRequested(self, code: str):
         editor = self.codeEditorWidget.editorWidget
