@@ -2394,7 +2394,6 @@ class RigBuilderWindow(QFrame):
         self.aiChatDialog.attributeAdded.connect(self._onAttributeChanged)
         self.aiChatDialog.attributeDataChanged.connect(self._onAttributeChanged)
         self.aiChatDialog.beforeSendMessage.connect(self.prepareContextForChat)
-        self.aiChatDialog.createModuleRequested.connect(self._onCreateModuleRequested)
 
         # layout
 
@@ -2652,13 +2651,6 @@ class RigBuilderWindow(QFrame):
     def _onAttributeChanged(self, module: Module, attr: Attribute):
         if module == self.treeWidget.currentModule():
             self.attributesTabWidget.updateTabs(module)
-
-    def _onCreateModuleRequested(self, module: Module):
-        """Handle module creation requested by the AI chat tool. Always adds at top level."""
-        added = self.addModule(module)
-        if added:
-            self.treeWidget.clearSelection()
-            self.treeWidget.selectModule(added)
 
     def _onReplaceCodeRequested(self, module: Module, code: str):
         if module != self.treeWidget.currentModule():

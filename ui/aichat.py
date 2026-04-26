@@ -54,7 +54,6 @@ class AIChatDialog(QDialog):
     attributeDataChanged = Signal(object, object) # module, attribute
     replaceCodeRequested = Signal(object, str) # module, code
     replaceSelectedCodeRequested = Signal(object, str) # module, code
-    createModuleRequested = Signal(object) # module
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -488,7 +487,7 @@ class AIChatDialog(QDialog):
             """
             Set the full data dictionary for an attribute by name.
             Make sure 'default' key points to another key in the dict! It is not the value!
-            Use `listAttributeTemplates` and `getAttributeTemplateDefaults` to get the default data structure for a template.
+            Use `getAttributeTemplateDefaults` to get the default data structure for a template.
             Use this to update widget properties like items in a comboBox, range in a slider, color, label, etc.
             The 'data' argument must be a dictionary matching the widget's template structure.
             Returns 'ok' if successful, or an error message if the attribute is not found.
@@ -507,7 +506,13 @@ class AIChatDialog(QDialog):
                 except:
                     pass
 
-            attr.setData(data)
+            from ..widgets.core import DEFAULT_WIDGETS_DATA
+            from ..utils import copyJson
+
+            templateData = copyJson(DEFAULT_WIDGETS_DATA.get(attr.template()))
+            templateData.update(data)
+
+            attr.setData(templateData)
             self.attributeDataChanged.emit(m, attr)
             return "ok"
 
@@ -528,24 +533,14 @@ class AIChatDialog(QDialog):
 
             return json.dumps(attr.data(), indent=2, ensure_ascii=False)
 
-        def listAttributeTemplates() -> str:
+        def getAttributeTemplateDefaults() -> str:
             """
-            List all available attribute widget templates.
-            Returns a list of template names.
-            """
-            from ..widgets.core import DEFAULT_WIDGETS_DATA
-            return json.dumps(list(DEFAULT_WIDGETS_DATA.keys()), indent=2, ensure_ascii=False)
-
-        def getAttributeTemplateDefaults(template: str) -> str:
-            """
-            Get the default data structure for a specific widget template.
+            Get the default data structure for available attribute templates.
             Use this to understand what keys and values are required when using 'setAttributeData'.
-            Common templates: button, checkBox, comboBox, curve, compound, fileSelector, json, label, lineEditAndButton, listBox, radioButton, table, text, vector.
-            Returns the default data as a JSON-formatted string.
+            Returns a JSON formatted string with all default attribute templates.
             """
             from ..widgets.core import DEFAULT_WIDGETS_DATA
-            data = DEFAULT_WIDGETS_DATA.get(template, {})
-            return json.dumps(data, indent=2, ensure_ascii=False)
+            return json.dumps(DEFAULT_WIDGETS_DATA, indent=2, ensure_ascii=False)
 
         def queryModules(query: str) -> str:
             """
@@ -594,30 +589,6 @@ class AIChatDialog(QDialog):
             except Exception as e:
                 return f"Error reading file: {e}"
 
-        def createModule(name: str, runCode: str) -> str:
-            """
-            name is camelCase string.
-            runCode is python code.
-            Create and add a new module to the scene with python code.
-            IMPORTANT: Call this tool ONLY ONCE and ONLY when the user explicitly asks to create a module.
-            Do NOT call this speculatively, repeatedly, or as part of exploration.            
-            Returns 'ok' or an error string.
-            """
-            if not name or not name.strip():
-                return "Error: module name must not be empty"
-
-            from ..core import Module
-            m = Module()
-            m.setName(name.strip())
-            m.setRunCode(runCode)
-
-            # update active module for chat
-            self.aiToolsContext["selectedModule"] = m
-            self.aiToolsContext["selectedCode"] = runCode
-
-            self.createModuleRequested.emit(m)
-            return "ok"
-
         engine.AITools.getCurrentState = getCurrentState
         engine.AITools.getExampleModule = getExampleModule
         engine.AITools.getRigBuilderCore = getRigBuilderCore
@@ -629,8 +600,6 @@ class AIChatDialog(QDialog):
         engine.AITools.addModuleAttribute = addModuleAttribute
         engine.AITools.setAttributeData = setAttributeData
         engine.AITools.getAttributeData = getAttributeData
-        engine.AITools.listAttributeTemplates = listAttributeTemplates
         engine.AITools.getAttributeTemplateDefaults = getAttributeTemplateDefaults
         engine.AITools.queryModules = queryModules
         engine.AITools.readFile = readFile
-        engine.AITools.createModule = createModule
