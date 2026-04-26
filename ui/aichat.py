@@ -588,11 +588,14 @@ class AIChatDialog(QDialog):
 
         def readFile(path: str) -> str:
             """
-            Get xml of modules by path.
-            Use this to read the full content of a module you found using semantic search.
+            Read a file and return its content, or list directory entries if path is a directory.
+            Returns full absolute paths when listing a directory.
             """
             if not os.path.exists(path):
                 return f"File not found: {path}"
+            if os.path.isdir(path):
+                entries = os.listdir(path)
+                return "\n".join(os.path.join(path, e) for e in entries)
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     return f.read()
