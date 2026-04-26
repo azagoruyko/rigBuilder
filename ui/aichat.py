@@ -454,6 +454,50 @@ class AIChatDialog(QDialog):
             self.addAttributeRequested.emit(a)
             return "ok"
 
+        def queryModules(query: str) -> str:
+            """
+            Search for modules in the current workspace by name, description, or functionality.
+            This uses a semantic vector search, so you can describe what the module does in natural language.
+            Returns a list of matching module paths and their relevance scores.
+            Use this to find existing modules before creating new ones or to understand what is available.
+            """
+            from ..moduleIndexer import ModuleIndexer
+            import asyncio
+            ws = workspace.currentWorkspace
+            if not ws:
+                return "No workspace active."
+            
+            indexer = ModuleIndexer(os.path.join(ws.folderPath(), "moduleIndex.json"))
+            indexer.refresh()
+            
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(indexer.search(query, k=10))
+                
+                if not results:
+                    return "No results found."
+                
+                output = []
+                for path, score in results:
+                    output.append(f"{path} (score: {score:.2f})")
+                return "\n".join(output)
+            except Exception as e:
+                return f"Error during semantic search: {e}"
+
+        def readFile(path: str) -> str:
+            """
+            Get xml of modules by path.
+            Use this to read the full content of a module you found using semantic search.
+            """
+            if not os.path.exists(path):
+                return f"File not found: {path}"
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception as e:
+                return f"Error reading file: {e}"
+
         engine.AITools.getCurrentState = getCurrentState
         engine.AITools.getExampleModule = getExampleModule
         engine.AITools.getRigBuilderCore = getRigBuilderCore
@@ -463,3 +507,5 @@ class AIChatDialog(QDialog):
         engine.AITools.replaceSelectedCode = replaceSelectedCode
         engine.AITools.getModuleAttributes = getModuleAttributes
         engine.AITools.addModuleAttribute = addModuleAttribute
+        engine.AITools.queryModules = queryModules
+        engine.AITools.readFile = readFile
