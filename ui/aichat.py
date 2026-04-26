@@ -25,7 +25,7 @@ class AIChatWorker(QThread):
         self.messages = copy.deepcopy(messages)
         self.temperature = temperature
         self._isRunning = True
-        self.numToolCalls = 7
+        self.numToolCalls = 10
 
     def run(self):
         try:
@@ -50,9 +50,10 @@ class AIChatWorker(QThread):
 
 class AIChatDialog(QDialog):
     beforeSendMessage = Signal()
-    addAttributeRequested = Signal(object) 
-    replaceCodeRequested = Signal(str)
-    replaceSelectedCodeRequested = Signal(str)
+    attributeAdded = Signal(object, object) # module, attribute
+    attributeDataChanged = Signal(object, object) # module, attribute
+    replaceCodeRequested = Signal(object, str) # module, code
+    replaceSelectedCodeRequested = Signal(object, str) # module, code
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -139,7 +140,7 @@ class AIChatDialog(QDialog):
         path = os.path.join(ws.folderPath(), "chat.txt")
         try:
             with open(path, "w", encoding="utf-8") as f:
-                json.dump(self.messages, f, indent=2)
+                json.dump(self.messages, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Failed to save chat: {e}")
 
@@ -284,7 +285,7 @@ class AIChatDialog(QDialog):
                         args = json.loads(args)
                     argParts = []
                     for k, v in args.items():
-                        val = json.dumps(v)
+                        val = json.dumps(v, ensure_ascii=False)
                         if len(val) > 100:
                             val = val[:100] + "..."
                         argParts.append(f"{k}={val}")
@@ -429,7 +430,7 @@ class AIChatDialog(QDialog):
             if not m:
                 return "(No module selected)"
 
-            self.replaceSelectedCodeRequested.emit(text)
+            self.replaceSelectedCodeRequested.emit(m, text)
             return "ok"
 
         def replaceCode(newText: str) -> str:
@@ -437,10 +438,11 @@ class AIChatDialog(QDialog):
             Replaces the entire code in the code editor with the given text.
             Returns 'ok' if successful.
             """
-            if not self.aiToolsContext["selectedModule"]:
+            m = self.aiToolsContext["selectedModule"]
+            if not m:
                 return "(No module selected)"
 
-            self.replaceCodeRequested.emit(newText)
+            self.replaceCodeRequested.emit(m, newText)
             return "ok"
 
         def getModuleAttributes() -> str:
@@ -476,7 +478,8 @@ class AIChatDialog(QDialog):
             jsonValue = smartConversion(jsonValue)
             
             a = getAttributeFromValue(name, jsonValue)
-            self.addAttributeRequested.emit(a)
+            m.addAttribute(a)
+            self.attributeAdded.emit(m, a)
             return "ok"
 
         def queryModules(query: str) -> str:
@@ -523,6 +526,58 @@ class AIChatDialog(QDialog):
             except Exception as e:
                 return f"Error reading file: {e}"
 
+        def setAttributeData(name: str, data: dict) -> str:
+            """
+            Set the full data dictionary for an attribute by name.
+            Use this to update widget properties like items in a comboBox, range in a slider, color, label, etc.
+            The 'data' argument must be a dictionary matching the widget's template structure.
+            Returns 'ok' if successful, or an error message if the attribute is not found.
+            """
+            m = self.aiToolsContext.get("selectedModule")
+            if not m:
+                return "(No module selected)"
+
+            attr = m.findAttribute(name)
+            if not attr:
+                return f"(Attribute '{name}' not found)"
+
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except:
+                    pass
+
+            attr.setData(data)
+            self.attributeDataChanged.emit(m, attr)
+            return "ok"
+
+        def getAttributeData(name: str) -> str:
+            """
+            Get the full data dictionary of an attribute by name.
+            This is useful to inspect all properties of a widget (e.g., current items, min/max values, current value).
+            Returns the data as a JSON-formatted string, or an error message.
+            """
+            m = self.aiToolsContext.get("selectedModule")
+            if not m:
+                return "(No module selected)"
+
+            attr = m.findAttribute(name)
+            if not attr:
+                return f"(Attribute '{name}' not found)"
+
+            return json.dumps(attr.data(), indent=2, ensure_ascii=False)
+
+        def getWidgetTemplateDefaults(template: str) -> str:
+            """
+            Get the default data structure for a specific widget template.
+            Use this to understand what keys and values are required when using 'setAttributeData'.
+            Common templates: button, checkBox, comboBox, curve, compound, fileSelector, json, label, lineEditAndButton, listBox, radioButton, table, text, vector.
+            Returns the default data as a JSON-formatted string.
+            """
+            from ..widgets.core import DEFAULT_WIDGETS_DATA
+            data = DEFAULT_WIDGETS_DATA.get(template, {})
+            return json.dumps(data, indent=2, ensure_ascii=False)
+
         engine.AITools.getCurrentState = getCurrentState
         engine.AITools.getExampleModule = getExampleModule
         engine.AITools.getRigBuilderCore = getRigBuilderCore
@@ -532,5 +587,8 @@ class AIChatDialog(QDialog):
         engine.AITools.replaceSelectedCode = replaceSelectedCode
         engine.AITools.getModuleAttributes = getModuleAttributes
         engine.AITools.addModuleAttribute = addModuleAttribute
+        engine.AITools.setAttributeData = setAttributeData
+        engine.AITools.getAttributeData = getAttributeData
+        engine.AITools.getWidgetTemplateDefaults = getWidgetTemplateDefaults
         engine.AITools.queryModules = queryModules
         engine.AITools.readFile = readFile

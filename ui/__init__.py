@@ -2391,7 +2391,8 @@ class RigBuilderWindow(QFrame):
         self.aiChatDialog = AIChatDialog(parent=self)
         self.aiChatDialog.replaceCodeRequested.connect(self._onReplaceCodeRequested)
         self.aiChatDialog.replaceSelectedCodeRequested.connect(self._onReplaceSelectedCodeRequested)
-        self.aiChatDialog.addAttributeRequested.connect(self._onAddAttributeRequested)
+        self.aiChatDialog.attributeAdded.connect(self._onAttributeChanged)
+        self.aiChatDialog.attributeDataChanged.connect(self._onAttributeChanged)
         self.aiChatDialog.beforeSendMessage.connect(self.prepareContextForChat)
 
         # layout
@@ -2647,14 +2648,14 @@ class RigBuilderWindow(QFrame):
             "selectedModule":m
         }
 
-    def _onAddAttributeRequested(self, attr: Attribute):
-        m = self.treeWidget.currentModule()
-        if not m:
-            return
-        m.addAttribute(attr)
-        self.attributesTabWidget.updateTabs(m)
+    def _onAttributeChanged(self, module: Module, attr: Attribute):
+        if module == self.treeWidget.currentModule():
+            self.attributesTabWidget.updateTabs(module)
 
-    def _onReplaceCodeRequested(self, code: str):
+    def _onReplaceCodeRequested(self, module: Module, code: str):
+        if module != self.treeWidget.currentModule():
+            return
+
         editor = self.codeEditorWidget.editorWidget
         originalText = editor.toPlainText()
         
@@ -2677,7 +2678,10 @@ class RigBuilderWindow(QFrame):
             cursor.insertText(code)
             cursor.endEditBlock()
 
-    def _onReplaceSelectedCodeRequested(self, code: str):
+    def _onReplaceSelectedCodeRequested(self, module: Module, code: str):
+        if module != self.treeWidget.currentModule():
+            return
+
         editor = self.codeEditorWidget.editorWidget
         cursor = editor.textCursor()
         if not cursor.hasSelection():
