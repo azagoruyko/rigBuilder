@@ -2976,7 +2976,8 @@ class RigBuilderWindow(QFrame):
 
     def onConnectionErrorCallback(self, text: str):
         QMessageBox.warning(self, "Rig Builder", text)
-        self._resetHostConnectionRow()
+        connectionManager.disconnect()
+        self.hostCombo.setStyleSheet("")
         self.cleanupRun()
 
     def onErrorCallback(self, text: str, tb: str):
