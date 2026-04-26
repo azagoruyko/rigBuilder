@@ -27,14 +27,15 @@ At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 
 ## ✨ Key Features
 
-- **⚡ Modern Scripting Experience** — A high-performance Python editor tailored for technical artists.
+- **⌨️ Modern Scripting IDE** — Embedded Python IDE with syntax highlighting and code execution across DCCs.
 - **💼 Workspace Management** — Organize your work into isolated projects. Seamlessly switch between different toolsets, rigs, or automated pipelines while maintaining focused module hierarchies and persistent environment settings.
+- **🤖 Agentic AI Chat** — Enhanced Ollama integration with tool-calling capabilities. The AI can now perform semantic searches across modules, write code, add attributes, and much more!
+- **🔍 Semantic Module Indexing** — Intelligent search that understands the functionality of your scripts. Uses vector embeddings to find the right modules using natural language queries.
+- **🛰️ Automatic Host Detection** — Zero-configuration connectivity. Rig Builder automatically detects and connects to running instances of Maya, Blender, and Unreal Engine.
+- **📟 Integrated REPL** — A powerful, host-aware Python REPL for immediate feedback and interactive debugging within your current workspace.
 - **📜 Git-Backed Module History** — Built-in version control for every module change. Track every save, view granular diffs, and restore previous versions in seconds.
 - **🔄 Native Auto-Sync** — Real-time synchronization between the application and your files on disk, ensuring your UI always reflects the latest changes.
-- **🖥️ DCC Agnostic** — Seamlessly connects to **Maya**, **Blender**, **Unreal Engine**, or any Python-capable host via a high-performance ZMQ bridge.
-- **🤖 Local AI Assistance** — Integrated **Ollama** support for AI-assisted script development, documentation generation, and **semantic module search**.
-- **🔍 Semantic Module Indexing** — Find modules by their functionality, not just names. Uses vector embeddings to understand the context of your scripts and documentation.
-- **📝 Responsive Markdown Docs** — Author and view module documentation in native Markdown for a modern, clean documentation experience.
+- **📝 Responsive Markdown Docs** — Author and view module documentation in native Markdown for a modern documentation experience.
 
 ---
 
@@ -78,9 +79,9 @@ run.bat
 
 ### 4. Host Setup (Connectivity)
 
-To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment.
+Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine), it will automatically appear in the Host Manager.
 
-💡`zmq` will be automatically installed in case you don't have it on the first host connection (use the snippet provided by the Host Manager).
+To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment. 💡 `zmq` will be automatically installed on the first connection if it's missing (using a non-intrusive local installation).
 
 ### 5. Usage
 
@@ -91,11 +92,13 @@ To get started with building your own modules, take a look at the [example.rb](m
 ## 🛠️ Dependencies
 
 - **Python** ≥ 3.9
-- **PySide6** ≥ 6.0.0 (Standalone UI)
-- **pyzmq** ≥ 24.0.0 (Host connectivity)
-- **markdown** ≥ 3.1.0 (Module documentation)
-- **ollama** (AI connectivity)
-- **pytest** ≥ 7.0.0 (Testing)
+- **PySide6** ≥ 6.0.0 (Standalone UI framework)
+- **pyzmq** ≥ 24.0.0 (High-performance host connectivity)
+- **markdown** ≥ 3.1.0 (Module documentation rendering)
+- **Pygments** (Syntax highlighting for documentation and AI chat)
+- **ollama** (Local AI connectivity and tool execution)
+- **json-repair** (Robust parsing for AI-generated data)
+- **pytest** ≥ 7.0.0 (Core testing suite)
 
 ---
 
