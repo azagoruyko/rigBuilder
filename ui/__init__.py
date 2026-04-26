@@ -1489,6 +1489,33 @@ class TemplateSelectorDialog(QDialog):
             selectBtn.clicked.connect(partial(self.selectTemplate, t))
             self.gridLayout.addWidget(selectBtn)
 
+class DragHandleButton(QPushButton):
+    dragged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__("↕️", parent)        
+        self.setToolTip("Drag to reorder")
+        self.dragging = False
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.setCursor(Qt.SizeVerCursor)
+            self.setStyleSheet("background-color: #6496ff; color: white;")
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self.dragging:
+            self.dragged.emit()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self.dragging = False
+            self.unsetCursor()
+            self.setStyleSheet("")
+        super().mouseReleaseEvent(event)
+
 class EditTemplateWidget(QWidget):
     Clipboard = []
     nameChanged = Signal(str, str)
@@ -1500,9 +1527,8 @@ class EditTemplateWidget(QWidget):
         self.attrConnect = ""
         self.attrExpression = ""
 
-        layout = QHBoxLayout()
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0,0,0,0)
-        self.setLayout(layout)
 
         self.nameWidget = QLabel(name)
         self.nameWidget.setAlignment(Qt.AlignRight)
@@ -1513,30 +1539,19 @@ class EditTemplateWidget(QWidget):
 
         self.templateWidget = TemplateWidgets[template]()
 
-        buttonsLayout = QHBoxLayout()
-        buttonsLayout.setContentsMargins(0,0,0,0)
-        upBtn = QPushButton("🔼")
-        upBtn.setFixedSize(35, 25)
-        upBtn.setToolTip("Move attribute up")
-        upBtn.clicked.connect(self._onUpBtnClicked)
+        self.dragBtn = DragHandleButton()
+        self.dragBtn.setFixedSize(35, 30)
+        self.dragBtn.dragged.connect(self._onDragged)
 
-        downBtn = QPushButton("🔽")
-        downBtn.setFixedSize(35, 25)
-        downBtn.setToolTip("Move attribute down")
-        downBtn.clicked.connect(self._onDownBtnClicked)
-
-        removeBtn = QPushButton("❌")
-        removeBtn.setFixedSize(35, 25)
-        removeBtn.setToolTip("Remove attribute")
-        removeBtn.clicked.connect(self._onRemoveBtnClicked)
-
-        buttonsLayout.addWidget(upBtn)
-        buttonsLayout.addWidget(downBtn)
-        buttonsLayout.addWidget(removeBtn)
+        self.removeBtn = QPushButton("❌")
+        self.removeBtn.setFixedSize(35, 30)
+        self.removeBtn.setToolTip("Remove attribute")
+        self.removeBtn.clicked.connect(self._onRemoveBtnClicked)
 
         layout.addWidget(self.nameWidget)
         layout.addWidget(self.templateWidget)
-        layout.addLayout(buttonsLayout)
+        layout.addWidget(self.dragBtn)
+        layout.addWidget(self.removeBtn)
 
     def nameContextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
@@ -1596,27 +1611,30 @@ class EditTemplateWidget(QWidget):
             self.copyTemplate()
             self.deleteLater()
 
-    def _onDownBtnClicked(self):
+    def _onDragged(self) -> bool:
         editAttrsWidget = self.parent()
-        idx = editAttrsWidget.attributesLayout.indexOf(self)
-        if idx < editAttrsWidget.attributesLayout.count()-1:
-            w = editAttrsWidget.insertCustomWidget(self.template, idx+2)
-            w.templateWidget.setJsonData(self.templateWidget.getJsonData())
-            w.nameWidget.setText(self.nameWidget.text())
-            w.attrConnect = self.attrConnect
-            w.attrExpression = self.attrExpression
-            self.deleteLater()
+        layout = editAttrsWidget.attributesLayout
+        idx = layout.indexOf(self)
+        mouseY = QCursor.pos().y()
 
-    def _onUpBtnClicked(self):
-        editAttrsWidget = self.parent()
-        idx = editAttrsWidget.attributesLayout.indexOf(self)
+        # Check neighbor below
+        if idx < layout.count() - 1:
+            neighbor = layout.itemAt(idx + 1).widget()
+            if neighbor:
+                neighborCenterY = neighbor.mapToGlobal(neighbor.rect().center()).y()
+                if mouseY > neighborCenterY:
+                    layout.insertWidget(idx + 1, self)
+                    return True
+
+        # Check neighbor above
         if idx > 0:
-            w = editAttrsWidget.insertCustomWidget(self.template, idx-1)
-            w.templateWidget.setJsonData(self.templateWidget.getJsonData())
-            w.nameWidget.setText(self.nameWidget.text())
-            w.attrConnect = self.attrConnect
-            w.attrExpression = self.attrExpression
-            self.deleteLater()
+            neighbor = layout.itemAt(idx - 1).widget()
+            if neighbor:
+                neighborCenterY = neighbor.mapToGlobal(neighbor.rect().center()).y()
+                if mouseY < neighborCenterY:
+                    layout.insertWidget(idx - 1, self)
+                    return True
+        return False
 
 class EditAttributesWidget(QWidget):
     nameChanged = Signal(str, str)
