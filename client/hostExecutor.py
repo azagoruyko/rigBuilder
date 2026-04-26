@@ -88,10 +88,8 @@ class HostExecutor(QObject):
             self.onConnectionError.emit("No active connection")
             return {}
 
-        contextKey = "global"
-
         self._ensureBoundConnection(conn)
-        reply = conn.executeCode(code, contextKey=contextKey)
+        reply = conn.executeCode(code, contextKey="global")
 
         if reply:
             if reply.get("ok"):
@@ -114,9 +112,7 @@ class HostExecutor(QObject):
         self._ensureBoundConnection(conn)
         
         moduleXml = module.toXml()
-        contextKey = "global"
-
-        reply = conn.executeModuleCode(moduleXml, ".", code, contextKey=contextKey)
+        reply = conn.executeModuleCode(moduleXml, ".", code, contextKey="global")
 
         if reply:
             if reply.get("ok"):
@@ -140,7 +136,7 @@ class HostExecutor(QObject):
 
         self._ensureBoundConnection(conn)
         moduleXml = module.toXml()
-        reply = conn.runModule(moduleXml, ".", contextKey=None) # no global context here
+        reply = conn.runModule(moduleXml, ".", contextKey="global") # no global context here
 
         if reply:
             if reply.get("ok"):
