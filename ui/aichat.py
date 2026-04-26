@@ -54,6 +54,7 @@ class AIChatDialog(QDialog):
     attributeDataChanged = Signal(object, object) # module, attribute
     replaceCodeRequested = Signal(object, str) # module, code
     replaceSelectedCodeRequested = Signal(object, str) # module, code
+    createModuleRequested = Signal(object) # module
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -462,25 +463,97 @@ class AIChatDialog(QDialog):
             
             return '\n'.join(attrs) if attrs else "(No attributes)"
 
-        def addModuleAttribute(name: str, jsonValue: str) -> str:
+        def addModuleAttribute(name: str, template: str, data: dict) -> str:
             """
-            Add attribute to the current module based on its JSON-compatible value.
-            Use this when you need to add attribute to the current module.
-            It supports: dict, list, list, str, int, float, bool.
+            Add an attribute to the current module with an explicit widget template and data.
+            Use `listAttributeTemplates` to get the list of available widget templates.
+            Use `getAttributeTemplateDefaults` to get the default data structure for a template.
             Returns 'ok' if successful.
             """
             m = self.aiToolsContext["selectedModule"]
             if not m:
                 return "(No module)"
 
-            from ..widgets.core import getAttributeFromValue
-            from ..utils import smartConversion
-            jsonValue = smartConversion(jsonValue)
-            
-            a = getAttributeFromValue(name, jsonValue)
+            from ..core import Attribute
+            from ..widgets.core import DEFAULT_WIDGETS_DATA
+
+            if template not in DEFAULT_WIDGETS_DATA:
+                valid = ", ".join(DEFAULT_WIDGETS_DATA.keys())
+                return f"(Unknown template '{template}'. Valid templates: {valid})"
+
+            try:
+                data = json.loads(data)
+            except Exception:
+                return "(Invalid JSON data)"
+
+            a = Attribute(name, template)
+            a.setData(data)
             m.addAttribute(a)
             self.attributeAdded.emit(m, a)
             return "ok"
+
+        def setAttributeData(name: str, data: dict) -> str:
+            """
+            Set the full data dictionary for an attribute by name.
+            Make sure 'default' key points to another key in the dict! It is not the value!
+            Use `listAttributeTemplates` and `getAttributeTemplateDefaults` to get the default data structure for a template.
+            Use this to update widget properties like items in a comboBox, range in a slider, color, label, etc.
+            The 'data' argument must be a dictionary matching the widget's template structure.
+            Returns 'ok' if successful, or an error message if the attribute is not found.
+            """
+            m = self.aiToolsContext.get("selectedModule")
+            if not m:
+                return "(No module selected)"
+
+            attr = m.findAttribute(name)
+            if not attr:
+                return f"(Attribute '{name}' not found)"
+
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except:
+                    pass
+
+            attr.setData(data)
+            self.attributeDataChanged.emit(m, attr)
+            return "ok"
+
+        def getAttributeData(name: str) -> str:
+            """
+            Get the full data dictionary of an attribute by name.
+            Important: The 'default' key points to another key in the dict! It is not the value!
+            This is useful to inspect all properties of a widget (e.g., current items, min/max values, current value).
+            Returns the data as a JSON-formatted string, or an error message.
+            """
+            m = self.aiToolsContext.get("selectedModule")
+            if not m:
+                return "(No module selected)"
+
+            attr = m.findAttribute(name)
+            if not attr:
+                return f"(Attribute '{name}' not found)"
+
+            return json.dumps(attr.data(), indent=2, ensure_ascii=False)
+
+        def listAttributeTemplates() -> str:
+            """
+            List all available attribute widget templates.
+            Returns a list of template names.
+            """
+            from ..widgets.core import DEFAULT_WIDGETS_DATA
+            return json.dumps(list(DEFAULT_WIDGETS_DATA.keys()), indent=2, ensure_ascii=False)
+
+        def getAttributeTemplateDefaults(template: str) -> str:
+            """
+            Get the default data structure for a specific widget template.
+            Use this to understand what keys and values are required when using 'setAttributeData'.
+            Common templates: button, checkBox, comboBox, curve, compound, fileSelector, json, label, lineEditAndButton, listBox, radioButton, table, text, vector.
+            Returns the default data as a JSON-formatted string.
+            """
+            from ..widgets.core import DEFAULT_WIDGETS_DATA
+            data = DEFAULT_WIDGETS_DATA.get(template, {})
+            return json.dumps(data, indent=2, ensure_ascii=False)
 
         def queryModules(query: str) -> str:
             """
@@ -526,57 +599,21 @@ class AIChatDialog(QDialog):
             except Exception as e:
                 return f"Error reading file: {e}"
 
-        def setAttributeData(name: str, data: dict) -> str:
+        def createModule(name: str, runCode: str) -> str:
             """
-            Set the full data dictionary for an attribute by name.
-            Use this to update widget properties like items in a comboBox, range in a slider, color, label, etc.
-            The 'data' argument must be a dictionary matching the widget's template structure.
-            Returns 'ok' if successful, or an error message if the attribute is not found.
+            Create and add a new module to the scene with python code.
+            Returns 'ok' or an error string.
             """
-            m = self.aiToolsContext.get("selectedModule")
-            if not m:
-                return "(No module selected)"
+            if not name or not name.strip():
+                return "Error: module name must not be empty"
 
-            attr = m.findAttribute(name)
-            if not attr:
-                return f"(Attribute '{name}' not found)"
+            from ..core import Module
+            m = Module()
+            m.setName(name.strip())
+            m.setRunCode(runCode)
 
-            if isinstance(data, str):
-                try:
-                    data = json.loads(data)
-                except:
-                    pass
-
-            attr.setData(data)
-            self.attributeDataChanged.emit(m, attr)
+            self.createModuleRequested.emit(m)
             return "ok"
-
-        def getAttributeData(name: str) -> str:
-            """
-            Get the full data dictionary of an attribute by name.
-            This is useful to inspect all properties of a widget (e.g., current items, min/max values, current value).
-            Returns the data as a JSON-formatted string, or an error message.
-            """
-            m = self.aiToolsContext.get("selectedModule")
-            if not m:
-                return "(No module selected)"
-
-            attr = m.findAttribute(name)
-            if not attr:
-                return f"(Attribute '{name}' not found)"
-
-            return json.dumps(attr.data(), indent=2, ensure_ascii=False)
-
-        def getWidgetTemplateDefaults(template: str) -> str:
-            """
-            Get the default data structure for a specific widget template.
-            Use this to understand what keys and values are required when using 'setAttributeData'.
-            Common templates: button, checkBox, comboBox, curve, compound, fileSelector, json, label, lineEditAndButton, listBox, radioButton, table, text, vector.
-            Returns the default data as a JSON-formatted string.
-            """
-            from ..widgets.core import DEFAULT_WIDGETS_DATA
-            data = DEFAULT_WIDGETS_DATA.get(template, {})
-            return json.dumps(data, indent=2, ensure_ascii=False)
 
         engine.AITools.getCurrentState = getCurrentState
         engine.AITools.getExampleModule = getExampleModule
@@ -589,6 +626,8 @@ class AIChatDialog(QDialog):
         engine.AITools.addModuleAttribute = addModuleAttribute
         engine.AITools.setAttributeData = setAttributeData
         engine.AITools.getAttributeData = getAttributeData
-        engine.AITools.getWidgetTemplateDefaults = getWidgetTemplateDefaults
+        engine.AITools.listAttributeTemplates = listAttributeTemplates
+        engine.AITools.getAttributeTemplateDefaults = getAttributeTemplateDefaults
         engine.AITools.queryModules = queryModules
         engine.AITools.readFile = readFile
+        engine.AITools.createModule = createModule
