@@ -467,6 +467,7 @@ class AIChatDialog(QDialog):
             """
             Add an attribute to the current module based on its JSON-compatible value.
             It supports: dict, list, str, int, float, bool.
+            IMPORTANT: Only add important attributes to control the code behavior!
             The widget template is inferred automatically from the value type.
             Returns 'ok' if successful.
             """
