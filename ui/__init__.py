@@ -2658,6 +2658,9 @@ class RigBuilderWindow(QFrame):
         editor = self.codeEditorWidget.editorWidget
         originalText = editor.toPlainText()
         
+        if originalText == code:
+            return
+
         dialog = DiffBrowserDialogWithConfirm(
             originalText=originalText, 
             currentText=code, 
@@ -2715,6 +2718,9 @@ class RigBuilderWindow(QFrame):
         
         originalSnippet = editCursor.selectedText().replace('\u2029', '\n')
         
+        if originalSnippet == indentedCode:
+            return
+
         dialog = DiffBrowserDialogWithConfirm(
             originalText=originalSnippet, 
             currentText=indentedCode, 
@@ -2920,6 +2926,10 @@ class RigBuilderWindow(QFrame):
 
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             originalXml = f.read()
+
+        if originalXml == currentXml:
+            QMessageBox.information(self, "Rig Builder", "No changes detected.")
+            return
 
         DiffBrowserDialog(originalXml, currentXml, path, "Current", parent=self).exec()
                     
