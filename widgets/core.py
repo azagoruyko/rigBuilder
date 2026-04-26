@@ -62,6 +62,15 @@ def getAttributeFromValue(name: str, v: any, category: str = "") -> 'Attribute':
     
     if template == "lineEditAndButton":
         data["buttonEnabled"] = False
+
+        if type(v) == int:
+            data["validator"] = 1
+
+        elif type(v) == float:
+            data["validator"] = 2
+
+    elif template == "json":
+        v = [v]
         
     attr.setData(data)
     attr.set(v)
