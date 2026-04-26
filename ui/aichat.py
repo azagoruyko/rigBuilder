@@ -463,31 +463,22 @@ class AIChatDialog(QDialog):
             
             return '\n'.join(attrs) if attrs else "(No attributes)"
 
-        def addModuleAttribute(name: str, template: str, data: dict) -> str:
+        def addModuleAttribute(name: str, jsonValue: str) -> str:
             """
-            Add an attribute to the current module with an explicit widget template and data.
-            Use `listAttributeTemplates` to get the list of available widget templates.
-            Use `getAttributeTemplateDefaults` to get the default data structure for a template.
+            Add an attribute to the current module based on its JSON-compatible value.
+            It supports: dict, list, str, int, float, bool.
+            The widget template is inferred automatically from the value type.
             Returns 'ok' if successful.
             """
             m = self.aiToolsContext["selectedModule"]
             if not m:
                 return "(No module)"
 
-            from ..core import Attribute
-            from ..widgets.core import DEFAULT_WIDGETS_DATA
+            from ..widgets.core import getAttributeFromValue
+            from ..utils import smartConversion
+            jsonValue = smartConversion(jsonValue)
 
-            if template not in DEFAULT_WIDGETS_DATA:
-                valid = ", ".join(DEFAULT_WIDGETS_DATA.keys())
-                return f"(Unknown template '{template}'. Valid templates: {valid})"
-
-            try:
-                data = json.loads(data)
-            except Exception:
-                return "(Invalid JSON data)"
-
-            a = Attribute(name, template)
-            a.setData(data)
+            a = getAttributeFromValue(name, jsonValue)
             m.addAttribute(a)
             self.attributeAdded.emit(m, a)
             return "ok"
