@@ -50,40 +50,46 @@ def ensure_zmq():
     if _isZmqAvailable():
         return
 
-    # Calculate version-specific vendor dir (e.g. ~/rigBuilder/vendor/py311)
+    # Calculate version-specific host deps dir (e.g. ~/rigBuilder/host-deps/py311)
     userDir = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
     pyVer = f"py{sys.version_info.major}{sys.version_info.minor}"
-    vendorDir = os.path.join(userDir, "vendor", pyVer)
+    hostDepsDir = os.path.join(userDir, "host-deps", pyVer)
 
     # Add to path and check again
-    if vendorDir not in sys.path:
-        sys.path.insert(0, vendorDir)
+    if hostDepsDir not in sys.path:
+        sys.path.insert(0, hostDepsDir)
 
     if _isZmqAvailable():
         return
 
-    # Not found in project or vendor, perform installation
-    if not os.path.exists(vendorDir):
-        os.makedirs(vendorDir)
+    # Not found in project or host deps, perform installation
+    if not os.path.exists(hostDepsDir):
+        os.makedirs(hostDepsDir)
 
     pythonExe = getPythonExe()
-    print(f"RigBuilder: zmq not found for {pyVer}, installing to vendor with: {pythonExe}")
+    print(f"RigBuilder: zmq not found for {pyVer}, installing to host-deps with: {pythonExe}")
 
     try:
         # Bootstrap pip (critical for Unreal and some Blender setups)
         try:
-            subprocess.check_call([pythonExe, "-m", "ensurepip"], 
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run([pythonExe, "-m", "ensurepip"], 
+                           capture_output=True, check=False)
         except Exception:
             pass
 
-        # Install directly to the centralized vendor directory
-        subprocess.check_call([pythonExe, "-m", "pip", "install", "--upgrade", "--target", vendorDir, "pyzmq"])
+        # Install directly to the centralized host deps directory
+        # Use --isolated and --no-cache-dir to avoid PermissionError on system site-packages
+        # Use --no-deps because pyzmq is self-contained and it skips environment scanning
+        subprocess.check_call([
+            pythonExe, "-m", "pip", "install", 
+            "--isolated", "--no-cache-dir", "--no-deps",
+            "--upgrade", "--target", hostDepsDir, "pyzmq"
+        ])
 
         # Final verification
         if _isZmqAvailable():
             import zmq
-            print(f"RigBuilder: zmq {zmq.zmq_version()} installed to {vendorDir} successfully.")
+            print(f"RigBuilder: zmq {zmq.zmq_version()} installed to {hostDepsDir} successfully.")
         else:
             print("RigBuilder ERROR: pyzmq installed but could not be loaded.")
             
