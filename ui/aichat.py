@@ -604,7 +604,11 @@ class AIChatDialog(QDialog):
 
         def createModule(name: str, runCode: str) -> str:
             """
+            name is camelCase string.
+            runCode is python code.
             Create and add a new module to the scene with python code.
+            IMPORTANT: Call this tool ONLY ONCE and ONLY when the user explicitly asks to create a module.
+            Do NOT call this speculatively, repeatedly, or as part of exploration.            
             Returns 'ok' or an error string.
             """
             if not name or not name.strip():
