@@ -19,7 +19,7 @@ if RIG_BUILDER_PATH not in sys.path:
     sys.path.append(RIG_BUILDER_PATH)
 
 from rigBuilder.server.hosts.{host} import {HostClass}
-rigBuilderServer = {HostClass}({cmdPort}, {eventPort})
+rigBuilderServer = {HostClass}({discoveryPort})
 rigBuilderServer.start()"""
 
 MODULE_EXECUTION_TIMEOUT = 86400 # 24 hours
@@ -38,9 +38,10 @@ class HostServer:
                     Command replies are emitted as {"event": "reply", "id": runId, …}
     """
 
-    def __init__(self, cmdPort: int, eventPort: int):
-        self._pullPort = cmdPort
-        self._pubPort = eventPort
+    def __init__(self, discoveryPort: int = 51605):
+        self._pullPort = 0
+        self._pubPort = 0
+        self._discoveryPort = discoveryPort
         self._ctx = None
         self._running = False
         self._pubQueue = queue.Queue()
@@ -59,7 +60,21 @@ class HostServer:
         
         self._pull.bind(f"tcp://*:{self._pullPort}")
         self._pub.bind(f"tcp://*:{self._pubPort}")
+
+        # Get actual ports if they were random
+        if self._pullPort == 0:
+            endpoint = self._pull.getsockopt_string(zmq.LAST_ENDPOINT)
+            self._pullPort = int(endpoint.split(":")[-1])
+        
+        if self._pubPort == 0:
+            endpoint = self._pub.getsockopt_string(zmq.LAST_ENDPOINT)
+            self._pubPort = int(endpoint.split(":")[-1])
+
         self._running = True
+        
+        # Register with discovery server
+        self._registerWithDiscovery()
+
         t = threading.Thread(target=self._loop, daemon=True, name="rigbuilder-server")
         t.start()
 
@@ -82,6 +97,42 @@ class HostServer:
         """Publish a single event dict to all subscribed clients by placing it in the pub queue."""
         if self._running:
             self._pubQueue.put(event)
+
+    def _registerWithDiscovery(self):
+        """Announce this server to the discovery server."""
+        def task():
+            ctx = zmq.Context()
+            socket = ctx.socket(zmq.REQ)
+            socket.setsockopt(zmq.LINGER, 0)
+            socket.setsockopt(zmq.REQ_RELAXED, 1)
+            socket.setsockopt(zmq.REQ_CORRELATE, 1)
+            try:
+                socket.connect(f"tcp://localhost:{self._discoveryPort}")
+                identity = self.ping()
+                msg = {
+                    "cmd": "register",
+                    "host": identity.get("host", "unknown"),
+                    "name": identity.get("name", "Unknown Host"),
+                    "cmdPort": self._pullPort,
+                    "eventPort": self._pubPort
+                }
+                
+                while self._running:
+                    try:
+                        socket.send_string(json.dumps(msg))
+                        if socket.poll(timeout=2000):
+                            socket.recv_string()
+                    except Exception:
+                        pass
+                    time.sleep(1.0)
+            except Exception:
+                pass
+            finally:
+                socket.close()
+                ctx.term()
+
+        t = threading.Thread(target=task, daemon=True, name="rigbuilder-registration")
+        t.start()
 
     def _pubLoop(self):
         """Daemon thread to serialize PUB sends ensuring libzmq thread safety."""

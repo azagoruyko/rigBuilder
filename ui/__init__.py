@@ -2145,90 +2145,117 @@ class MyProgressBar(QWidget):
             q = self.queue[-1] # get latest state
             self.updateWithState(q)
 
-# --- Server Management Dialog ---
-class ManageHostsDialog(QDialog):
+# --- Host Settings Dialog ---
+class HostManagerDialog(QDialog):
     hostsChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
-        self.setWindowTitle("Manage Hosts")
-        self.resize(480, 500)
-        layout = QVBoxLayout(self)
-
-        self.listWidget = QListWidget()
-        layout.addWidget(self.listWidget)
-
-        btnLayout = QHBoxLayout()
-        addBtn = QPushButton("➕")
-        removeBtn = QPushButton("❌")
-        btnLayout.addWidget(addBtn)
-        btnLayout.addWidget(removeBtn)
-        btnLayout.addStretch()
-        layout.addLayout(btnLayout)
-
-        addBtn.clicked.connect(self._add)
-        removeBtn.clicked.connect(self._remove)
-
-        formLayout = QGridLayout()
-        self.nameEdit = QLineEdit(); self.nameEdit.setPlaceholderText("Name (e.g. Maya 2025)")
-        self.hostCombo = QComboBox()
-        self.addressEdit = QLineEdit("localhost")
-        self.cmdPortEdit = QLineEdit(); self.cmdPortEdit.setPlaceholderText("CMD port")
-        self.eventPortEdit = QLineEdit(); self.eventPortEdit.setPlaceholderText("EVENT port")
-
-        # Populate host types using server/hosts utility
-        self.hostCombo.addItems(AVAILABLE_HOSTS)
+        self.setWindowTitle("Host Manager")
+        self.resize(500, 480)
         
-        for row, (label, widget) in enumerate([
-            ("Name", self.nameEdit), ("Host", self.hostCombo), ("Address", self.addressEdit),
-            ("CMD port", self.cmdPortEdit), ("EVENT port", self.eventPortEdit)]):
-            formLayout.addWidget(QLabel(label), row, 0)
-            formLayout.addWidget(widget, row, 1)
-        layout.addLayout(formLayout)
+        mainLayout = QVBoxLayout(self)
+        mainLayout.setSpacing(15)
+        mainLayout.setContentsMargins(20, 20, 20, 20)
+
+        # 1. Discovery Server Settings
+        discoveryGroup = QGroupBox("Discovery Server")
+        discoveryLayout = QVBoxLayout(discoveryGroup)
+        discoveryLayout.setSpacing(10)
+        
+        infoLabel = QLabel("Rig Builder listens on this port for host registrations.")
+        infoLabel.setStyleSheet("color: #888; font-size: 10px;")
+        discoveryLayout.addWidget(infoLabel)
+
+        portRow = QHBoxLayout()
+        portRow.addWidget(QLabel("Discovery Port:"))
+        self.discoveryPortEdit = QLineEdit(str(connectionManager.discoveryPort))
+        self.discoveryPortEdit.setValidator(QIntValidator(1, 65535))
+        self.discoveryPortEdit.setFixedWidth(80)
+        portRow.addWidget(self.discoveryPortEdit)
+        portRow.addStretch()
+        
+        self.savePortBtn = QPushButton("Save && Restart")
+        self.savePortBtn.setFixedWidth(120)
+        self.savePortBtn.clicked.connect(self._saveDiscoveryPort)
+        portRow.addWidget(self.savePortBtn)
+        discoveryLayout.addLayout(portRow)
+        
+        mainLayout.addWidget(discoveryGroup)
+
+        # 2. Startup Code Generator
+        generatorGroup = QGroupBox("Host Startup Code Generator")
+        generatorLayout = QVBoxLayout(generatorGroup)
+        generatorLayout.setSpacing(10)
+        
+        genInfoLabel = QLabel("Select a host type to generate the initialization snippet.")
+        genInfoLabel.setStyleSheet("color: #888; font-size: 10px;")
+        generatorLayout.addWidget(genInfoLabel)
+
+        hostRow = QHBoxLayout()
+        hostRow.addWidget(QLabel("Target Host:"))
+        self.hostCombo = QComboBox()
+        self.hostCombo.addItems(AVAILABLE_HOSTS)
+        self.hostCombo.currentIndexChanged.connect(self._refreshCode)
+        hostRow.addWidget(self.hostCombo)
+        hostRow.addStretch()
+        generatorLayout.addLayout(hostRow)
+
+        codeHeader = QHBoxLayout()
+        codeHeader.addWidget(QLabel("Startup Script:"))
+        codeHeader.addStretch()
+        self.copyBtn = QPushButton("📋")
+        self.copyBtn.setFixedWidth(40)
+        self.copyBtn.clicked.connect(self._copyCode)
+        codeHeader.addWidget(self.copyBtn)
+        generatorLayout.addLayout(codeHeader)
 
         self.codeEdit = QPlainTextEdit()
         self.codeEdit.setReadOnly(True)
-        self.codeEdit.setFixedHeight(60)
+        # Use a monospace font for code
+        font = QFont("Consolas", 10) if sys.platform == "win32" else QFont("Monospace", 10)
+        self.codeEdit.setFont(font)
+        self.codeEdit.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #333; border-radius: 4px;")
+        generatorLayout.addWidget(self.codeEdit)
         
-        copyLayout = QHBoxLayout()
-        copyLayout.addWidget(QLabel("Startup code:"))
-        copyLayout.addStretch()
-        self.copyBtn = QPushButton("📋")
-        self.copyBtn.setToolTip("Copy to clipboard")
-        self.copyBtn.clicked.connect(self._copyCode)
-        copyLayout.addWidget(self.copyBtn)
-        
-        layout.addLayout(copyLayout)
-        layout.addWidget(self.codeEdit)
+        mainLayout.addWidget(generatorGroup)
 
-        self.listWidget.itemSelectionChanged.connect(self._onSelectionChanged)
-        self.listWidget.itemDoubleClicked.connect(self._onItemDoubleClicked)
-        self.hostCombo.currentIndexChanged.connect(self._refreshCode)
-        self.addressEdit.textChanged.connect(self._refreshCode)
-        self.cmdPortEdit.textChanged.connect(self._refreshCode)
-        self.eventPortEdit.textChanged.connect(self._refreshCode)
+        # Bottom Buttons
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Close)
+        buttonBox.rejected.connect(self.reject)
+        mainLayout.addWidget(buttonBox)
 
-        self._refreshList()
+        self._refreshCode()
 
-    def _onItemDoubleClicked(self, item):
-        name = item.data(Qt.UserRole)
-        entry = connectionManager.findServer(name)
-        if entry:
-            self.nameEdit.setText(name)
+    def _saveDiscoveryPort(self):
+        port_str = self.discoveryPortEdit.text()
+        if not port_str:
+            return
             
-            idx = self.hostCombo.findText(entry["host"])
-            self.hostCombo.setCurrentIndex(idx)
+        port = int(port_str)
+        connectionManager.setDiscoveryPort(port)
+        
+        # Visual feedback
+        self.savePortBtn.setText("✅ Saved")
+        self.savePortBtn.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        QTimer.singleShot(2000, self._resetSaveBtn)
+        
+        self.hostsChanged.emit()
+        self._refreshCode()
 
-            self.addressEdit.setText(entry["address"])
-            self.cmdPortEdit.setText(str(entry.get("cmdPort", "")))
-            self.eventPortEdit.setText(str(entry.get("eventPort", "")))
-            self._refreshCode()
+    def _resetSaveBtn(self):
+        self.savePortBtn.setText("Save && Restart")
+        self.savePortBtn.setStyleSheet("")
 
-    def _onSelectionChanged(self):
-        item = self.listWidget.currentItem()
-        if item:
-            self._onItemDoubleClicked(item)
+    def _copyCode(self):
+        QApplication.clipboard().setText(self.codeEdit.toPlainText())
+        self.copyBtn.setText("✅")
+        self.copyBtn.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        QTimer.singleShot(2000, self._resetCopyBtn)
+
+    def _resetCopyBtn(self):
+        self.copyBtn.setText("📋")
+        self.copyBtn.setStyleSheet("")
 
     def _refreshCode(self):
         host = self.hostCombo.currentText().lower()
@@ -2237,63 +2264,17 @@ class ManageHostsDialog(QDialog):
             return
 
         HostClass = host.capitalize() + "Server"
-        cmdPort = self.cmdPortEdit.text() or "0"
-        eventPort = self.eventPortEdit.text() or "0"
+        discoveryPort = self.discoveryPortEdit.text() or str(DEFAULT_DISCOVERY_PORT)
 
         code = HOST_STARTUP_TEMPLATE.format(
             HostClass=HostClass,
             host=host,
             RIG_BUILDER_PATH=os.path.dirname(RIG_BUILDER_PATH),
-            cmdPort=cmdPort,
-            eventPort=eventPort
+            discoveryPort=discoveryPort
         )
         self.codeEdit.setPlainText(code)
 
-    def _copyCode(self):
-        QApplication.clipboard().setText(self.codeEdit.toPlainText())
-        self.copyBtn.setText("✅")
-        QTimer.singleShot(1500, lambda: self.copyBtn.setText("📋"))
 
-    def _refreshList(self):
-        self.listWidget.clear()
-        servers = connectionManager.servers()
-        for name in sorted(servers.keys(), key=lambda x: x.lower()):
-            entry = servers[name]
-            label = "{} | {} | {}:{}/{}".format(
-                name, entry["host"],
-                entry["address"], entry.get("cmdPort", "0"), entry.get("eventPort", "0"))
-            
-            item = QListWidgetItem(f"🖥️ {label}")
-            item.setData(Qt.UserRole, name)
-            self.listWidget.addItem(item)
-
-    def _add(self):
-        try:
-            connectionManager.addServer(
-                self.nameEdit.text().strip(), self.hostCombo.currentText().strip(),
-                self.addressEdit.text().strip(),
-                int(self.cmdPortEdit.text() or "0"), int(self.eventPortEdit.text() or "0"))
-
-            self.hostsChanged.emit()
-            self._refreshList()
-            self.nameEdit.clear(); self.cmdPortEdit.clear(); self.eventPortEdit.clear()
-
-        except Exception as e:
-            QMessageBox.warning(self, "Error", str(e))
-
-    def _remove(self):
-        item = self.listWidget.currentItem()
-        if not item:
-            return
-            
-        name = item.data(Qt.UserRole)
-        if name == "Default":
-            QMessageBox.warning(self, "Manage Hosts", "The 'Default' host cannot be removed.")
-            return
-
-        connectionManager.removeServer(name)
-        self.hostsChanged.emit()
-        self._refreshList()
 
 
 class RigBuilderWindow(QFrame):
@@ -2316,13 +2297,9 @@ class RigBuilderWindow(QFrame):
         self.hostCombo = QComboBox()
         self.hostCombo.setPlaceholderText("No host")
         self.hostCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.hostCombo.currentIndexChanged.connect(lambda: setattr(settings, "host", self.hostCombo.currentData()))
+        self.hostCombo.currentIndexChanged.connect(self._onHostComboChanged)
+        connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
         self._refreshHostCombo()
-
-        self.hostConnectBtn = QPushButton("🔗")
-        self.hostConnectBtn.setCheckable(True)
-        self.hostConnectBtn.setToolTip("Connect to selected host")
-        self.hostConnectBtn.clicked.connect(self._onHostConnectClicked)
 
         self.hostManageBtn = QPushButton("⚙️")
         self.hostManageBtn.setToolTip("Manage hosts")
@@ -2353,7 +2330,6 @@ class RigBuilderWindow(QFrame):
             headerRow.addWidget(self.aiChatBtn)
             headerRow.addStretch()
         headerRow.addWidget(self.hostCombo)
-        headerRow.addWidget(self.hostConnectBtn)
         headerRow.addWidget(self.hostManageBtn)
         headerRow.addWidget(self.windowPinBtn)
         layout.addLayout(headerRow)
@@ -2486,6 +2462,7 @@ class RigBuilderWindow(QFrame):
             self.rightModuleSplitter,
         ]
         self.loadAppSettings()
+        connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
 
     def _onTreeContextMenu(self, pos):
         self.menu().exec(self.treeWidget.mapToGlobal(pos))
@@ -2585,70 +2562,66 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.editorWidget.textCursor().insertText(f"@{name}")
         logger.info(f"Attribute '{name}' exposed.")
 
-    def _refreshHostCombo(self):
-        """Repopulate the host dropdown from hosts.json."""
+    def _refreshHostCombo(self, entry=None):
+        """Update host selection dropdown based on discovered servers."""
+        prevHost = self.hostCombo.currentData() or settings.host
+
         self.hostCombo.blockSignals(True)
         self.hostCombo.clear()
 
-        # Sort on UI side
-        entries = sorted(connectionManager.servers().items(), key=lambda x: x[0].lower())
+        # Get discovered hosts
+        servers = connectionManager.servers()
+        entries = sorted(servers.items(), key=lambda x: x[0].lower())
+        
         for name, entry in entries:
-            label = "🖥️ {} ({})".format(name, entry["host"])
+            # Use icon for discovered hosts
+            label = "📡 {} ({})".format(name, entry["host"])
             self.hostCombo.addItem(label, userData=name)
 
-        self.hostCombo.blockSignals(False)
+        if not servers:
+            self.hostCombo.setPlaceholderText("No hosts discovered")
         
-        # Restore current host from settings
-        idx = self.hostCombo.findData(settings.host)
+        # Try to restore selection
+        idx = self.hostCombo.findData(prevHost)
         if idx >= 0:
             self.hostCombo.setCurrentIndex(idx)
-
-    def _resetHostConnectionRow(self):
-        """Disconnected UI state for the host row (no message boxes)."""
-        self.hostConnectBtn.blockSignals(True)
-        self.hostConnectBtn.setChecked(False)
-        self.hostConnectBtn.setText("🔗")
-        self.hostConnectBtn.setToolTip("Connect to selected host")
-        self.hostConnectBtn.setEnabled(True)
-        self.hostCombo.setEnabled(True)
-        self.hostCombo.setStyleSheet("")
-        self.hostConnectBtn.blockSignals(False)
-        self.cleanupRun()
-
-    def _onHostConnectionLost(self, reason: str):
-        connectionManager.disconnect()
-        QMessageBox.critical(self, "Rig Builder", "Connection to host lost.\n\n{}".format(reason))
-        self._resetHostConnectionRow()
-
-    def _onHostConnectClicked(self, checked: bool):
-        """Toggle connection to the selected host."""
-
-        name = self.hostCombo.currentData()
-
-        if not checked or not name:
+        else:
+            # If nothing selected, disconnect
             connectionManager.disconnect()
-            self._resetHostConnectionRow()
-            return
+            self.hostCombo.setStyleSheet("")
 
-        self.hostConnectBtn.setText("⏳ Connecting...")
-        self.hostConnectBtn.setToolTip("Connecting...")
-        self.hostConnectBtn.setEnabled(False)
-        self.hostCombo.setEnabled(False)
+        self.hostCombo.blockSignals(False)
+
+        # If we have a selection but no active connection, try to connect
+        if self.hostCombo.currentIndex() >= 0 and not connectionManager.isActive():
+            self._onHostComboChanged(self.hostCombo.currentIndex())
+
+    def _onHostComboChanged(self, index):
+        """Automatically connect to the selected host."""
+        name = self.hostCombo.currentData()
+        settings.host = name
+        
+        if not name:
+            connectionManager.disconnect()
+            self.hostCombo.setStyleSheet("")
+            return
 
         try:
             conn = connectionManager.connect(name, parent=self)
             conn.onConnectionLost.connect(self._onHostConnectionLost)
-
+            # Subtle visual indicator of active connection
+            self.hostCombo.setStyleSheet("color: #6ea7ff; font-weight: bold;")
         except Exception as e:
-            QMessageBox.warning(self, "Rig Builder", str(e))
-            self._resetHostConnectionRow()
-            return
+            logger.error(f"Failed to connect to {name}: {e}")
+            self.hostCombo.setStyleSheet("color: #ff6b6b;")
+            connectionManager.disconnect()
 
-        self.hostConnectBtn.setText("✂️")
-        self.hostConnectBtn.setToolTip("Disconnect from host")
-        self.hostConnectBtn.setEnabled(True)
-        self.hostCombo.setEnabled(False)
-        self.hostCombo.setStyleSheet("color: #66cc66;")
+    def _onHostConnectionLost(self, reason: str):
+        connectionManager.disconnect()
+        self.hostCombo.setStyleSheet("")
+        logger.warning(f"Connection to host lost: {reason}")
+        # Refresh to show dead hosts are gone (heartbeat should handle this anyway)
+        self._refreshHostCombo()
 
     def _onSyncRequested(self):
         msg = "Sync all modules with the files on disk?\n\nYou may lose unsaved changes for those modules.\n\nContinue?"
@@ -2656,8 +2629,8 @@ class RigBuilderWindow(QFrame):
             self.treeWidget.syncAllModules()
 
     def _onManageHosts(self):
-        """Open a simple dialog to add/remove hosts."""
-        dialog = ManageHostsDialog(parent=self)
+        """Open a dialog to configure host discovery and networking."""
+        dialog = HostManagerDialog(parent=self)
         dialog.hostsChanged.connect(self._refreshHostCombo)
         dialog.exec()
 

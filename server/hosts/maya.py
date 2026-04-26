@@ -3,7 +3,7 @@
 Run once inside Maya (e.g. from userSetup.py or Script Editor):
 
     from rigBuilder.server.hosts.maya import MayaServer
-    MayaServer(7202, 7203).start()
+    MayaServer(51605).start()
 """
 
 import maya.utils
@@ -17,6 +17,13 @@ class MayaServer(HostServer):
 
     def executeOnMainThread(self, taskFunction):
         maya.utils.executeDeferred(taskFunction)
+
+    def ping(self) -> dict:
+        return {
+            "ok": True,
+            "host": "maya",
+            "name": f"Maya {cmds.about(version=True)}"
+        }
 
 # API functions mostly used by the client's widgets
 

@@ -8,6 +8,13 @@ from . import HostServer
 class StandaloneServer(HostServer):
     """Standalone server — executes module code directly in the socket thread."""
 
+    def ping(self) -> dict:
+        return {
+            "ok": True,
+            "host": "standalone",
+            "name": "Standalone"
+        }
+
 # API functions mostly used by the client's widgets
 
 def select(names: list[str]) -> None:

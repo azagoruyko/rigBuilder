@@ -3,7 +3,7 @@
 Run once inside Blender (e.g. from a startup script):
 
     from rigBuilder.server.hosts.blender import BlenderServer
-    BlenderServer(7204, 7205).start()
+    BlenderServer(51605).start()
 """
 
 import bpy
@@ -16,6 +16,13 @@ class BlenderServer(HostServer):
 
     def executeOnMainThread(self, taskFunction):
         bpy.app.timers.register(taskFunction, first_interval=0)
+
+    def ping(self) -> dict:
+        return {
+            "ok": True,
+            "host": "blender",
+            "name": f"Blender {bpy.app.version_string}"
+        }
 
 # API functions mostly used by the client's widgets
 

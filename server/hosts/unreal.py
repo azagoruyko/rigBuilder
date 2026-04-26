@@ -3,7 +3,7 @@
 Run inside Unreal (e.g. from Python Script Editor):
 
     from rigBuilder.server.hosts.unreal import UnrealServer
-    UnrealServer(7208, 7209).start()
+    UnrealServer(51605).start()
 """
 
 import queue
@@ -17,8 +17,8 @@ from rigBuilder.server.hosts import HostServer
 class UnrealServer(HostServer):
     """Dispatches execution to Unreal's main thread via a persistent Slate post-tick callback and a task queue."""
 
-    def __init__(self, cmd_port: int, event_port: int):
-        super().__init__(cmd_port, event_port)
+    def __init__(self, discoveryPort: int = 51605):
+        super().__init__(discoveryPort)
         self._queue = queue.Queue()
         self._tick_handle = None
 
@@ -61,6 +61,13 @@ class UnrealServer(HostServer):
 
     def executeOnMainThread(self, taskFunction):
         self._queue.put(taskFunction)
+
+    def ping(self) -> dict:
+        return {
+            "ok": True,
+            "host": "unreal",
+            "name": f"Unreal {unreal.SystemLibrary.get_engine_version()}"
+        }
 
 
 # API functions mostly used by the client's widgets

@@ -1,130 +1,177 @@
-"""Rig Builder client: connection manager for saved host servers."""
-
 import json
 import os
 import logging
+import threading
+import time
+import zmq
 from typing import Optional
 
 from .. import settings
 from . import HostClient
 from ..utils import loadJson, saveJson
 from ..server.hosts.standalone import StandaloneServer
+from ..qt import QObject, Signal
 
 HOSTS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "hosts.json")
+DEFAULT_DISCOVERY_PORT = 51605
 
 logger = logging.getLogger('rigBuilder')
 
-def migrateServers():
-    """Migrate servers from old format to new format."""
-    if os.path.exists(HOSTS_FILE):
+class DiscoveryServer(QObject):
+    """Listens for registration messages from host servers on a fixed port."""
+    hostDiscovered = Signal(dict)
+
+    def __init__(self, port: int, parent=None):
+        super().__init__(parent)
+        self._port = port
+        self._running = False
+        self._thread = None
+        self._discoveredHosts = {} # (address, cmdPort) -> entry
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="DiscoveryServer")
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+        # The thread will exit on next receive or context destroy
+
+    def discoveredHosts(self) -> dict:
+        return self._discoveredHosts
+
+    def _loop(self):
+        ctx = zmq.Context.instance()
+        socket = ctx.socket(zmq.REP)
+        socket.setsockopt(zmq.LINGER, 0)
         try:
-            data = loadJson(HOSTS_FILE)
-            for entry in data.values(): # add default values for backward compatibility
-                if entry.get("cmdPort"): # if the file already has the new format, return
-                    return
-
-                entry["cmdPort"] = entry.get("rep_port", 51602)
-                entry["eventPort"] = entry.get("pub_port", 51603)
-                entry["host"] = entry.get("host", "Standalone")
-                entry["address"] = entry.get("address", "localhost")
-
-                del entry["rep_port"]
-                del entry["pub_port"]
-                
-            saveJson(HOSTS_FILE, data)
+            socket.bind(f"tcp://*:{self._port}")
+            logger.info(f"Discovery server listening on port {self._port}")
         except Exception as e:
-            logger.error(f"Failed to migrate servers from {HOSTS_FILE}: {e}")
+            logger.error(f"Failed to bind discovery server to port {self._port}: {e}")
+            self._running = False
+            socket.close(linger=0)
+            return
+
+        lastHeartbeat = time.time()
+
+        while self._running:
+            if socket.poll(timeout=500):
+                try:
+                    msg = json.loads(socket.recv_string())
+                    cmd = msg.get("cmd")
+                    if cmd == "register":
+                        host = msg.get("host", "unknown")
+                        cmdPort = msg.get("cmdPort")
+                        eventPort = msg.get("eventPort")
+                        name = msg.get("name", f"{host.capitalize()}")
+
+                        entry = {
+                            "host": host,
+                            "cmdPort": cmdPort,
+                            "eventPort": eventPort,
+                            "name": name,
+                            "discovered": True,
+                            "lastSeen": time.time()
+                        }
+                        
+                        key = cmdPort
+                        isNew = key not in self._discoveredHosts
+                        self._discoveredHosts[key] = entry
+                        
+                        socket.send_string(json.dumps({"ok": True}))
+                        if isNew:
+                            self.hostDiscovered.emit(entry)
+                    else:
+                        socket.send_string(json.dumps({"ok": False, "error": "unknown command"}))
+                except Exception as e:
+                    logger.error(f"Error in discovery server: {e}")
+                    try:
+                        socket.send_string(json.dumps({"ok": False, "error": str(e)}))
+                    except:
+                        pass
+            
+            # Heartbeat check every 2 seconds
+            now = time.time()
+            if now - lastHeartbeat > 2.0:
+                lastHeartbeat = now
+                self._checkHeartbeat()
+        
+        socket.close(linger=0)
+
+    def _checkHeartbeat(self):
+        if not self._discoveredHosts:
+            return
+            
+        now = time.time()
+        deadHosts = []
+        
+        # Hosts send heartbeats every 1s. Mark as dead after 5s of silence.
+        timeout = 5.0
+        
+        for key, entry in list(self._discoveredHosts.items()):
+            elapsed = now - entry.get("lastSeen", 0)
+            if elapsed > timeout:
+                deadHosts.append((key, elapsed))
+                
+        if deadHosts:
+            for key, elapsed in deadHosts:
+                entry = self._discoveredHosts.pop(key)
+                logger.info(f"Host disconnected (no heartbeat for {elapsed:.1f}s): {entry['name']}")
+            self.hostDiscovered.emit({}) # Notify UI to refresh
 
 class ConnectionManager:
-    """Manages the list of saved host servers and the currently active connection."""
+    """Manages the list of active discovered hosts and the current connection."""
 
     def __init__(self):
         self._active = None
         self._activeName = ""
         self._activeHost = ""
-        migrateServers()
+        
+        # Load discovery port from hosts.json if it exists
+        data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
+        self.discoveryPort = data.get("discoveryPort", DEFAULT_DISCOVERY_PORT)
+        
+        self.discoveryServer = DiscoveryServer(self.discoveryPort)
+        self.discoveryServer.start()
 
-    # ------------------------------------------------------------------
-    # Server list persistence
-    # ------------------------------------------------------------------
+    def setDiscoveryPort(self, port: int):
+        self.discoveryPort = port
+        saveJson(HOSTS_FILE, {"discoveryPort": port})
+        
+        # Restart discovery server
+        self.discoveryServer.stop()
+        self.discoveryServer = DiscoveryServer(port)
+        self.discoveryServer.start()
 
     def servers(self) -> dict:
-        """Return all saved server entries as a dictionary."""
-        if os.path.exists(HOSTS_FILE):
-            try:
-                return loadJson(HOSTS_FILE)
-
-            except Exception as e:
-                logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
-        return {}
-
-    def saveServers(self, entries: dict):
-        """Persist the full server dictionary."""
-        os.makedirs(os.path.dirname(HOSTS_FILE), exist_ok=True)
-        try:
-            saveJson(HOSTS_FILE, entries)
-        except Exception as e:
-            logger.error(f"Failed to save servers to {HOSTS_FILE}: {e}")
-
-    def addServer(self, name: str, host: str, address: str, cmdPort: int, eventPort: int):
-        """Add a new server entry. Replaces an existing entry with the same name."""
-        try:
-            data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
-        except Exception as e:
-            logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
-            data = {}
-
-        data[name] = {"host": host, "address": address, "cmdPort": cmdPort, "eventPort": eventPort}
-        self.saveServers(data)
-
-    def removeServer(self, name: str):
-        """Remove a server entry by name."""
-        try:
-            data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
-        except Exception as e:
-            logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
-            return
-
-        if name in data:
-            del data[name]
-            self.saveServers(data)
+        """Return all currently discovered hosts."""
+        # We only return discovered hosts now
+        result = {}
+        for entry in self.discoveryServer.discoveredHosts().values():
+            result[entry["name"]] = entry
+        return result
 
     def findServer(self, name: str) -> dict | None:
         """Return a server entry dict by name, or None if not found."""
-        try:
-            data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
-        except Exception as e:
-            logger.error(f"Failed to load servers from {HOSTS_FILE}: {e}")
-            return None
-
-        entry = data.get(name)
-        if entry:
-            result = entry.copy()            
-            result["name"] = name
-            return result
+        for entry in self.discoveryServer.discoveredHosts().values():
+            if entry["name"] == name:
+                return entry
         return None
 
-    # ------------------------------------------------------------------
-    # Connection management
-    # ------------------------------------------------------------------
-
     def connect(self, name: str, parent=None) -> HostClient:
-        """Connect to the named server. Raises if the server is not reachable.
-
-        Args:
-            name:   server name as stored in hosts.json
-            parent: optional Qt parent for the HostClient QObject
-
-        Returns:
-            The connected HostClient, also set as the active connection.
-        """
-        self.disconnect()  # Ensure previous connection is fully stopped
+        """Connect to the named server. Raises if the server is not reachable."""
+        self.disconnect()
 
         entry = self.findServer(name)
         if entry is None:
-            raise ValueError(f"Server {name!r} not found in {HOSTS_FILE}")
+            raise ValueError(f"Server {name!r} not found or not active")
 
-        conn = HostClient(entry["address"], entry["cmdPort"], entry["eventPort"], parent)
+        conn = HostClient("localhost", entry["cmdPort"], entry["eventPort"], parent)
         reply = conn.ping()
         if not reply.get("ok"):
             err = reply.get("error")
@@ -137,7 +184,7 @@ class ConnectionManager:
         return conn
 
     def disconnect(self):
-        """Disconnect the active server (does not destroy the ZMQ context)."""
+        """Disconnect the active server."""
         if self._active:
             self._active.stop()
         self._active = None
@@ -145,27 +192,20 @@ class ConnectionManager:
         self._activeHost = ""
 
     def activeConnection(self) -> Optional[HostClient]:
-        """Return the active HostClient, or None if not connected."""
         return self._active
 
     def activeServerName(self) -> str:
-        """Return the name of the active server, or empty string."""
         return self._activeName
 
     def activeHost(self) -> str:
-        """Return the host name of the active connection: i.e. maya, blender, houdini, etc.
-        Returns an empty string if not connected.
-        """
         return self._activeHost
+        
+    def isActive(self) -> bool:
+        """Return True if there is an active host connection."""
+        return self._active is not None
 
 connectionManager = ConnectionManager()
 
-# Make default standalone server
-
-if not connectionManager.findServer("Default"):
-    connectionManager.addServer("Default", "standalone", "localhost", 51600, 51601)
-
-defaultServer = connectionManager.findServer("Default")
-
-defaultStandaloneServer = StandaloneServer(defaultServer["cmdPort"], defaultServer["eventPort"])
-defaultStandaloneServer.start()
+# Default standalone server handling
+standaloneServer = StandaloneServer(connectionManager.discoveryPort)
+standaloneServer.start()

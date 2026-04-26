@@ -3,7 +3,7 @@
 Run once inside Houdini (e.g. from a startup script or shelf tool):
 
     from rigBuilder.server.hosts.houdini import HoudiniServer
-    HoudiniServer(7206, 7207).start()
+    HoudiniServer(51605).start()
 """
 
 import hou
@@ -22,6 +22,13 @@ class HoudiniServer(HostServer):
                 hou.ui.removeEventLoopCallback(task)
 
         hou.ui.addEventLoopCallback(task)
+
+    def ping(self) -> dict:
+        return {
+            "ok": True,
+            "host": "houdini",
+            "name": f"Houdini {hou.applicationVersionString()}"
+        }
 
 
 # API functions mostly used by the client's widgets
