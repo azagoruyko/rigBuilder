@@ -45,7 +45,6 @@ def getAttributeFromValue(name: str, v: any, category: str = "") -> 'Attribute':
 
     template = "lineEditAndButton"
 
-    v = fromSmartConversion(v)
     if type(v) == bool:
         template = "checkBox"
     elif type(v) == dict:
