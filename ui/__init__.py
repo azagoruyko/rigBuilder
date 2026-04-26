@@ -2414,7 +2414,7 @@ class RigBuilderWindow(QFrame):
 
         self.aiChatDialog = AIChatDialog(parent=self)
         self.aiChatDialog.replaceCodeRequested.connect(self._onReplaceCodeRequested)
-        self.aiChatDialog.setSelectedCodeRequested.connect(self._onSetSelectedCodeRequested)
+        self.aiChatDialog.replaceSelectedCodeRequested.connect(self._onReplaceSelectedCodeRequested)
         self.aiChatDialog.addAttributeRequested.connect(self._onAddAttributeRequested)
         self.aiChatDialog.beforeSendMessage.connect(self.prepareContextForChat)
 
@@ -2701,7 +2701,7 @@ class RigBuilderWindow(QFrame):
             cursor.insertText(code)
             editor.endEditBlock()
 
-    def _onSetSelectedCodeRequested(self, code: str):
+    def _onReplaceSelectedCodeRequested(self, code: str):
         editor = self.codeEditorWidget.editorWidget
         cursor = editor.textCursor()
         if not cursor.hasSelection():

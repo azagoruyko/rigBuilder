@@ -52,7 +52,7 @@ class AIChatDialog(QDialog):
     beforeSendMessage = Signal()
     addAttributeRequested = Signal(object) 
     replaceCodeRequested = Signal(str)
-    setSelectedCodeRequested = Signal(str)
+    replaceSelectedCodeRequested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -396,16 +396,16 @@ class AIChatDialog(QDialog):
 
             return self.aicontext["code"]
 
-        def setSelectedCode(text: str) -> str:
+        def replaceSelectedCode(text: str) -> str:
             """
-            Writes the given text to the code editor, replacing the selected code if any.
+            Replace the selected code in the editor with the given text.
             Returns 'ok' if successful.
             """
             m = self.aicontext["selectedModule"]
             if not m:
                 return "(No module selected)"
 
-            self.setSelectedCodeRequested.emit(text)
+            self.replaceSelectedCodeRequested.emit(text)
             return "ok"
 
         def replaceCode(newText: str) -> str:
@@ -460,6 +460,6 @@ class AIChatDialog(QDialog):
         engine.AITools.getSelectedCode = getSelectedCode
         engine.AITools.readCode = readCode
         engine.AITools.replaceCode = replaceCode
-        engine.AITools.setSelectedCode = setSelectedCode
+        engine.AITools.replaceSelectedCode = replaceSelectedCode
         engine.AITools.getModuleAttributes = getModuleAttributes
         engine.AITools.addModuleAttribute = addModuleAttribute
