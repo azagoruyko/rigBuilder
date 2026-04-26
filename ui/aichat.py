@@ -125,6 +125,12 @@ class AIChatDialog(QDialog):
         self.input.setFocus()
         self.setupAIChatTools()
 
+        # Cache highlighter CSS
+        formatter = HtmlFormatter(style='monokai')
+        self._highlighterCss = formatter.get_style_defs('.codehilite')
+        self._highlighterCss += "\n.codehilite { background-color: transparent !important; }"
+
+
     def saveChat(self):
         ws = workspace.currentWorkspace
         if not ws: 
@@ -247,72 +253,90 @@ class AIChatDialog(QDialog):
         self.worker = None
         self.sendBtn.setEnabled(True)
 
-    def updateHistory(self, streaming=False):
-        fullMd = ""
-        
-        def formatContent(content):
-            # Format thinking process if present
-            if "<think>" in content:
-                if "</think>" in content:
-                    content = content.replace("<think>", "\n\n> **Thinking:**\n> ")
-                    content = content.replace("</think>", "\n\n---\n\n")
-                else:
-                    # Still thinking
-                    content = content.replace("<think>", "\n\n> **Thinking:**\n> ")
-                    content += "\n> ..."
-            return content
-
-        for msg in self.messages:
-            role = msg.get('role', 'unknown').capitalize()
-            content = msg.get('content', '')
-            formattedContent = formatContent(content)
-            
-            if msg.get('tool_calls'):
-                calls = []
-                for tc in msg.get('tool_calls', []):
-                    if isinstance(tc, dict):
-                        name = tc.get('function', {}).get('name', 'unknown')
-                    else:
-                        name = getattr(getattr(tc, 'function', None), 'name', 'unknown')
-                    calls.append(name)
-                
-                if not formattedContent:
-                    formattedContent = f"> 🛠️ **Calling Tools:** `{', '.join(calls)}`"
-                else:
-                    formattedContent += f"\n\n> 🛠️ **Calling Tools:** `{', '.join(calls)}`"
-            elif not formattedContent and role == 'Assistant':
-                formattedContent = "Thinking...maybe hanging..."
-            
-            if msg.get('role') == 'user':
-                fullMd += f"### 👤 {role}\n{formattedContent}\n\n"
-            elif msg.get('role') == 'tool':
-                #name = msg.get('name', 'unknown')
-                #fullMd += f"### ⚙️ Tool Result ({name})\n```text\n{formattedContent}\n```\n\n"
-                pass
+    def _formatThinking(self, content):
+        """Format <think> tags into a blockquote style."""
+        if "<think>" in content:
+            if "</think>" in content:
+                content = content.replace("<think>", "\n\n> **Thinking:**\n> ")
+                content = content.replace("</think>", "\n\n---\n\n")
             else:
-                fullMd += f"### 🤖 Assistant\n{formattedContent}\n\n"
+                # Still thinking
+                content = content.replace("<think>", "\n\n> **Thinking:**\n> ")
+                content += "\n> ..."
+        return content
+
+    def _formatToolCalls(self, toolCalls):
+        """Format tool calls into a readable string."""
+        calls = []
+        for tc in toolCalls:
+            if isinstance(tc, dict):
+                func = tc.get('function', {})
+                name = func.get('name', 'unknown')
+                args = func.get('arguments', {})
+            else:
+                func = getattr(tc, 'function', None)
+                name = getattr(func, 'name', 'unknown')
+                args = getattr(func, 'arguments', {})
+            
+            if args:
+                try:
+                    if isinstance(args, str):
+                        args = json.loads(args)
+                    argParts = []
+                    for k, v in args.items():
+                        val = json.dumps(v)
+                        if len(val) > 100:
+                            val = val[:100] + "..."
+                        argParts.append(f"{k}={val}")
+                    calls.append(f"`{name}({', '.join(argParts)})`")
+                except:
+                    calls.append(f"`{name}(...)`")
+            else:
+                calls.append(f"`{name}()`")
+        
+        return f"> 🛠️ **Calling Tools:** {', '.join(calls)}"
+
+    def _formatMessageToMarkdown(self, msg):
+        """Convert a message object to a Markdown string."""
+        role = msg.get('role', 'unknown').capitalize()
+        content = msg.get('content', '')
+        formattedContent = self._formatThinking(content)
+        
+        toolCalls = msg.get('tool_calls')
+        if toolCalls:
+            toolLine = self._formatToolCalls(toolCalls)
+            if not formattedContent:
+                formattedContent = toolLine
+            else:
+                formattedContent += f"\n\n{toolLine}"
+        elif not formattedContent and msg.get('role') == 'assistant':
+            formattedContent = "Thinking...maybe hanging..."
+        
+        if msg.get('role') == 'user':
+            return f"### 👤 {role}\n{formattedContent}\n\n"
+        elif msg.get('role') == 'tool':
+            return "" # Skip raw tool results in history for now
+        else:
+            return f"### 🤖 Assistant\n{formattedContent}\n\n"
+
+    def updateHistory(self, streaming=False):
+        """Update the chat history display."""
+        fullMd = "".join(self._formatMessageToMarkdown(msg) for msg in self.messages)
 
         if streaming:
-            content = formatContent(self.currentResponse)
+            content = self._formatThinking(self.currentResponse)
             fullMd += f"### 🤖 Assistant\n{content}\n\n"
             self.history.setMarkdown(fullMd)
-
         else:
-            formatter = HtmlFormatter(style='monokai')
-            css = formatter.get_style_defs('.codehilite')
-            css += "\n.codehilite { background-color: transparent !important; }"
-            
             htmlContent = markdown.markdown(
                 fullMd, 
                 extensions=['fenced_code', 'codehilite', 'tables', 'sane_lists']
             )
-            
-            fullHtml = f"""<style>{css}</style><body>{htmlContent}</body>"""
-            
-            self.history.setHtml(fullHtml)
+            self.history.setHtml(f"<style>{self._highlighterCss}</style><body>{htmlContent}</body>")
 
         # Scroll to bottom
         self.history.verticalScrollBar().setValue(self.history.verticalScrollBar().maximum())
+
 
     def closeEvent(self, event):
         if self.worker:
