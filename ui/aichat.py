@@ -472,9 +472,10 @@ class AIChatDialog(QDialog):
                 return "(No module)"
 
             from ..widgets.core import getAttributeFromValue
-
+            from ..utils import smartConversion
+            jsonValue = smartConversion(jsonValue)
+            
             a = getAttributeFromValue(name, jsonValue)
-
             self.addAttributeRequested.emit(a)
             return "ok"
 
