@@ -1,4 +1,5 @@
 import math
+import os
 from typing import Any, Optional, Tuple, TYPE_CHECKING
 from ..utils import *
 
@@ -53,6 +54,8 @@ def getAttributeFromValue(name: str, v: any, category: str = "") -> 'Attribute':
         template = "vector"
     elif type(v) == list:
         template = "listBox"
+    elif type(v) == str and os.path.isfile(v):
+        template = "fileSelector"
     
     attr = Attribute(name, template, category or "General")
     data = copyJson(DEFAULT_WIDGETS_DATA[template])
