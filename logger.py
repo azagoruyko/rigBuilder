@@ -119,6 +119,6 @@ logger.addHandler(logHandler)
 logFile = os.path.join(RIG_BUILDER_USER_PATH, "log.txt")
 os.makedirs(RIG_BUILDER_USER_PATH, exist_ok=True)
 
-fileHandler = RotatingFileHandler(logFile, maxBytes=5 * 1024 * 1024, backupCount=1, encoding='utf-8')
+fileHandler = RotatingFileHandler(logFile, maxBytes=5 * 1024 * 1024, backupCount=0, encoding='utf-8')
 fileHandler.setFormatter(logging.Formatter('%(asctime)s, %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 logger.addHandler(fileHandler)
