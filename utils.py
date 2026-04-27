@@ -288,7 +288,7 @@ def getRelativeTimeString(mtime: float) -> str:
 def loadJson(path: str) -> dict:
     """Read a JSON file and return its content as a dictionary."""
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f) or {}
+        return json.load(f)
 
 def saveJson(path: str, data: dict):
     """Write a dictionary to a JSON file (UTF-8)."""
