@@ -6,7 +6,7 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson, clamp, smartConversion, fromSmartConversion
+from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson
 from .widgets import core as widgets_core
 
 if TYPE_CHECKING:
@@ -1048,6 +1048,8 @@ APIRegistry.register("chset", Module().chset)
 
 APIRegistry.register("Module", Module)
 APIRegistry.register("copyJson", copyJson)
+APIRegistry.register("saveJson", saveJson)
+APIRegistry.register("loadJson", loadJson)
 APIRegistry.register("exit", exitModule)
 APIRegistry.register("error", printError)
 APIRegistry.register("warning", printWarning)
