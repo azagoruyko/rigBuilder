@@ -344,3 +344,29 @@ def forceRemove(path: str) -> None:
         except OSError:
             os.chmod(path, stat.S_IWRITE)
             os.remove(path)
+
+def detectHostByCode(code) -> str:
+    """Return host by analyzing imported modules from code."""
+    mayaImports = ["import maya", "import pymel", "from pymel", "from maya"]
+    blenderImports = ["import bpy", "from bpy"]
+    houdiniImports = ["import hou", "from hou"]
+    unrealImports = ["import unreal", "from unreal"]
+
+    for line in code.splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        
+        if not (line.startswith("import ") or line.startswith("from ")):
+            return ""
+
+        for host, imports in [
+            ("maya", mayaImports), 
+            ("blender", blenderImports), 
+            ("houdini", houdiniImports), 
+            ("unreal", unrealImports)]:
+
+            for importLine in imports:
+                if line.startswith(importLine):
+                    return host
+
+    return ""            

@@ -615,7 +615,7 @@ class ModuleModel(QAbstractItemModel):
         return len(parentModule.children())
 
     def columnCount(self, parent=QModelIndex()):
-        return 3 # Name, Path, UID
+        return 4 # Name, Path, UID, Host
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -682,8 +682,15 @@ class ModuleModel(QAbstractItemModel):
                 p = module.parent()
                 if p and len([ch for ch in p.children() if ch.name() == module.name()]) > 1:
                     return QColor(170, 50, 50)
-        
-        return None
+
+        elif role == Qt.ItemDataRole.DecorationRole:
+            if index.column() == 3:
+                host = detectHostByCode(module.runCode())
+                if host:
+                    iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{host}.png")
+                    return QIcon(iconPath)
+                
+            return None
 
     def setData(self, index, value, role=Qt.EditRole):
         if index.isValid() and role == Qt.EditRole:
@@ -723,7 +730,7 @@ class ModuleModel(QAbstractItemModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return ["Name", "Path", "UID"][section]
+            return ["Name", "Path", "UID", "Host"][section]
         return None
 
     def flags(self, index):
@@ -2194,8 +2201,15 @@ class HostManagerDialog(QDialog):
 
         hostRow = QHBoxLayout()
         hostRow.addWidget(QLabel("Target Host:"))
+
         self.hostCombo = QComboBox()
-        self.hostCombo.addItems(AVAILABLE_HOSTS)
+        for host in AVAILABLE_HOSTS:
+            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{host}.png")
+            if os.path.exists(iconPath):
+                self.hostCombo.addItem(QIcon(iconPath), host.capitalize())
+            else:
+                self.hostCombo.addItem(host.capitalize())
+
         self.hostCombo.currentIndexChanged.connect(self._refreshCode)
         hostRow.addWidget(self.hostCombo)
         hostRow.addStretch()
@@ -2273,8 +2287,6 @@ class HostManagerDialog(QDialog):
             discoveryPort=discoveryPort
         )
         self.codeEdit.setPlainText(code)
-
-
 
 
 class RigBuilderWindow(QFrame):
@@ -2576,8 +2588,12 @@ class RigBuilderWindow(QFrame):
         
         for name, entry in entries:
             # Use icon for discovered hosts
-            label = "📡 {} ({})".format(name, entry["host"])
-            self.hostCombo.addItem(label, userData=name)
+            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{entry['host']}.png")
+            if os.path.exists(iconPath):
+                self.hostCombo.addItem(QIcon(iconPath), name, userData=name)
+            else:
+                label = "📡 {} ({})".format(name, entry["host"])
+                self.hostCombo.addItem(label, userData=name)
 
         if not servers:
             self.hostCombo.setPlaceholderText("No hosts discovered")
