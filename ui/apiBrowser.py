@@ -78,7 +78,7 @@ class ApiBrowserView(QTextBrowser):
         else:
             super().wheelEvent(event)
 
-class ApiBrowserWidget(QWidget):
+class ApiBrowser(QWidget):
     """Embeddable API browser using QTextBrowser for interactive documentation."""
     
     def __init__(self, parent=None):

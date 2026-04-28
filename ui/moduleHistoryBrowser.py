@@ -222,7 +222,7 @@ class CommitMessageWorker(QThread):
             self.finished.emit("")
 
 
-class ModuleHistoryWidget(QWidget):
+class ModuleHistoryBrowser(QWidget):
     """Widget with filter and text browser showing module history (git log). Emits linkClicked(url) for link handling."""
 
     linkClicked = Signal(object)

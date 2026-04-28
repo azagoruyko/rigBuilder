@@ -27,13 +27,13 @@ from ..utils import *
 from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGETS_DATA
 from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
 from .aichat import AIChatDialog
-from .apiBrowser import ApiBrowserWidget
+from .apiBrowser import ApiBrowser
 from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
 from .docBrowser import DocBrowser
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
 from .moduleBrowser import ModuleBrowser
-from .moduleHistoryBrowser import ModuleHistoryWidget
+from .moduleHistoryBrowser import ModuleHistoryBrowser
 from .utils import *
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .workspaceManager import WorkspaceWidget
@@ -1200,7 +1200,7 @@ class ModuleTreeWidget(QTreeView):
             return
 
         # 2. Confirmation / Commit message
-        historyWidget = self.window().moduleHistoryWidget
+        historyWidget = self.window().moduleHistoryBrowser
         historyEnabled = historyWidget.isHistoryTrackingEnabled()
         commitMessage = ""
 
@@ -1237,8 +1237,7 @@ class ModuleTreeWidget(QTreeView):
                 self.moduleModel.dataChanged.emit(idx, idx) # refresh display
                 self.window().attributesTabWidget.updateWidgetStyles()
 
-        self.window().moduleHistoryWidget.syncModuleHistory()
-
+        self.window().moduleHistoryBrowser.syncModuleHistory()
 
     def embedModule(self):
         modules = self.selectedModules()
@@ -2368,7 +2367,7 @@ class RigBuilderWindow(QFrame):
         self.vscodeBtn = QPushButton("📝 Edit in VSCode")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
 
-        self.apiBrowserWidget = ApiBrowserWidget()
+        self.apiBrowser = ApiBrowser()
 
         self.attributesTabWidget = AttributesTabWidget()
         self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
@@ -2381,8 +2380,8 @@ class RigBuilderWindow(QFrame):
         self.runBtn.clicked.connect(self.runModule)
         self.runBtn.setEnabled(False)
 
-        self.moduleHistoryWidget = ModuleHistoryWidget()
-        self.moduleHistoryWidget.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
+        self.moduleHistoryBrowser = ModuleHistoryBrowser()
+        self.moduleHistoryBrowser.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
 
         self.docBrowser = DocBrowser()
         self.docBrowser.moduleRequested.connect(self.selectModuleBySpec)
@@ -2416,7 +2415,6 @@ class RigBuilderWindow(QFrame):
 
         leftSplitter = WideSplitter(Qt.Vertical)
         leftSplitter.addWidget(treeWithBtnWidget)
-        leftSplitter.addWidget(self.docBrowser)
         leftSplitter.addWidget(self.moduleBrowser)
 
         codeWithBtnWidget = QWidget()
@@ -2424,25 +2422,31 @@ class RigBuilderWindow(QFrame):
         codeWithBtnWidget.layout().addWidget(self.codeEditorWidget)
         codeWithBtnWidget.layout().addWidget(self.vscodeBtn)
 
-        codeSplitter = WideSplitter(Qt.Horizontal)
-        codeSplitter.addWidget(codeWithBtnWidget)
-        codeSplitter.addWidget(self.apiBrowserWidget)
-        codeSplitter.setSizes([500, 200])
-
-        self.rightModuleSplitter = WideSplitter(Qt.Vertical)
-        self.rightModuleSplitter.addWidget(self.attributesTabWidget)
-        self.rightModuleSplitter.addWidget(codeSplitter)
-        self.rightModuleSplitter.setSizes([500, 500])
-        self.rightModuleSplitter.hide()
+        centerSplitter = WideSplitter(Qt.Vertical)
+        centerSplitter.addWidget(self.attributesTabWidget)
+        centerSplitter.addWidget(codeWithBtnWidget)
+        centerSplitter.setSizes([500, 300])
 
         rightSplitter = WideSplitter(Qt.Vertical)
-        rightSplitter.addWidget(self.moduleHistoryWidget)
-        rightSplitter.addWidget(self.rightModuleSplitter)   
+        rightSplitter.addWidget(self.docBrowser)
+        rightSplitter.addWidget(self.apiBrowser)
+        rightSplitter.setSizes([500, 500])
+
+        self.centerRightSplitter = WideSplitter(Qt.Horizontal)
+        self.centerRightSplitter.addWidget(centerSplitter)
+        self.centerRightSplitter.addWidget(rightSplitter)
+        self.centerRightSplitter.setSizes([500, 300])
+        self.centerRightSplitter.hide()
+
+        self.toggleWidget = QWidget()
+        self.toggleWidget.setLayout(QVBoxLayout())
+        self.toggleWidget.layout().addWidget(self.centerRightSplitter)
+        self.toggleWidget.layout().addWidget(self.moduleHistoryBrowser)
 
         mainSplitter = WideSplitter(Qt.Horizontal)
         mainSplitter.addWidget(leftSplitter)
-        mainSplitter.addWidget(rightSplitter)
-        mainSplitter.setSizes([300, 700])
+        mainSplitter.addWidget(self.toggleWidget)
+        mainSplitter.setSizes([300, 500])
 
         layoutSplitter = WideSplitter(Qt.Vertical)
         layoutSplitter.addWidget(mainSplitter)
@@ -2462,19 +2466,23 @@ class RigBuilderWindow(QFrame):
 
         centerWindow(self)
 
-        self.moduleHistoryWidget.syncModuleHistory()
+        self.moduleHistoryBrowser.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
 
-        self._splitters = [
-            layoutSplitter,
-            mainSplitter,
-            leftSplitter,
-            rightSplitter,
-            codeSplitter,
-            self.rightModuleSplitter,
-        ]
-        self.loadAppSettings()
+        self._splitters = {
+            "version": 1,
+            "widgets": [
+                layoutSplitter,
+                mainSplitter,
+                leftSplitter,
+                rightSplitter,
+                centerSplitter,
+                self.centerRightSplitter,
+            ]
+        }
+        
+        self.loadAppSettings()        
         connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
 
     def _onTreeContextMenu(self, pos):
@@ -2772,7 +2780,7 @@ class RigBuilderWindow(QFrame):
     def _refreshModuleUI(self):
         """Update UI components that depend on current settings/workspace."""
         self._refreshHostCombo()
-        self.moduleHistoryWidget.syncModuleHistory()
+        self.moduleHistoryBrowser.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
 
@@ -2980,8 +2988,8 @@ class RigBuilderWindow(QFrame):
         en = module is not None
         
         self.runBtn.setEnabled(en)
-        self.rightModuleSplitter.setVisible(en)
-        self.moduleHistoryWidget.setVisible(not en)
+        self.centerRightSplitter.setVisible(en)
+        self.moduleHistoryBrowser.setVisible(not en)
         
         self.docBrowser.setEnabled(en)
         self.docBrowser.updateDoc(module)
@@ -3069,7 +3077,7 @@ class RigBuilderWindow(QFrame):
         if not module.uid():
             return
             
-        self.moduleHistoryWidget.filterEdit.setText(module.uid())
+        self.moduleHistoryBrowser.filterEdit.setText(module.uid())
         self.treeWidget.clearSelection()
 
     def saveAppSettings(self):
@@ -3080,8 +3088,9 @@ class RigBuilderWindow(QFrame):
         settings.setValue("pinned", self.windowPinBtn.isChecked())
         
         # Save splitter states
-        for idx, splitter in enumerate(self._splitters):
+        for idx, splitter in enumerate(self._splitters["widgets"]):
             settings.setValue(f"splitter{idx}", splitter.saveState())
+        settings.setValue(f"splitterVersion", self._splitters["version"])
 
     def loadAppSettings(self):
         """Load app-specific settings."""
@@ -3097,10 +3106,12 @@ class RigBuilderWindow(QFrame):
         self.pinWindow(pinned)
         
         # Restore splitter states
-        for idx, splitter in enumerate(self._splitters):
-            state = settings.value(f"splitter{idx}")
-            if state:
-                splitter.restoreState(state)
+        splittersVersion = settings.value("splitterVersion", 0, type=int)
+        if splittersVersion == self._splitters["version"]: # restore only if versions match
+            for idx, splitter in enumerate(self._splitters["widgets"]):
+                state = settings.value(f"splitter{idx}")
+                if state:
+                    splitter.restoreState(state)
 
         # Restore workspace
         workspaceName = settings.value("activeWorkspace", "default")
