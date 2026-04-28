@@ -339,13 +339,6 @@ class WorkspaceWidget(QWidget):
         self.mainWindow.moduleBrowser.refreshModules()
 
     def switchWorkspace(self, name: str):
-        if not name:
-            return
-
-        # Save current IF one was active and it's a DIFFERENT workspace
-        if workspace.currentWorkspace.name != name:
-            self.toWorkspace().save()
-
         # Check for recovery
         hasMain, hasAutosave = Workspace.getLoadInfo(name)
         recovery = False
@@ -382,16 +375,18 @@ class WorkspaceWidget(QWidget):
     def _onComboChanged(self, index: int):
         if self._blockSignals:
             return
+
         name = self.combo.itemData(index)
+
+        # Save current IF one was active and it's a DIFFERENT workspace
+        if workspace.currentWorkspace.name != name:
+            self.toWorkspace().save()
+
         self.switchWorkspace(name)
 
     def _onManage(self):
         dialog = WorkspaceManagerDialog(self)
-        if dialog.exec_():
-            sel = dialog.selectedWorkspace()
-            if sel:
-                self.switchWorkspace(sel.name)
-        
+        dialog.exec()
         self.refreshWorkspaces()
 
     def _onAutoSaveTimer(self):
