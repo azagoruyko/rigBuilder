@@ -2416,6 +2416,7 @@ class RigBuilderWindow(QFrame):
         leftSplitter = WideSplitter(Qt.Vertical)
         leftSplitter.addWidget(treeWithBtnWidget)
         leftSplitter.addWidget(self.moduleBrowser)
+        leftSplitter.setSizes([500,300])
 
         codeWithBtnWidget = QWidget()
         codeWithBtnWidget.setLayout(QVBoxLayout())
@@ -2430,12 +2431,12 @@ class RigBuilderWindow(QFrame):
         rightSplitter = WideSplitter(Qt.Vertical)
         rightSplitter.addWidget(self.docBrowser)
         rightSplitter.addWidget(self.apiBrowser)
-        rightSplitter.setSizes([500, 500])
+        rightSplitter.setSizes([500, 300])
 
         self.centerRightSplitter = WideSplitter(Qt.Horizontal)
         self.centerRightSplitter.addWidget(centerSplitter)
         self.centerRightSplitter.addWidget(rightSplitter)
-        self.centerRightSplitter.setSizes([500, 300])
+        self.centerRightSplitter.setSizes([500, 200])
         self.centerRightSplitter.hide()
 
         self.toggleWidget = QWidget()
@@ -2446,7 +2447,7 @@ class RigBuilderWindow(QFrame):
         mainSplitter = WideSplitter(Qt.Horizontal)
         mainSplitter.addWidget(leftSplitter)
         mainSplitter.addWidget(self.toggleWidget)
-        mainSplitter.setSizes([300, 500])
+        mainSplitter.setSizes([200, 500])
 
         layoutSplitter = WideSplitter(Qt.Vertical)
         layoutSplitter.addWidget(mainSplitter)
