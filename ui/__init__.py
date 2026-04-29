@@ -2600,7 +2600,7 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.editorWidget.textCursor().insertText(f"@{name}")
         logger.info(f"Attribute '{name}' exposed.")
 
-    def _refreshHostCombo(self, entry=None):
+    def _refreshHostCombo(self):
         """Update host selection dropdown based on discovered servers."""
         prevHost = self.hostCombo.currentData() or settings.host
 

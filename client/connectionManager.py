@@ -10,6 +10,7 @@ from .. import settings
 from . import HostClient
 from ..utils import loadJson, saveJson
 from ..server.hosts.standalone import StandaloneServer
+from ..server.hosts import REGISTRATION_INTERVAL_SEC
 from ..qt import QObject, Signal
 
 HOSTS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "hosts.json")
@@ -19,7 +20,7 @@ logger = logging.getLogger('rigBuilder')
 
 class DiscoveryServer(QObject):
     """Listens for registration messages from host servers on a fixed port."""
-    hostDiscovered = Signal(dict)
+    hostDiscovered = Signal()
 
     def __init__(self, port: int, parent=None):
         super().__init__(parent)
@@ -45,8 +46,10 @@ class DiscoveryServer(QObject):
         return self._discoveredHosts
 
     def _loop(self):
+        # PULL socket — hosts fire-and-forget via PUSH; no reply needed.
+        # This avoids the strict alternation constraint of REQ/REP.
         ctx = zmq.Context.instance()
-        socket = ctx.socket(zmq.REP)
+        socket = ctx.socket(zmq.PULL)
         socket.setsockopt(zmq.LINGER, 0)
         try:
             socket.bind(f"tcp://*:{self._port}")
@@ -82,18 +85,13 @@ class DiscoveryServer(QObject):
                         key = cmdPort
                         isNew = key not in self._discoveredHosts
                         self._discoveredHosts[key] = entry
-                        
-                        socket.send_string(json.dumps({"ok": True}))
+
                         if isNew:
-                            self.hostDiscovered.emit(entry)
+                            self.hostDiscovered.emit()
                     else:
-                        socket.send_string(json.dumps({"ok": False, "error": "unknown command"}))
+                        logger.warning(f"Discovery: unknown command {cmd!r}")
                 except Exception as e:
                     logger.error(f"Error in discovery server: {e}")
-                    try:
-                        socket.send_string(json.dumps({"ok": False, "error": str(e)}))
-                    except:
-                        pass
             
             # Heartbeat check every 2 seconds
             now = time.time()
@@ -110,8 +108,8 @@ class DiscoveryServer(QObject):
         now = time.time()
         deadHosts = []
         
-        # Hosts send heartbeats every 1s. Mark as dead after 5s of silence.
-        timeout = 5.0
+        # Hosts re-register every REGISTRATION_INTERVAL_SEC. Mark as dead after 3 missed intervals.
+        timeout = REGISTRATION_INTERVAL_SEC * 3
         
         for key, entry in list(self._discoveredHosts.items()):
             elapsed = now - entry.get("lastSeen", 0)
@@ -121,8 +119,8 @@ class DiscoveryServer(QObject):
         if deadHosts:
             for key, elapsed in deadHosts:
                 entry = self._discoveredHosts.pop(key)
-                logger.info(f"Host disconnected (no heartbeat for {elapsed:.1f}s): {entry['name']}")
-            self.hostDiscovered.emit({}) # Notify UI to refresh
+                logger.info(f"Host disconnected (no registration for {elapsed:.1f}s): {entry['name']}")
+            self.hostDiscovered.emit()  # Notify UI to refresh
 
 class ConnectionManager:
     """Manages the list of active discovered hosts and the current connection."""
