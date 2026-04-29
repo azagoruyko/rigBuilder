@@ -75,8 +75,8 @@ QAbstractSpinBox {
 	background-color: #252b33;
 	color: #e8eaed;
 	border: 1px solid #343c49;
-	border-top: 1px solid #1e242d;    /* inset shadow — darker top */
-	border-bottom: 1px solid #3f4b5c; /* subtle lift — lighter bottom */
+	border-top: 1px solid #1e242d;    /* inset shadow - darker top */
+	border-bottom: 1px solid #3f4b5c; /* subtle lift - lighter bottom */
 	border-radius: 4px;
 	padding: 4px 6px;
 	selection-background-color: #3e7bd6;
@@ -209,7 +209,7 @@ QPushButton:disabled {
    ========================================================================== */
 
 QTabWidget::pane {
-	border: 1px solid #313a47;
+	border: 1px solid #2a313d;
 	border-radius: 5px;
 	top: -1px;
 }
@@ -291,8 +291,8 @@ QListWidget,
 QListView {
 	background-color: #222831;
 	border: 1px solid #343c49;
-	border-top: 1px solid #1a1e24;    /* inset shadow — darker top */
-	border-bottom: 1px solid #3a4455; /* subtle lift — lighter bottom */
+	border-top: 1px solid #1a1e24;    /* inset shadow - darker top */
+	border-bottom: 1px solid #3a4455; /* subtle lift - lighter bottom */
 	border-radius: 4px;
 	alternate-background-color: #252c36;
 }
@@ -559,6 +559,20 @@ QToolTip {
 	padding: 4px 8px;
 	font-size: 12px;
 }
+
+/* =============================================================================
+   Scroll areas
+   ========================================================================== */
+
+QScrollArea {
+	border: none;
+	background-color: transparent;
+}
+
+QScrollArea > QWidget > QWidget {
+	background-color: transparent;
+}
+
 
 /* =============================================================================
    Splitters
