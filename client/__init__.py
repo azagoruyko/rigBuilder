@@ -164,6 +164,10 @@ class HostClient(QObject):
         else:
             event_obj.wait(timeout=timeout_seconds)
 
+        # One final pump to ensure any signals emitted just before the reply are handled
+        if isGuiThread:
+            app.processEvents()
+
         with self._replyLock:
             self._pendingReplies.pop(runId, None)
 

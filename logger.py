@@ -26,7 +26,7 @@ class LogHandler(logging.Handler):
             from rigBuilder.qt import QTimer
             self._timer = QTimer()
             self._timer.destroyed.connect(self._onTimerDestroyed)
-            self._timer.timeout.connect(self._flushPending)
+            self._timer.timeout.connect(self.flush)
             self._timer.start(100) # 100ms interval
         except (ImportError, RuntimeError):
             pass # Fallback to immediate printing if Qt is not available
@@ -41,7 +41,7 @@ class LogHandler(logging.Handler):
             return record.getMessage()
         return super().format(record)
 
-    def _flushPending(self):
+    def flush(self):
         """Batch-write pending messages to the target widget."""
         if not self._target or not self._pending:
             return
@@ -61,7 +61,7 @@ class LogHandler(logging.Handler):
 
     def close(self):
         """Clean up the handler by flushing pending messages and stopping the timer."""
-        self._flushPending()
+        self.flush()
         if self._timer:
             self._timer.stop()
         super().close()

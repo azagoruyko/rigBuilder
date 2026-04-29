@@ -3034,6 +3034,7 @@ class RigBuilderWindow(QFrame):
         logger.info(text)
 
     def cleanupRun(self):
+        logHandler.flush()
         self.progressBarWidget.endProgress()
         self.runBtn.setEnabled(True)  
 

@@ -139,15 +139,19 @@ class HostServer:
         while self._running:
             try:
                 event = self._pubQueue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            try:
                 if not self._running:
                     break
                 self._pub.send_string(json.dumps(event))
-            except queue.Empty:
-                continue
             except zmq.ZMQError:
                 break
             except Exception:
                 pass
+            finally:
+                self._pubQueue.task_done()
 
 
     def executeOnMainThread(self, taskFunction: Callable):
@@ -205,6 +209,10 @@ class HostServer:
 
             else:
                 reply = {"ok": False, "error": f"unknown command: {cmd!r}"}
+
+            # Ensure all prints/callbacks are sent before the reply
+            if not self._pubQueue.empty():
+                self._pubQueue.join()
 
             self.emit({**reply, "event": "reply", "id": runId})
 
