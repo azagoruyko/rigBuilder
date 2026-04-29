@@ -2076,20 +2076,32 @@ class REPLWidget(QLineEdit):
 class WideSplitterHandle(QSplitterHandle):
     def __init__(self, orientation: Qt.Orientation, parent: QWidget, **kwargs):
         super().__init__(orientation, parent, **kwargs)
+        self.hovered = False
+
+    def enterEvent(self, event: QEvent):
+        self.hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent):
+        self.hovered = False
+        self.update()
+        super().leaveEvent(event)
 
     def paintEvent(self, event: QPaintEvent):
+        if not self.hovered:
+            return
+
         painter = QPainter()
         if painter.begin(self):
             try:
-                brush = QBrush()
-                brush.setStyle(Qt.Dense6Pattern)
-                brush.setColor(QColor(150, 150, 150))
-                painter.fillRect(event.rect(), QBrush(brush))
+                # Solid accent color on hover, no patterns
+                painter.fillRect(event.rect(), QColor(110, 167, 255, 60))
             finally:
                 painter.end()
 
 class WideSplitter(QSplitter):
-    def __init__(self, orientation: Qt.Orientation, width: int = 4, **kwargs):
+    def __init__(self, orientation: Qt.Orientation, width: int = 8, **kwargs):
         super().__init__(orientation, **kwargs)
         self.setHandleWidth(width)
 
@@ -2408,8 +2420,9 @@ class RigBuilderWindow(QFrame):
 
         # layout
 
-        treeWithBtnWidget = QWidget()
+        treeWithBtnWidget = QWidget()        
         treeWithBtnWidget.setLayout(QVBoxLayout())
+        treeWithBtnWidget.layout().setContentsMargins(0, 0, 0, 0)
         treeWithBtnWidget.layout().addWidget(self.treeWidget)
         treeWithBtnWidget.layout().addWidget(self.runBtn)
 
@@ -2420,6 +2433,7 @@ class RigBuilderWindow(QFrame):
 
         codeWithBtnWidget = QWidget()
         codeWithBtnWidget.setLayout(QVBoxLayout())
+        codeWithBtnWidget.layout().setContentsMargins(0, 0, 0, 0)
         codeWithBtnWidget.layout().addWidget(self.codeEditorWidget)
         codeWithBtnWidget.layout().addWidget(self.vscodeBtn)
 

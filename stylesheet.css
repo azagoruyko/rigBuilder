@@ -559,3 +559,24 @@ QToolTip {
 	padding: 4px 8px;
 	font-size: 12px;
 }
+
+/* =============================================================================
+   Splitters
+   ========================================================================== */
+
+QSplitter::handle {
+	background: transparent;
+}
+
+QSplitter::handle:hover {
+	background: rgba(110, 167, 255, 30);
+}
+
+QSplitter::handle:horizontal {
+	width: 6px;
+}
+
+QSplitter::handle:vertical {
+	height: 6px;
+}
+
