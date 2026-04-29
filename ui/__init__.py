@@ -553,6 +553,7 @@ class ModuleModel(QAbstractItemModel):
     def __init__(self, rootModule: Optional[Module] = None, parent=None):
         super().__init__(parent)
         self._rootModule = rootModule or Module()
+        self._rootModule.setName("ROOT")
         self._draggedModules = [] # Temporary storage for internal drag and drop
         
         self.moduleTracker = ModuleTracker(self)
