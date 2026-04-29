@@ -1417,6 +1417,7 @@ class CurveView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFrameStyle(QGraphicsView.NoFrame)
 
         self.setScene(CurveScene())
 
@@ -1432,13 +1433,14 @@ class CurveTemplateWidget(TemplateWidget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()        
         layout.setContentsMargins(QMargins())
         self.setLayout(layout)
 
         self.curveView = CurveView()
         self.curveView.somethingChanged.connect(self.somethingChanged.emit)
         layout.addWidget(self.curveView)
+        layout.addStretch()
 
     def getJsonData(self):
         return {"cvs": self.curveView.scene().cvs, "default": "cvs"}
