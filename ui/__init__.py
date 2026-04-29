@@ -699,10 +699,10 @@ class ModuleModel(QAbstractItemModel):
             column = index.column()
             if column == 0:
                 newName = replaceSpecialChars(str(value)).strip()
-                p = module.parent()
-                if p:
-                    existingNames = set([ch.name() for ch in p.children() if ch is not module])
-                    newName = findUniqueName(newName, existingNames)
+                p = module.parent() or self._rootModule
+                
+                existingNames = set([ch.name() for ch in p.children() if ch is not module])
+                newName = findUniqueName(newName, existingNames)
                 
                 # Handle connection updates (migrated from ModuleItem)
                 connections = self._saveConnections(module)
@@ -746,6 +746,11 @@ class ModuleModel(QAbstractItemModel):
     # Helpers for structural changes
     def addModuleAt(self, module: Module, parentIndex: QModelIndex = QModelIndex(), row: int = -1):
         parentModule = parentIndex.internalPointer() if parentIndex.isValid() else self._rootModule
+        
+        # Ensure unique name within parent
+        existingNames = {ch.name() for ch in parentModule.children()}
+        module.setName(findUniqueName(module.name(), existingNames))
+
         if row < 0:
             row = len(parentModule.children())
         
@@ -1348,7 +1353,6 @@ class ModuleTreeWidget(QTreeView):
             # Create copy with a unique name
             parentModule = module.parent() or self.moduleModel.rootModule()
             newModule = module.copy()
-            newModule.setName(findUniqueName(module.name(), {c.name() for c in parentModule.children()}))
 
             # Insert the new module right after the original one
             parentIdx = idx.parent()
@@ -1405,10 +1409,6 @@ class ModuleTreeWidget(QTreeView):
         pastedIndices = []
         for module in self.clipboard:
             newModule = module.copy()
-            
-            # Ensure unique names
-            existingNames = set([ch.name() for ch in parentModule.children()])
-            newModule.setName(findUniqueName(newModule.name(), existingNames))
             
             newIdx = self.moduleModel.addModuleAt(newModule, parentIdx)
             pastedIndices.append(newIdx)
