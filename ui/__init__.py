@@ -2455,6 +2455,7 @@ class RigBuilderWindow(QFrame):
 
         self.toggleWidget = QWidget()
         self.toggleWidget.setLayout(QVBoxLayout())
+        self.toggleWidget.layout().setContentsMargins(0, 0, 0, 0)
         self.toggleWidget.layout().addWidget(self.centerRightSplitter)
         self.toggleWidget.layout().addWidget(self.moduleHistoryBrowser)
 
