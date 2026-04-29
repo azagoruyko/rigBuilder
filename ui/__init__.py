@@ -249,13 +249,13 @@ class AttributesWidget(QWidget):
             tooltip.append("Expression:\n" + attr.expression())
 
         if attr.connect() and not attr.expression(): # only connection (yellow)
-            style = "TemplateWidget { border: 4px solid rgba(110, 110, 57, 0.45); background-color: rgba(110, 110, 57, 0.25) }"
+            style = "TemplateWidget { border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
         
-        elif attr.expression() and not attr.connect(): # only expression (magenta)
-            style = "TemplateWidget { border: 4px solid rgba(99, 32, 148, 0.45); background-color: rgba(99, 32, 148, 0.25) }"
+        elif attr.expression() and not attr.connect(): # only expression (bluish purple)
+            style = "TemplateWidget { border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
         
-        elif attr.expression() and attr.connect(): # both
-            style = "TemplateWidget { border: 4px solid rgba(0,0,0,0); background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 rgba(110, 110, 57, 0.25), stop: 1 rgba(99, 32, 148, 0.25)); }"
+        elif attr.expression() and attr.connect(): # both (magenta)
+            style = "TemplateWidget { border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
 
         nameWidget.setText(attr.name())
 
