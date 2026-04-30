@@ -81,7 +81,9 @@ run.bat
 
 Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine), it will automatically appear in the Host Manager.
 
-To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment. 💡 `zmq` will be automatically installed on the first connection if it's missing (using a non-intrusive local installation).
+To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment. 
+
+💡 `zmq` will be automatically installed on the first connection if it's missing (using a non-intrusive local installation).
 
 ### 5. Usage
 
