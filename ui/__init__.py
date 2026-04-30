@@ -616,7 +616,7 @@ class ModuleModel(QAbstractItemModel):
         return len(parentModule.children())
 
     def columnCount(self, parent=QModelIndex()):
-        return 4 # Name, Path, UID, Host
+        return 3 # Name, Path, UID
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -684,15 +684,6 @@ class ModuleModel(QAbstractItemModel):
                 if p and len([ch for ch in p.children() if ch.name() == module.name()]) > 1:
                     return QColor(170, 50, 50)
 
-        elif role == Qt.ItemDataRole.DecorationRole:
-            if index.column() == 3:
-                host = detectHostByCode(module.runCode())
-                if host:
-                    iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{host}.png")
-                    return QIcon(iconPath)
-                
-            return None
-
     def setData(self, index, value, role=Qt.EditRole):
         if index.isValid() and role == Qt.EditRole:
             module = index.internalPointer()
@@ -731,7 +722,7 @@ class ModuleModel(QAbstractItemModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return ["Name", "Path", "UID", "Host"][section]
+            return ["Name", "Path", "UID"][section]
         return None
 
     def flags(self, index):
