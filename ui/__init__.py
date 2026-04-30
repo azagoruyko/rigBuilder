@@ -3034,29 +3034,6 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.stepProgress(self._progressCounter, path)
         self._progressCounter += 1
 
-    def _checkHost(self, module: Module) -> bool:
-        """Check if the module is compatible with the current host."""
-        currentHost = connectionManager.activeHost()
-        
-        # Check module and its children
-        def findHostIncompatibleModule(m: Module) -> Optional[Tuple[Module, str]]:
-            host = detectHostByCode(m.runCode())
-            if host and host != currentHost:
-                return m, host
-            for ch in m.children():
-                if not ch.muted():
-                    res = findHostIncompatibleModule(ch)
-                    if res: return res
-            return None
-
-        res = findHostIncompatibleModule(module)
-        if res:
-            m, host = res
-            msg = f"Module '{m.path()}' seems to be designed for {host.capitalize()}, but you are connected to {currentHost.capitalize()}.\n\nRun anyway?"
-            return QMessageBox.question(self, "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes
-            
-        return True
-
     def runModule(self):
         """Run module on the host server."""
         def getChildrenCount(m: Module) -> int:
@@ -3072,9 +3049,6 @@ class RigBuilderWindow(QFrame):
 
         if not connectionManager.activeConnection():
             QMessageBox.warning(self, "Rig Builder", "Not connected to host server")
-            return
-
-        if not self._checkHost(currentModule):
             return
 
         self.setFocus()
