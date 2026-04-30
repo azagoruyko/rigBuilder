@@ -9,15 +9,12 @@ def executionGate(func):
     """Decorator to ensure cursor is always restored after execution."""
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        # Start Run (Latching)
         if not self._isRunning:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             self._isRunning = True
-        
         try:
             return func(self, *args, **kwargs)
         finally:
-            # Stop Run (Latching)
             if self._isRunning:
                 QApplication.restoreOverrideCursor()
                 self._isRunning = False
@@ -34,48 +31,35 @@ class HostExecutor(QObject):
 
     def __init__(self):
         super().__init__()
-        self._boundConnection = None
+        self._conn = None
         self._isRunning = False
+        connectionManager.connectionChanged.connect(self._onConnectionChanged)
 
-    def _ensureBoundConnection(self, conn):
-        if self._boundConnection is conn:
-            return
+    def _onConnectionChanged(self, conn):
+        if self._conn:
+            self._conn.onPrint.disconnect(self.onPrint)
+            self._conn.onError.disconnect(self.onError)
+            self._conn.onRunCallback.disconnect(self.onRunCallback)
+            self._conn.beginProgress.disconnect(self.beginProgress)
+            self._conn.stepProgress.disconnect(self.stepProgress)
+            self._conn.endProgress.disconnect(self.endProgress)
+            self._conn.onConnectionLost.disconnect(self._onConnectionLost)
+            if self._isRunning:
+                QApplication.restoreOverrideCursor()
+                self._isRunning = False
 
-        if self._boundConnection:
-            try:
-                self._boundConnection.onPrint.disconnect(self._handlePrint)
-                self._boundConnection.onRunCallback.disconnect(self._handleRunCallback)
-                self._boundConnection.beginProgress.disconnect(self._handleBeginProgress)
-                self._boundConnection.stepProgress.disconnect(self._handleStepProgress)
-                self._boundConnection.endProgress.disconnect(self._handleEndProgress)
-                self._boundConnection.onConnectionLost.disconnect(self._handleConnectionLost)
-            except (RuntimeError, TypeError):
-                pass
+        self._conn = conn
 
-        self._boundConnection = conn
-        conn.onPrint.connect(self._handlePrint)
-        conn.onRunCallback.connect(self._handleRunCallback)
-        conn.beginProgress.connect(self._handleBeginProgress)
-        conn.stepProgress.connect(self._handleStepProgress)
-        conn.endProgress.connect(self._handleEndProgress)
-        conn.onConnectionLost.connect(self._handleConnectionLost)
+        if conn:
+            conn.onPrint.connect(self.onPrint)
+            conn.onError.connect(self.onError)
+            conn.onRunCallback.connect(self.onRunCallback)
+            conn.beginProgress.connect(self.beginProgress)
+            conn.stepProgress.connect(self.stepProgress)
+            conn.endProgress.connect(self.endProgress)
+            conn.onConnectionLost.connect(self._onConnectionLost)
 
-    def _handlePrint(self, text: str):
-        self.onPrint.emit(text)
-
-    def _handleRunCallback(self, path: str):
-        self.onRunCallback.emit(path)
-
-    def _handleBeginProgress(self, text: str, count: int):
-        self.beginProgress.emit(text, count)
-
-    def _handleStepProgress(self, value: int, text: str):
-        self.stepProgress.emit(value, text)
-
-    def _handleEndProgress(self):
-        self.endProgress.emit()
-
-    def _handleConnectionLost(self, reason: str):
+    def _onConnectionLost(self, reason: str):
         if self._isRunning:
             QApplication.restoreOverrideCursor()
             self._isRunning = False
@@ -83,72 +67,40 @@ class HostExecutor(QObject):
     @executionGate
     def executeCode(self, code: str) -> dict:
         """Execute a Python snippet on the host server with JSON-serializable context."""
-        conn = connectionManager.activeConnection()
-        if not conn:
+        if not self._conn:
             self.onConnectionError.emit("No active connection")
             return {}
-
-        self._ensureBoundConnection(conn)
-        reply = conn.executeCode(code, contextKey="global")
-
-        if reply:
-            if reply.get("ok"):
-                return reply.get("context", {})
-            else:
-                self.onError.emit(reply.get("error", "Error executing code"), reply.get("traceback", ""))
-        else:
-            self.onError.emit("Error executing code: empty response", "")
-        
-        return {}
+        reply = self._conn.executeCode(code, contextKey="global")
+        if reply.get("ok"):
+            return reply.get("context", {})
+        return {}  # error already shown via streaming onError
 
     @executionGate
     def executeModuleCode(self, module: Module, code: str) -> Optional[Module]:
         """Execute a Python snippet on the host server against a module subtree."""
-        conn = connectionManager.activeConnection()
-        if not conn:
+        if not self._conn:
             self.onConnectionError.emit("No active connection")
-            return
-
-        self._ensureBoundConnection(conn)
-        
-        moduleXml = module.toXml()
-        reply = conn.executeModuleCode(moduleXml, ".", code, contextKey="global")
-
-        if reply:
-            if reply.get("ok"):
-                xmlOut = reply["xml"]
-                try:
-                    return Module.fromXml(ET.fromstring(xmlOut))
-                except Exception as e:
-                    self.onError.emit(f"Failed to sync state from server: {e}", "")
-            else:
-                self.onError.emit(reply.get("error", "Error executing module code"), reply.get("traceback", ""))
-        else:
-            self.onError.emit("Error executing module code: empty response", "")
+            return None
+        reply = self._conn.executeModuleCode(module.toXml(), ".", code, contextKey="global")
+        if reply.get("ok"):
+            try:
+                return Module.fromXml(ET.fromstring(reply["xml"]))
+            except Exception as e:
+                self.onError.emit(f"Failed to sync state from server: {e}", "")
+        return None  # error already shown via streaming onError
 
     @executionGate
     def runModule(self, module: Module) -> Optional[Module]:
         """Run module on the host server."""
-        conn = connectionManager.activeConnection()
-        if not conn:
+        if not self._conn:
             self.onConnectionError.emit("No active connection")
-            return
-
-        self._ensureBoundConnection(conn)
-        moduleXml = module.toXml()
-        reply = conn.runModule(moduleXml, ".", contextKey="global") # no global context here
-
-        if reply:
-            if reply.get("ok"):
-                xmlOut = reply.get("xml")
-                if xmlOut:
-                    try:
-                        return Module.fromXml(ET.fromstring(xmlOut))
-                    except Exception as e:
-                        self.onError.emit(f"Failed to sync state from server: {e}", "")
-                else:
-                    self.onError.emit("Failed to sync state from server: empty response", "")
-            else:
-                self.onError.emit(reply.get("error", "Error running module"), reply.get("traceback", ""))
+            return None
+        reply = self._conn.runModule(module.toXml(), ".", contextKey="global")
+        if reply.get("ok"):
+            try:
+                return Module.fromXml(ET.fromstring(reply["xml"]))
+            except Exception as e:
+                self.onError.emit(f"Failed to sync state from server: {e}", "")
+        return None  # error already shown via streaming onError
 
 hostExecutor = HostExecutor()

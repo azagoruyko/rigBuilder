@@ -247,20 +247,19 @@ class HostServer:
 
         Returns the dict produced by taskFunction, or a timeout/error dict.
         """
-        done = threading.Event()
-        result = {}
+        reply_queue = queue.Queue(maxsize=1)
 
         def task():
             try:
-                result["reply"] = taskFunction()
+                reply_queue.put(taskFunction())
             except Exception as e:
-                result["reply"] = {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
-            finally:
-                done.set()
+                reply_queue.put({"ok": False, "error": str(e), "traceback": traceback.format_exc()})
 
         self.executeOnMainThread(task)
-        done.wait(timeout=timeout)
-        return result.get("reply", {"ok": False, "error": "timeout"})
+        try:
+            return reply_queue.get(timeout=timeout)
+        except queue.Empty:
+            return {"ok": False, "error": "timeout"}
 
     # ------------------------------------------------------------------
     # Public override points for host subclasses

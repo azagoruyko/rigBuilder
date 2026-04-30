@@ -122,10 +122,13 @@ class DiscoveryServer(QObject):
                 logger.info(f"Host disconnected (no registration for {elapsed:.1f}s): {entry['name']}")
             self.hostDiscovered.emit()  # Notify UI to refresh
 
-class ConnectionManager:
+class ConnectionManager(QObject):
     """Manages the list of active discovered hosts and the current connection."""
 
-    def __init__(self):
+    connectionChanged = Signal(object)  # emits HostClient on connect, None on disconnect
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self._active = None
         self._activeName = ""
         self._activeHost = ""
@@ -179,15 +182,18 @@ class ConnectionManager:
         self._active = conn
         self._activeName = name
         self._activeHost = entry.get("host", "")
+        self.connectionChanged.emit(conn)
         return conn
 
     def disconnect(self):
         """Disconnect the active server."""
-        if self._active:
-            self._active.stop()
+        conn = self._active
         self._active = None
         self._activeName = ""
         self._activeHost = ""
+        if conn:
+            conn.stop()
+            self.connectionChanged.emit(None)
 
     def activeConnection(self) -> Optional[HostClient]:
         return self._active
