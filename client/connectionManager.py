@@ -132,18 +132,19 @@ class ConnectionManager(QObject):
         self._active = None
         self._activeName = ""
         self._activeHost = ""
-        
+        self._connections: dict[str, HostClient] = {}  # server name -> HostClient
+
         # Load discovery port from hosts.json if it exists
         data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
         self.discoveryPort = data.get("discoveryPort", DEFAULT_DISCOVERY_PORT)
-        
+
         self.discoveryServer = DiscoveryServer(self.discoveryPort)
         self.discoveryServer.start()
 
     def setDiscoveryPort(self, port: int):
         self.discoveryPort = port
         saveJson(HOSTS_FILE, {"discoveryPort": port})
-        
+
         # Restart discovery server
         self.discoveryServer.stop()
         self.discoveryServer = DiscoveryServer(port)
@@ -151,7 +152,6 @@ class ConnectionManager(QObject):
 
     def servers(self) -> dict:
         """Return all currently discovered hosts."""
-        # We only return discovered hosts now
         result = {}
         for entry in self.discoveryServer.discoveredHosts().values():
             result[entry["name"]] = entry
@@ -164,35 +164,68 @@ class ConnectionManager(QObject):
                 return entry
         return None
 
-    def connect(self, name: str, parent=None) -> HostClient:
-        """Connect to the named server. Raises if the server is not reachable."""
-        self.disconnect()
+    def connectHost(self, name: str) -> HostClient:
+        """Connect to a server by name and store it. Does not change the active connection."""
+        if name in self._connections:
+            return self._connections[name]
 
         entry = self.findServer(name)
         if entry is None:
             raise ValueError(f"Server {name!r} not found or not active")
 
-        conn = HostClient("localhost", entry["cmdPort"], entry["eventPort"], parent)
+        conn = HostClient("localhost", entry["cmdPort"], entry["eventPort"])
         reply = conn.ping()
         if not reply.get("ok"):
             err = reply.get("error")
             conn.stop()
             raise ConnectionError(f"Could not connect to {name!r}: {err}")
 
+        self._connections[name] = conn
+        return conn
+
+    def getConnection(self, name: str) -> Optional[HostClient]:
+        """Return an existing connection by server name, or None."""
+        return self._connections.get(name)
+
+    def getOrConnect(self, name: str) -> HostClient:
+        """Return existing connection or establish a new one."""
+        return self._connections.get(name) or self.connectHost(name)
+
+    def allConnections(self) -> dict[str, HostClient]:
+        """Return all currently open connections."""
+        return dict(self._connections)
+
+    def connect(self, name: str, parent=None) -> HostClient:
+        """Connect to the named server and set it as the active connection."""
+        self.disconnect()
+
+        conn = self.connectHost(name)
         self._active = conn
         self._activeName = name
-        self._activeHost = entry.get("host", "")
+        entry = self.findServer(name)
+        self._activeHost = entry.get("host", "") if entry else ""
         self.connectionChanged.emit(conn)
         return conn
 
-    def disconnect(self):
-        """Disconnect the active server."""
-        conn = self._active
-        self._active = None
-        self._activeName = ""
-        self._activeHost = ""
-        if conn:
-            conn.stop()
+    def disconnect(self, name: str = None):
+        """Disconnect a named server, or the active server if name is None."""
+        if name is not None:
+            conn = self._connections.pop(name, None)
+            if conn:
+                conn.stop()
+            if name == self._activeName:
+                self._active = None
+                self._activeName = ""
+                self._activeHost = ""
+                self.connectionChanged.emit(None)
+        else:
+            # Disconnect active and stop all connections
+            for conn in self._connections.values():
+                conn.stop()
+            self._connections.clear()
+            self._active = None
+            self._activeName = ""
+            self._activeHost = ""
             self.connectionChanged.emit(None)
 
     def activeConnection(self) -> Optional[HostClient]:
@@ -203,7 +236,7 @@ class ConnectionManager(QObject):
 
     def activeHost(self) -> str:
         return self._activeHost
-        
+
     def isActive(self) -> bool:
         """Return True if there is an active host connection."""
         return self._active is not None

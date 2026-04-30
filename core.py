@@ -6,7 +6,15 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson
+from .utils import (
+    copyJson,
+    clamp,
+    smartConversion,
+    fromSmartConversion,
+    saveJson,
+    loadJson,
+    detectHostByCode
+)
 from .widgets import core as widgets_core
 
 if TYPE_CHECKING:
@@ -504,6 +512,7 @@ class Module(object):
         self._attributes = attributes or []
 
         self._muted = muted
+        self._host = ""  # host type: "maya", "blender", etc. Empty = auto-detect
 
         self._uid = "" # unique ids are assigned while saving
         self.attr = AttrsWrapper(self) # attributes accessor
@@ -525,6 +534,7 @@ class Module(object):
         module._parent = None
 
         module._muted = self._muted
+        module._host = self._host
         return module
 
     def name(self) -> str:
@@ -554,6 +564,18 @@ class Module(object):
     def unmute(self):
         """Unmute module to allow execution."""
         self._muted = False
+
+    def host(self) -> str:
+        """Get explicit host type for this module ('maya', 'blender', etc.), or '' for auto-detect."""
+        return self._host
+
+    def setHost(self, host: str):
+        """Set explicit host type. Use '' to revert to auto-detect from imports."""
+        self._host = host
+
+    def effectiveHost(self) -> str:
+        """Return host type: explicit _host or auto-detected from run code imports."""
+        return self._host or detectHostByCode(self._runCode)
 
     def runCode(self) -> str:
         """Get module Python execution code."""
@@ -668,7 +690,8 @@ class Module(object):
         """Convert module to XML string representation."""
         attrs = [("name", self._name),
                  ("muted", int(self._muted)),
-                 ("uid", self._uid)]
+                 ("uid", self._uid),
+                 ("host", self._host)]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
         template = ["<module {}>".format(attrsStr)]
@@ -704,6 +727,7 @@ class Module(object):
         module._name = root.attrib.get("name", "")
         module._uid = root.attrib.get("uid", "")
         module._muted = int(root.attrib.get("muted", 0))
+        module._host = root.attrib.get("host", "")
         module._runCode = root.findtext("run") or ""
         
         doc_el = root.find("doc")
@@ -780,6 +804,7 @@ class Module(object):
         self._runCode = other._runCode
         self._doc = other._doc
         self._muted = other._muted
+        self._host = other._host
 
         # Sync attributes in-place surgically
         oldAttrs = {a._name: a for a in self._attributes}

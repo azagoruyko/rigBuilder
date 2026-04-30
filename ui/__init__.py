@@ -18,6 +18,7 @@ from .. import workspace
 from ..ai.engine import IS_OLLAMA_AVAILABLE
 from ..client.connectionManager import connectionManager
 from ..client.hostExecutor import hostExecutor
+from ..client.multiHostExecutor import multiHostExecutor, PipelineError
 from ..core import *
 from ..logger import logger, logHandler
 from ..qt import *
@@ -632,7 +633,7 @@ class ModuleModel(QAbstractItemModel):
                     icon = "📦 "
                 elif self.isInsideReferenceModule(module):
                     icon = "🔒 "
-                
+
                 name = module.name()
                 refModule = self.moduleTracker.getModule(module.uid())
                 if refModule and module.isSyncRequired(refModule):
@@ -645,6 +646,9 @@ class ModuleModel(QAbstractItemModel):
 
             elif column == 2:
                 return module.uid()[:8]
+
+            elif column == 3:
+                return module.host() or module.effectiveHost() or ""
 
         elif role == Qt.EditRole:
             if column == 0:
@@ -686,11 +690,11 @@ class ModuleModel(QAbstractItemModel):
 
         elif role == Qt.ItemDataRole.DecorationRole:
             if index.column() == 3:
-                host = detectHostByCode(module.runCode())
+                host = module.effectiveHost()
                 if host:
                     iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{host}.png")
                     return QIcon(iconPath)
-                
+
             return None
 
     def setData(self, index, value, role=Qt.EditRole):
@@ -1337,6 +1341,13 @@ class ModuleTreeWidget(QTreeView):
                 module.mute()
         
         self.moduleModel.layoutChanged.emit() # Refresh all to redraw descendants
+
+    def setModuleHost(self, host: str):
+        for idx in self.selectionModel().selectedRows():
+            module = self.moduleModel.getModule(idx)
+            if module:
+                module.setHost(host)
+        self.moduleModel.layoutChanged.emit()
 
     def duplicateModule(self):
         # Sort indices by row descending to avoid index shifting issues during insertion
@@ -2319,11 +2330,12 @@ class RigBuilderWindow(QFrame):
 
         # --- Host picker row ---
         self.hostCombo = QComboBox()
-        self.hostCombo.setPlaceholderText("No host")
+        self.hostCombo.setPlaceholderText("No hosts - right-click to add")
         self.hostCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.hostCombo.currentIndexChanged.connect(self._onHostComboChanged)
+        self.hostCombo.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.hostCombo.customContextMenuRequested.connect(self._onHostComboContextMenu)
         connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
-        self._refreshHostCombo()
 
         self.hostManageBtn = QPushButton("⚙️")
         self.hostManageBtn.setToolTip("Manage hosts")
@@ -2499,8 +2511,7 @@ class RigBuilderWindow(QFrame):
             ]
         }
         
-        self.loadAppSettings()        
-        connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
+        self.loadAppSettings()
 
     def _onTreeContextMenu(self, pos):
         self.menu().exec(self.treeWidget.mapToGlobal(pos))
@@ -2510,7 +2521,7 @@ class RigBuilderWindow(QFrame):
         if not module:
             return
 
-        newModule = hostExecutor.executeModuleCode(module, code)
+        newModule = multiHostExecutor.executeModuleCode(module, code)
         if newModule is None:
             return
 
@@ -2554,7 +2565,7 @@ class RigBuilderWindow(QFrame):
             
         logger.info("\n".join(log))
 
-        newModule = hostExecutor.executeModuleCode(module, code)
+        newModule = multiHostExecutor.executeModuleCode(module, code)
         if newModule is None:
             return
 
@@ -2601,48 +2612,24 @@ class RigBuilderWindow(QFrame):
         logger.info(f"Attribute '{name}' exposed.")
 
     def _refreshHostCombo(self):
-        """Update host selection dropdown based on discovered servers."""
-        prevHost = self.hostCombo.currentData() or settings.host
-
-        self.hostCombo.blockSignals(True)
-        self.hostCombo.clear()
-
-        # Get discovered hosts
+        """Remove combo items whose host is no longer discovered."""
         servers = connectionManager.servers()
-        entries = sorted(servers.items(), key=lambda x: x[0].lower())
-        
-        for name, entry in entries:
-            # Use icon for discovered hosts
-            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{entry['host']}.png")
-            if os.path.exists(iconPath):
-                self.hostCombo.addItem(QIcon(iconPath), name, userData=name)
+        i = 0
+        while i < self.hostCombo.count():
+            name = self.hostCombo.itemData(i)
+            if name not in servers:
+                self.hostCombo.blockSignals(True)
+                self.hostCombo.removeItem(i)
+                self.hostCombo.blockSignals(False)
+                if name == connectionManager.activeServerName():
+                    connectionManager.disconnect()
+                    self.hostCombo.setStyleSheet("")
             else:
-                label = "📡 {} ({})".format(name, entry["host"])
-                self.hostCombo.addItem(label, userData=name)
-
-        if not servers:
-            self.hostCombo.setPlaceholderText("No hosts discovered")
-        
-        # Try to restore selection
-        idx = self.hostCombo.findData(prevHost)
-        if idx >= 0:
-            self.hostCombo.setCurrentIndex(idx)
-        else:
-            # If nothing selected, disconnect
-            connectionManager.disconnect()
-            self.hostCombo.setStyleSheet("")
-
-        self.hostCombo.blockSignals(False)
-
-        # If we have a selection but no active connection, try to connect
-        if self.hostCombo.currentIndex() >= 0 and not connectionManager.isActive():
-            self._onHostComboChanged(self.hostCombo.currentIndex())
+                i += 1
 
     def _onHostComboChanged(self, index):
-        """Automatically connect to the selected host."""
+        """Connect to the selected host."""
         name = self.hostCombo.currentData()
-        settings.host = name
-        
         if not name:
             connectionManager.disconnect()
             self.hostCombo.setStyleSheet("")
@@ -2651,18 +2638,65 @@ class RigBuilderWindow(QFrame):
         try:
             conn = connectionManager.connect(name, parent=self)
             conn.onConnectionLost.connect(self._onHostConnectionLost)
-            # Subtle visual indicator of active connection
             self.hostCombo.setStyleSheet("color: #6ea7ff; font-weight: bold;")
         except Exception as e:
             logger.error(f"Failed to connect to {name}: {e}")
             self.hostCombo.setStyleSheet("color: #ff6b6b;")
             connectionManager.disconnect()
 
+    def _onHostComboContextMenu(self, pos):
+        """Right-click on hostCombo: add discovered hosts or remove entries."""
+        servers = connectionManager.servers()
+        inCombo = {self.hostCombo.itemData(i) for i in range(self.hostCombo.count())}
+
+        menu = QMenu(self)
+
+        removeAction = menu.addAction("Remove", self._removeCurrentHost)
+        removeAction.setEnabled(self.hostCombo.count() > 0)
+
+        removeAllAction = menu.addAction("Remove all", self._clearHosts)
+        removeAllAction.setEnabled(self.hostCombo.count() > 0)
+
+        menu.addSeparator()
+
+        for name, entry in sorted(servers.items()):
+            if name in inCombo:
+                continue
+            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{entry['host']}.png")
+            icon = QIcon(iconPath) if os.path.exists(iconPath) else QIcon()
+            menu.addAction(icon, name, lambda n=name: self._addHostToCombo(n))
+
+        menu.exec(self.hostCombo.mapToGlobal(pos))
+
+    def _addHostToCombo(self, name: str):
+        if self.hostCombo.findData(name) >= 0:
+            return
+        servers = connectionManager.servers()
+        entry = servers.get(name, {})
+        iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{entry.get('host', '')}.png")
+        icon = QIcon(iconPath) if os.path.exists(iconPath) else QIcon()
+        self.hostCombo.addItem(icon, name, userData=name)
+        self.hostCombo.setCurrentIndex(self.hostCombo.count() - 1)
+
+    def _removeCurrentHost(self):
+        idx = self.hostCombo.currentIndex()
+        if idx < 0:
+            return
+        name = self.hostCombo.itemData(idx)
+        self.hostCombo.removeItem(idx)
+        if name == connectionManager.activeServerName():
+            connectionManager.disconnect()
+            self.hostCombo.setStyleSheet("")
+
+    def _clearHosts(self):
+        self.hostCombo.clear()
+        connectionManager.disconnect()
+        self.hostCombo.setStyleSheet("")
+
     def _onHostConnectionLost(self, reason: str):
         connectionManager.disconnect()
         self.hostCombo.setStyleSheet("")
         logger.warning(f"Connection to host lost: {reason}")
-        # Refresh to show dead hosts are gone (heartbeat should handle this anyway)
         self._refreshHostCombo()
 
     def _onSyncRequested(self):
@@ -2820,6 +2854,14 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
 
         menu.addSeparator()
+        hostMenu = menu.addMenu("Set Host")
+        hostMenu.addAction("Auto-detect", lambda: self.treeWidget.setModuleHost(""))
+        hostMenu.addSeparator()
+        for h in AVAILABLE_HOSTS:
+            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{h}.png")
+            icon = QIcon(iconPath) if os.path.exists(iconPath) else QIcon()
+            hostMenu.addAction(icon, h.capitalize(), lambda host=h: self.treeWidget.setModuleHost(host))
+
         menu.addAction("Sync with file", self.treeWidget.syncSelectedModules)
         menu.addAction("Embed", self.treeWidget.embedModule)
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
@@ -3038,11 +3080,6 @@ class RigBuilderWindow(QFrame):
         self.progressBarWidget.endProgress()
         self.runBtn.setEnabled(True)  
 
-    def onRunCallback(self, path: str):
-        logger.info(f"{path} is running...")
-        self.progressBarWidget.stepProgress(self._progressCounter, path)
-        self._progressCounter += 1
-
     def _checkHost(self, module: Module) -> bool:
         """Check if the module is compatible with the current host."""
         currentHost = connectionManager.activeHost()
@@ -3066,50 +3103,49 @@ class RigBuilderWindow(QFrame):
             
         return True
 
-    def runModule(self):
-        """Run module on the host server."""
-        def getChildrenCount(m: Module) -> int:
-            count = 0
-            for ch in m.children():
-                count += 1
-                count += getChildrenCount(ch)
-            return count
+    def _collectNeededHosts(self, module: Module) -> set:
+        """Collect distinct effective host types across the non-muted subtree."""
+        hosts = set()
+        h = module.effectiveHost()
+        if h:
+            hosts.add(h)
+        for ch in module.children():
+            if not ch.muted():
+                hosts.update(self._collectNeededHosts(ch))
+        return hosts
 
+    def runModule(self):
+        """Run module using MultiHostExecutor."""
         currentModule = self.treeWidget.currentModule()
         if not currentModule:
-            return
-
-        if not connectionManager.activeConnection():
-            QMessageBox.warning(self, "Rig Builder", "Not connected to host server")
-            return
-
-        if not self._checkHost(currentModule):
             return
 
         self.setFocus()
         self.showLog()
         self.runBtn.setEnabled(False)
-
-        count = getChildrenCount(currentModule)
         self.progressBarWidget.initialize()
-        self.progressBarWidget.beginProgress(currentModule.path(), count + 1)
         self._progressCounter = 0
 
+        pipelineHosts = [self.hostCombo.itemData(i) for i in range(self.hostCombo.count())]
+        multiHostExecutor.setPipelineHosts([h for h in pipelineHosts if h])
+
+        hosts = sorted(self._collectNeededHosts(currentModule))
         ts = time.strftime("%H:%M:%S")
-        logger.info(f"Running on {connectionManager.activeServerName()} at {ts}")
+        logger.info(f"Running ({', '.join(hosts) or 'auto'}) at {ts}")
 
-        newModule = hostExecutor.runModule(currentModule)
+        try:
+            newModule = multiHostExecutor.run(currentModule)
+            if newModule is not None:
+                idx = self.treeWidget.moduleModel.indexForModule(currentModule)
+                if idx.isValid():
+                    self.treeWidget.replaceModule(idx, newModule)
+                    self.attributesTabWidget.updateTabs(newModule)
+                else:
+                    QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
+        except PipelineError as e:
+            logger.error(str(e))
 
-        if newModule is not None:
-            idx = self.treeWidget.moduleModel.indexForModule(currentModule)
-            if idx.isValid():
-                self.treeWidget.replaceModule(idx, newModule)
-                self.attributesTabWidget.updateTabs(newModule)
-            else:            
-                QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
-        
         self.cleanupRun()
-
         logger.info("Running done.\n")
 
     def showModuleInHistory(self):
@@ -3221,7 +3257,13 @@ logHandler.setTarget(mainWindow.logWidget)
 hostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
 hostExecutor.onPrint.connect(mainWindow.onPrintCallback)
 hostExecutor.onError.connect(mainWindow.onErrorCallback)
-hostExecutor.onRunCallback.connect(mainWindow.onRunCallback)
 hostExecutor.beginProgress.connect(mainWindow.progressBarWidget.beginProgress)
 hostExecutor.stepProgress.connect(mainWindow.progressBarWidget.stepProgress)
 hostExecutor.endProgress.connect(mainWindow.progressBarWidget.endProgress)
+
+multiHostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
+multiHostExecutor.onPrint.connect(mainWindow.onPrintCallback)
+multiHostExecutor.onError.connect(mainWindow.onErrorCallback)
+multiHostExecutor.beginProgress.connect(mainWindow.progressBarWidget.beginProgress)
+multiHostExecutor.stepProgress.connect(mainWindow.progressBarWidget.stepProgress)
+multiHostExecutor.endProgress.connect(mainWindow.progressBarWidget.endProgress)

@@ -24,7 +24,6 @@ class HostExecutor(QObject):
     onConnectionError = Signal(str)
     onPrint = Signal(str)
     onError = Signal(str, str)
-    onRunCallback = Signal(str)
     beginProgress = Signal(str, int)
     stepProgress = Signal(int, str)
     endProgress = Signal()
@@ -39,7 +38,6 @@ class HostExecutor(QObject):
         if self._conn:
             self._conn.onPrint.disconnect(self.onPrint)
             self._conn.onError.disconnect(self.onError)
-            self._conn.onRunCallback.disconnect(self.onRunCallback)
             self._conn.beginProgress.disconnect(self.beginProgress)
             self._conn.stepProgress.disconnect(self.stepProgress)
             self._conn.endProgress.disconnect(self.endProgress)
@@ -53,7 +51,6 @@ class HostExecutor(QObject):
         if conn:
             conn.onPrint.connect(self.onPrint)
             conn.onError.connect(self.onError)
-            conn.onRunCallback.connect(self.onRunCallback)
             conn.beginProgress.connect(self.beginProgress)
             conn.stepProgress.connect(self.stepProgress)
             conn.endProgress.connect(self.endProgress)

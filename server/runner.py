@@ -90,9 +90,7 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
 def runModule(moduleXml: str, modulePath: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Deserialize the sent payload module XML, find module by modulePath, run it, and return updated XML."""
     def _action(module, extraContext):
-        def runCallback(m: Module):
-            emitFn({"event": "runCallback", "id": runId, "path": m.path()})
-        return module.run(callback=runCallback, context=extraContext)
+        return module.run(context=extraContext)
 
     return _runWithModuleXml(moduleXml, modulePath, emitFn, runId, contextKey, _action)
 
@@ -106,10 +104,52 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
     variables.
     """
     def _action(module, extraContext):
+        for attr in module._attributes:
+            attr.pull()
         return module.executeCode(code, extraContext, executor=executeWithResult)
 
     return _runWithModuleXml(moduleXml, modulePath, emitFn, runId, contextKey, _action)
 
+
+
+def runModuleList(moduleXml: str, modulePaths: list, emitFn, runId: str, contextKey: str = "") -> dict:
+    """Execute a list of modules sequentially on the parsed tree; return updated XML.
+
+    Each module's attributes are pulled before its code runs so that
+    cross-module connections resolve correctly.
+    """
+    overrideAPI(emitFn, runId)
+
+    try:
+        root = Module.fromXml(ET.fromstring(moduleXml))
+    except Exception as e:
+        return _emitError(emitFn, runId, str(e), getErrorStack())
+
+    extraContext = _interactiveContexts.get(contextKey) or {}
+    capture = _StreamCapture(emitFn, runId)
+
+    with captureOutput(capture):
+        for path in modulePaths:
+            module = root.findModuleByPath(path)
+            if not module:
+                return _emitError(emitFn, runId, f"Module not found at path: {path}")
+            try:
+                print(f"{path} is running...")
+                for attr in module._attributes:
+                    attr.pull()
+                extraContext = module.executeCode(module._runCode, extraContext)
+            except Exception as e:
+                return _emitError(emitFn, runId, str(e), getErrorStack())
+
+    if contextKey:
+        _interactiveContexts[contextKey] = extraContext
+
+    try:
+        xmlOut = root.toXml()
+    except Exception as e:
+        return _emitError(emitFn, runId, "Failed to serialize root module to XML", getErrorStack())
+
+    return {"ok": True, "xml": xmlOut, "id": runId}
 
 
 def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:

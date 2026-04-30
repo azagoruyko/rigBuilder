@@ -27,7 +27,6 @@ class HostClient(QObject):
     """
 
     onAnyEvent = Signal(dict)
-    onRunCallback = Signal(str)
     onPrint = Signal(str)
     onError = Signal(str, str)
     onConnectionLost = Signal(str)
@@ -103,6 +102,10 @@ class HostClient(QObject):
     def runModule(self, moduleXml: str, modulePath: str, contextKey: str = "") -> dict:
         """Run module XML on the host; blocks until the server finishes."""
         return self._send({"cmd": "runModule", "xml": moduleXml, "path": modulePath, "contextKey": contextKey})
+
+    def runModuleList(self, moduleXml: str, modulePaths: list, contextKey: str = "") -> dict:
+        """Execute a list of modules sequentially on the host; blocks until the server finishes."""
+        return self._send({"cmd": "runModuleList", "xml": moduleXml, "paths": modulePaths, "contextKey": contextKey})
 
     def executeModuleCode(self, moduleXml: str, modulePath: str, code: str, contextKey: str = "") -> dict:
         """Execute a Python snippet against a module in the moduleXml tree on the host."""
@@ -207,10 +210,7 @@ class HostClient(QObject):
         event = ev.get("event")
         self.onAnyEvent.emit(ev)
 
-        if event == "runCallback":
-            self.onRunCallback.emit(ev.get("path", ""))
-
-        elif event == "print":
+        if event == "print":
             self.onPrint.emit(ev.get("text", ""))
 
         elif event == "error":

@@ -9,7 +9,7 @@ from typing import Callable
 
 import zmq
 
-from rigBuilder.server.runner import runModule, executeModuleCode, executeCode
+from rigBuilder.server.runner import runModule, runModuleList, executeModuleCode, executeCode
 
 AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"]) # names MUST match the host files in this folder!
 
@@ -165,6 +165,9 @@ class HostServer:
             elif cmd == "runModule":
                 reply = self.runModule(msg)
 
+            elif cmd == "runModuleList":
+                reply = self.runModuleList(msg)
+
             elif cmd == "executeModuleCode":
                 reply = self.executeModuleCode(msg)
 
@@ -273,6 +276,13 @@ class HostServer:
         """Execute a module XML payload; return updated XML."""
         return self._scheduleHostExecution(
             lambda: runModule(msg["xml"], msg.get("path", "."), self.emit, msg["id"], msg.get("contextKey", "")),
+            timeout=MODULE_EXECUTION_TIMEOUT,
+        )
+
+    def runModuleList(self, msg: dict) -> dict:
+        """Execute a list of modules sequentially on the parsed tree; return updated XML."""
+        return self._scheduleHostExecution(
+            lambda: runModuleList(msg["xml"], msg["paths"], self.emit, msg["id"], msg.get("contextKey", "")),
             timeout=MODULE_EXECUTION_TIMEOUT,
         )
 
