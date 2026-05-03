@@ -278,7 +278,6 @@ class WorkspaceWidget(QWidget):
 
         self.autoSaveTimer = QTimer(self)
         self.autoSaveTimer.timeout.connect(self._onAutoSaveTimer)
-        self._updateAutoSaveInterval()
 
         self.refreshWorkspaces()        
 
@@ -339,38 +338,14 @@ class WorkspaceWidget(QWidget):
         self.mainWindow.moduleBrowser.refreshModules()
 
     def switchWorkspace(self, name: str):
-        # Check for recovery
-        hasMain, hasAutosave = Workspace.getLoadInfo(name)
-        recovery = False
-        if hasAutosave:
-            res = QMessageBox.question(
-                self, 
-                "Rig Builder", 
-                f"A recovery file was found for '{name}'.\n\nDo you want to restore it?\n(Selecting 'No' will delete the recovery file)",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
-            )
-            
-            if res == QMessageBox.Cancel:
-                # Revert combo to previous
-                self.refreshWorkspaces()
-                return
+        ws = Workspace.load(name)
+        workspace.currentWorkspace = ws
+        ws.activate()
 
-            if res == QMessageBox.Yes:
-                recovery = True
-            else:
-                # Delete autosave by loading normally and saving
-                ws = Workspace.load(name)
-                if ws:
-                    ws.save() # This clears the sidecar
-
-        # Load and activate
-        ws = Workspace.load(name, recovery=recovery)
-        if ws:
-            workspace.currentWorkspace = ws
-            ws.activate()
-            self._refreshModuleBrowserSource()
-            self.fromWorkspace(ws)
-            self.workspaceChanged.emit(ws)
+        self._updateAutoSaveInterval()
+        self._refreshModuleBrowserSource()
+        self.fromWorkspace(ws)
+        self.workspaceChanged.emit(ws)
 
     def _onComboChanged(self, index: int):
         if self._blockSignals:
@@ -391,7 +366,7 @@ class WorkspaceWidget(QWidget):
 
     def _onAutoSaveTimer(self):
         """Triggered by the timer. Saves the current workspace state to a sidecar file."""
-        workspace.currentWorkspace.autosave()
+        workspace.currentWorkspace.save()
         
         timestamp = datetime.now().strftime("%H:%M")
         print(f"Workspace '{workspace.currentWorkspace.name}' autosaved at {timestamp}")

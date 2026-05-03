@@ -41,12 +41,6 @@ class Workspace:
     def folderPath(self) -> str:
         return os.path.join(RIG_BUILDER_WORKSPACES_PATH, replaceSpecialChars(self.name))
 
-    def workspaceFilePath(self) -> str:
-        return os.path.join(self.folderPath(), "workspace.rbws")
-
-    def autosaveFilePath(self) -> str:
-        return os.path.join(self.folderPath(), "workspace.autosave.rbws")
-
     def toXml(self) -> str:
         lines = [
             '<workspace>',
@@ -67,36 +61,18 @@ class Workspace:
     def save(self) -> None:
         """Save workspace state."""
         os.makedirs(self.folderPath(), exist_ok=True)
-
-        with open(self.workspaceFilePath(), "w", encoding="utf-8") as f:
+        filePath = os.path.join(self.folderPath(), "workspace.rbws")
+        with open(filePath, "w", encoding="utf-8") as f:
             f.write(self.toXml())
         
         self.settings.save(os.path.join(self.folderPath(), "settings.json"))
 
-        # Cleanup autosave on manual save
-        autosavePath = self.autosaveFilePath()
-        if os.path.exists(autosavePath):
-            try:
-                os.remove(autosavePath)
-            except Exception as e:
-                print(f"Failed to remove autosave file: {e}")
-
-    def autosave(self) -> None:
-        """Save a sidecar autosave file."""
-        os.makedirs(self.folderPath(), exist_ok=True)
-        with open(self.autosaveFilePath(), "w", encoding="utf-8") as f:
-            f.write(self.toXml())
-
     @classmethod
-    def load(cls, name: str, recovery: bool = False) -> Optional[Workspace]:
-        """Load workspace data. If recovery is True, attempts to load from .autosave file."""
+    def load(cls, name: str) -> Optional[Workspace]:
+        """Load workspace data."""
         folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, replaceSpecialChars(name))
-        
-        filename = "workspace.autosave.rbws" if recovery else "workspace.rbws"
-        workspaceFilePath = os.path.join(folderPath, filename)
-        
-        if not os.path.exists(workspaceFilePath):
-            return None
+
+        workspaceFilePath = os.path.join(folderPath, "workspace.rbws")
 
         try:
             tree = ET.parse(workspaceFilePath)
@@ -134,25 +110,6 @@ class Workspace:
             workspace.settings.modulesPath = os.path.join(folderPath, "modules")
 
         return workspace
-
-    @classmethod
-    def getLoadInfo(cls, name: str) -> tuple[bool, bool]:
-        """Check if workspace files exist. Returns (mainExists, autosaveExists).
-        Autosave is only reported as existing if it is strictly newer than the main file.
-        """
-        folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, replaceSpecialChars(name))
-        mainPath = os.path.join(folderPath, "workspace.rbws")
-        autoPath = os.path.join(folderPath, "workspace.autosave.rbws")
-        
-        main = os.path.exists(mainPath)
-        auto = os.path.exists(autoPath)
-        
-        if auto and main:
-            # Only report autosave if it's newer than the main file
-            if os.path.getmtime(autoPath) <= os.path.getmtime(mainPath):
-                auto = False
-
-        return main, auto
 
     def activate(self) -> bool:
         """Core activation: populate runtime Settings from this workspace."""        
