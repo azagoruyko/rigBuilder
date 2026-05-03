@@ -2,7 +2,6 @@
 
 import io
 import traceback
-import xml.etree.ElementTree as ET
 
 from ..core import Module, APIRegistry
 from ..utils import captureOutput, jsonifyContext, getErrorStack, executeWithResult
@@ -59,7 +58,7 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
     overrideAPI(emitFn, runId)
 
     try:
-        root = Module.fromXml(ET.fromstring(moduleXml))
+        root = Module.fromXml(moduleXml)
     except Exception as e:
         return _emitError(emitFn, runId, str(e), getErrorStack())
 

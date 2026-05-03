@@ -2,7 +2,6 @@ from ..client.connectionManager import connectionManager
 from typing import Optional
 from ..qt import QObject, Signal, QApplication, Qt
 from ..core import Module
-from xml.etree import ElementTree as ET
 import functools
 
 def executionGate(func):
@@ -84,7 +83,7 @@ class HostExecutor(QObject):
         reply = self._conn.executeModuleCode(module.toXml(), ".", code, contextKey="global")
         if reply.get("ok"):
             try:
-                return Module.fromXml(ET.fromstring(reply["xml"]))
+                return Module.fromXml(reply["xml"])
             except Exception as e:
                 self.onError.emit(f"Failed to sync state from server: {e}", "")
         return None  # error already shown via streaming onError
@@ -98,7 +97,7 @@ class HostExecutor(QObject):
         reply = self._conn.runModule(module.toXml(), ".", contextKey="global")
         if reply.get("ok"):
             try:
-                return Module.fromXml(ET.fromstring(reply["xml"]))
+                return Module.fromXml(reply["xml"])
             except Exception as e:
                 self.onError.emit(f"Failed to sync state from server: {e}", "")
         return None  # error already shown via streaming onError

@@ -416,8 +416,7 @@ class TestAttributeXML:
         assert "_expression" in xmlStr
 
         # From XML
-        root = ET.fromstring(xmlStr)
-        restored = Attribute.fromXml(root)
+        restored = Attribute.fromXml(xmlStr)
         assert restored.name() == simpleAttribute.name()
         assert restored.expression() == simpleAttribute.expression()
         assert restored.localData() == simpleAttribute.localData()
@@ -435,8 +434,7 @@ class TestAttributeXML:
     def testLegacyLineEditConversion(self):
         """Test that legacy lineEdit template is converted to lineEditAndButton."""
         xml = '<attr name="legacy" template="lineEdit"><![CDATA[{"default": "value", "value": "text"}]]></attr>'
-        root = ET.fromstring(xml)
-        attr = Attribute.fromXml(root)
+        attr = Attribute.fromXml(xml)
         
         assert attr.template() == "lineEditAndButton"
         assert attr.localData()["buttonEnabled"] is False
@@ -448,8 +446,7 @@ class TestAttributeXML:
             "widgets": [{}, {}]
         }
         xml = '<attr name="comp" template="compound"><![CDATA[{}]]></attr>'.format(json.dumps(data))
-        root = ET.fromstring(xml)
-        attr = Attribute.fromXml(root)
+        attr = Attribute.fromXml(xml)
         
         newData = attr.localData()
         assert newData["templates"][1] == "lineEditAndButton"
@@ -952,8 +949,7 @@ class TestModuleXML:
         assert '<children>' in xmlStr
 
         # From XML
-        root = ET.fromstring(xmlStr)
-        restored = Module.fromXml(root)
+        restored = Module.fromXml(xmlStr)
         assert restored.name() == moduleHierarchy.name()
         assert len(restored.children()) == len(moduleHierarchy.children())
         assert restored.findChild("child1") is not None

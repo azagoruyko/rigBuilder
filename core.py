@@ -392,8 +392,10 @@ class Attribute(object):
         return header.format(attribs=attrsStr, data=json.dumps(data))
     
     @staticmethod
-    def fromXml(root: Element) -> Attribute:
-        """Create attribute from XML element."""
+    def fromXml(xml: Union[str, Element]) -> Attribute:
+        """Create attribute from XML string or element."""
+        root = ET.fromstring(xml) if isinstance(xml, str) else xml
+        
         attr = Attribute()
         attr._name = root.attrib.get("name", "")
         attr._template = root.attrib.get("template", "")
@@ -698,8 +700,9 @@ class Module(object):
         return "\n".join(template)
 
     @staticmethod
-    def fromXml(root: Element) -> Module:
-        """Create module from XML element. Tolerates missing optional elements."""
+    def fromXml(xml: Union[str, Element]) -> Module:
+        """Create module from XML string or element. Tolerates missing optional elements."""
+        root = ET.fromstring(xml) if isinstance(xml, str) else xml
         module = Module()
         module._name = root.attrib.get("name", "")
         module._uid = root.attrib.get("uid", "")
@@ -858,7 +861,7 @@ class Module(object):
     def loadFromFile(fileName: str) -> Module:
         """Load module from XML file."""
         with open(fileName, "r", encoding="utf-8") as f:
-            m = Module.fromXml(ET.parse(f).getroot())
+            m = Module.fromXml(f.read())
         m._muted = False
         return m
 

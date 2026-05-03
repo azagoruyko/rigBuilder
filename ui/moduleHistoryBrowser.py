@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import subprocess
 from typing import Any, List, Optional, Tuple
-import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 from ..core import Module, UidManager
@@ -287,8 +286,7 @@ class ModuleHistoryBrowser(QWidget):
             err, content = repo("show {}:{}".format(rev, fileName))
             if not err and content:
                 try:
-                    root = ET.fromstring(content.strip())
-                    module = Module.fromXml(root)
+                    module = Module.fromXml(content.strip())
                     self.moduleAdditionRequested.emit(module)
 
                 except Exception:
