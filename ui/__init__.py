@@ -2273,7 +2273,7 @@ class HostManagerDialog(QDialog):
     def _refreshCode(self):
         host = self.hostCombo.currentText().lower()
         if host == "standalone":
-            self.codeEdit.setPlainText("# Standalone server is normally started from the UI")
+            self.codeEdit.setPlainText("# Standalone server starts automatically with Rig Builder")
             return
 
         HostClass = host.capitalize() + "Server"
@@ -2593,7 +2593,7 @@ class RigBuilderWindow(QFrame):
 
     def _refreshHostCombo(self):
         """Update host selection dropdown based on discovered servers."""
-        prevHost = self.hostCombo.currentData()
+        prevHost = self.hostCombo.currentData() or "Standalone"
 
         self.hostCombo.blockSignals(True)
         self.hostCombo.clear()
