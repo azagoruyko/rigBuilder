@@ -15,7 +15,6 @@ class Settings:
     """Unified application settings with support for workspace overrides."""
 
     def __init__(self):
-        self.host = "Default"
         self.vscode = "code"
         self.trackHistory = True
         self.ollamaModel = "gpt-oss:20b-cloud"

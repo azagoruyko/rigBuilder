@@ -2593,7 +2593,7 @@ class RigBuilderWindow(QFrame):
 
     def _refreshHostCombo(self):
         """Update host selection dropdown based on discovered servers."""
-        prevHost = self.hostCombo.currentData() or settings.host
+        prevHost = self.hostCombo.currentData()
 
         self.hostCombo.blockSignals(True)
         self.hostCombo.clear()
@@ -2632,7 +2632,6 @@ class RigBuilderWindow(QFrame):
     def _onHostComboChanged(self, index):
         """Automatically connect to the selected host."""
         name = self.hostCombo.currentData()
-        settings.host = name
         
         if not name:
             connectionManager.disconnect()

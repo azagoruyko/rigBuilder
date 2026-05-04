@@ -108,9 +108,6 @@ class WorkspaceManagerDialog(QDialog):
         self.autoSaveIntervalSpin.valueChanged.connect(partial(self._onSettingChanged, "autoSaveInterval"))
         self.settingsLayout.addRow("Auto-save Interval:", self.autoSaveIntervalSpin)
 
-        self.hostCombo = QComboBox()
-        self.hostCombo.currentIndexChanged.connect(partial(self._onComboChanged, "host", self.hostCombo))
-        self.settingsLayout.addRow("Host:", self.hostCombo)
 
         # 3. Main Layout
         self.splitter = QSplitter(Qt.Horizontal)
@@ -148,16 +145,6 @@ class WorkspaceManagerDialog(QDialog):
         self.ollamaEmbeddingModelEdit.setText(ws.settings.ollamaEmbeddingModel)
         self.autoSaveIntervalSpin.setValue(ws.settings.autoSaveInterval)
 
-        # Populate and set Default Host
-        self.hostCombo.clear()
-        entries = sorted(connectionManager.servers().items(), key=lambda x: x[0].lower())
-        for name, entry in entries:
-            label = "🖥️ {} ({})".format(name, entry["host"])
-            self.hostCombo.addItem(label, userData=name)
-        
-        idx = self.hostCombo.findData(ws.settings.host)
-        if idx >= 0:
-            self.hostCombo.setCurrentIndex(idx)
 
         self._blockSettingsSignals = False
 
