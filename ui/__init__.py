@@ -2366,7 +2366,7 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryBrowser.moduleAdditionRequested.connect(self._onModuleAdditionRequested)
 
         self.docBrowser = DocBrowser()
-        self.docBrowser.moduleRequested.connect(self.selectModuleBySpec)
+        self.docBrowser.moduleRequested.connect(self.addModuleBySpec)
         self.docBrowser.setEnabled(False)
 
         self.moduleBrowser = ModuleBrowser()
@@ -2807,7 +2807,7 @@ class RigBuilderWindow(QFrame):
             return self.treeWidget.moduleModel.getModule(idx)
         return None
 
-    def selectModuleBySpec(self, spec: str):
+    def addModuleBySpec(self, spec: str):
         """Load and select module by spec (UID, relative or full path)."""
         try:
             module = Module.loadModule(spec)
