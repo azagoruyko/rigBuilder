@@ -2957,7 +2957,7 @@ class RigBuilderWindow(QFrame):
         self.raise_()
         self.activateWindow()
         if added:
-            self.selectModule(added)
+            self.treeWidget.selectModule(added)
 
     def browseModuleFile(self):
         for module in self.treeWidget.selectedModules():
