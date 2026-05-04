@@ -279,22 +279,20 @@ class WorkspaceWidget(QWidget):
         self._blockSignals = True
         self.combo.clear()
 
+        # If current workspace doesn't exist anymore, fallback to default
         if not Workspace.exists(workspace.currentWorkspace.name):
             self.switchWorkspace("default")
 
         for wsName in Workspace.list():
-            ws = getWorkspace(wsName)
-            self.combo.addItem(f"💼 {wsName}", ws)
+            self.combo.addItem(f"💼 {wsName}", wsName)
         
         idx = self.combo.findData(workspace.currentWorkspace.name)
         if idx >= 0:
             self.combo.setCurrentIndex(idx)
         self._blockSignals = False
 
-    def switchWorkspace(self, ws: Union[str, Workspace]):
-        if isinstance(ws, str):
-            ws = getWorkspace(ws)
-
+    def switchWorkspace(self, ws:str):
+        ws = getWorkspace(ws)
         workspace.currentWorkspace = ws
         ws.activate()
 
@@ -304,13 +302,15 @@ class WorkspaceWidget(QWidget):
         if self._blockSignals:
             return
 
-        ws = self.combo.itemData(index)
+        wsName = self.combo.itemData(index)
+        if not wsName:
+            return
 
         # Save current IF one was active and it's a DIFFERENT workspace
-        if workspace.currentWorkspace.name != ws.name:
+        if workspace.currentWorkspace.name != wsName:
             self.aboutToChangeWorkspace.emit()
 
-        self.switchWorkspace(ws)
+        self.switchWorkspace(wsName)
 
     def _onManage(self):
         dialog = WorkspaceManagerDialog(parent=self)
