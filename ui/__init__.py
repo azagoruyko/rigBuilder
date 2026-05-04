@@ -3147,7 +3147,8 @@ class RigBuilderWindow(QFrame):
         # Save splitter states
         for idx, splitter in enumerate(self._splitters["widgets"]):
             settings.setValue(f"splitter{idx}", splitter.saveState())
-        settings.setValue(f"splitterVersion", self._splitters["version"])
+        settings.setValue(f"splitterVersion", self._splitters["version"])        
+        settings.sync()
 
     def loadAppSettings(self):
         """Load app-specific settings."""
