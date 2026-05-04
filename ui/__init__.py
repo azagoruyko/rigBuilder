@@ -273,7 +273,7 @@ class AttributesWidget(QWidget):
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: attribute already exists")
             return
 
-        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         prefix = self.module.name() + "_" if doUsePrefix else ""
         expAttr = attr.copy()
         expAttr.setName(prefix + expAttr.name())
@@ -1239,7 +1239,7 @@ class ModuleTreeWidget(QTreeView):
 
         msg = "\n".join([m.name() for m in modules])
 
-        if QMessageBox.question(self.window(), "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(self.window(), "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         selectedIndices = self.selectionModel().selectedRows()
@@ -1413,7 +1413,7 @@ class ModuleTreeWidget(QTreeView):
         if askConfirmation:
             modules = self.selectedModules()
             msg = "\n".join([m.name() for m in modules])
-            if QMessageBox.question(self.window(), "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            if QMessageBox.question(self.window(), "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
         # Sort indices in reverse order to avoid shifting issues when removing
@@ -1601,7 +1601,7 @@ class EditTemplateWidget(QWidget):
             self.nameChanged.emit(oldName, newName)
 
     def _onRemoveBtnClicked(self):
-        if QMessageBox.question(self, "Rig Builder", "Remove '{}' attribute?".format(self.nameWidget.text()), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        if QMessageBox.question(self, "Rig Builder", "Remove '{}' attribute?".format(self.nameWidget.text()), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.copyTemplate()
             self.deleteLater()
 
@@ -1824,7 +1824,7 @@ class EditAttributesTabWidget(QTabWidget):
             self.setTabText(idx, newName)
 
     def _onTabCloseRequested(self, i: int):
-        if QMessageBox.question(self, "Rig Builder", "Remove '{}' tab?".format(self.tabText(i)), QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        if QMessageBox.question(self, "Rig Builder", "Remove '{}' tab?".format(self.tabText(i)), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             self.setCurrentIndex(i-1)
             self.clearTab(i)
 
@@ -2272,10 +2272,6 @@ class HostManagerDialog(QDialog):
 
     def _refreshCode(self):
         host = self.hostCombo.currentText().lower()
-        if host == "standalone":
-            self.codeEdit.setPlainText("# Standalone server starts automatically with Rig Builder")
-            return
-
         HostClass = host.capitalize() + "Server"
         discoveryPort = self.discoveryPortEdit.text() or str(DEFAULT_DISCOVERY_PORT)
 

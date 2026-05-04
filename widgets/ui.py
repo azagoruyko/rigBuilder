@@ -289,7 +289,7 @@ class ComboBoxTemplateWidget(TemplateWidget):
         w.show()
 
     def clearItems(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
             with blockedWidgetContext(self.comboBox) as w:
                 w.clear()
@@ -714,7 +714,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.somethingChanged.emit()
 
     def clearItems(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        ok = QMessageBox.question(self, "Rig Builder", "Really clear all items?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
             with blockedWidgetContext(self.listWidget) as w:
                 w.clear()
@@ -941,7 +941,7 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.setFixedHeight(clamp(height, headerHeight+100, 500))
 
     def clearAll(self):
-        ok = QMessageBox.question(self, "Rig Builder", "Really remove all items?", QMessageBox.Yes and QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        ok = QMessageBox.question(self, "Rig Builder", "Really remove all items?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         if ok:
             self.tableWidget.clearContents()
             self.tableWidget.setRowCount(1)
