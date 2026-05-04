@@ -37,13 +37,11 @@ class Settings:
 
     def load(self, path: str):
         """Load global settings from the base file."""
-        if os.path.exists(path):
-            try:
-                data = loadJson(path)
-                if data:
-                    self.fromDict(data)
-            except Exception as e:
-                logger.error(f"Failed to load settings from {path}: {e}")
+        try:
+            data = loadJson(path)
+            self.fromDict(data)
+        except Exception as e:
+            logger.error(f"Failed to load settings from {path}: {e}")
 
     def save(self, path: str):
         """Save global settings to the base file."""
