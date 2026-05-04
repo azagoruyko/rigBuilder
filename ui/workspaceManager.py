@@ -208,7 +208,8 @@ class WorkspaceManagerDialog(QDialog):
             QMessageBox.warning(self, "Workspace Manager", f"Workspace '{name}' already exists.")
             return
 
-        Workspace.create(name)
+        ws = Workspace(name)
+        ws.save()
         self.refresh()
 
     def _onRemove(self):
@@ -278,8 +279,8 @@ class WorkspaceWidget(QWidget):
             self.combo.setCurrentIndex(idx)
         self._blockSignals = False
 
-    def switchWorkspace(self, ws:str):
-        ws = getWorkspace(ws)
+    def switchWorkspace(self, name: str):
+        ws = getWorkspace(name)
         workspace.currentWorkspace = ws
         ws.activate()
 

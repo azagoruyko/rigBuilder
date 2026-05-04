@@ -165,19 +165,12 @@ class Workspace:
         folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, name)
         return os.path.exists(folderPath)
 
-    @classmethod
-    def create(cls, name: str) -> Workspace:
-        """Create a new workspace directory structure."""        
-        ws = cls(name)        
-        ws.save()
-        return ws
-
 def getOrCreateDefaultWorkspace() -> Workspace:
     """Get default workspace or create it if it doesn't exist."""
     if Workspace.exists("default"):
         return Workspace.load("default")
 
-    ws = Workspace.create("default")
+    ws = Workspace("default")
     ws.settings.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")
     ws.save()
     
