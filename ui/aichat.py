@@ -137,7 +137,7 @@ class AIChatDialog(QDialog):
         if not ws: 
             return
 
-        path = os.path.join(ws.folderPath(), "chat.txt")
+        path = os.path.join(ws.folderPath, "chat.txt")
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self.messages, f, indent=2, ensure_ascii=False)
@@ -150,7 +150,7 @@ class AIChatDialog(QDialog):
             return
 
         self.messages = []
-        path = os.path.join(ws.folderPath(), "chat.txt")
+        path = os.path.join(ws.folderPath, "chat.txt")
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -555,7 +555,7 @@ class AIChatDialog(QDialog):
             if not ws:
                 return "No workspace active."
             
-            indexer = ModuleIndexer(os.path.join(ws.folderPath(), "moduleIndex.json"))
+            indexer = ModuleIndexer(os.path.join(ws.folderPath, "moduleIndex.json"))
             indexer.refresh()
             
             try:

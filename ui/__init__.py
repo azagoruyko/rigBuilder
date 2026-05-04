@@ -8,7 +8,6 @@ import inspect
 import sys
 import shutil
 import logging
-import fnmatch
 import xml.etree.ElementTree as ET
 from functools import partial
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
@@ -26,6 +25,7 @@ from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..utils import *
 from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGETS_DATA
 from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
+from ..workspace import Workspace
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowser
 from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
@@ -36,7 +36,7 @@ from .moduleBrowser import ModuleBrowser
 from .moduleHistoryBrowser import ModuleHistoryBrowser
 from .utils import *
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
-from .workspaceManager import WorkspaceWidget
+from .workspaceManager import WorkspaceWidget, getWorkspace
 
 
 class AttributesWidget(QWidget):
@@ -49,10 +49,6 @@ class AttributesWidget(QWidget):
         self.module = module
         self.category = category
 
-        self._attributes = []
-        self._muted = False
-
-        self.attr = AttrsWrapper(self) # attributes accessor
         self._attributeAndWidgets = [] # [attribute, nameWidget, templateWidget]
 
         self.updateAttributes()
@@ -2328,8 +2324,12 @@ class RigBuilderWindow(QFrame):
         self.aiChatBtn.setToolTip("AI Chat (Ollama)")
         self.aiChatBtn.clicked.connect(self._onOpenAIChat)
  
-        self.workspaceWidget = WorkspaceWidget(self)
+        self.workspaceWidget = WorkspaceWidget(parent=self)
+        self.workspaceWidget.aboutToChangeWorkspace.connect(lambda: self.toWorkspace().save())
         self.workspaceWidget.workspaceChanged.connect(self._onWorkspaceChanged)
+
+        self.autoSaveTimer = QTimer(self)
+        self.autoSaveTimer.timeout.connect(self._onAutoSaveTimer)
 
         self.windowPinBtn = QPushButton("📌")
         self.windowPinBtn.setCheckable(True)
@@ -2782,8 +2782,10 @@ class RigBuilderWindow(QFrame):
  
     def _onWorkspaceChanged(self, workspace):
         logger.info(f"Workspace changed: {workspace.name}")
+        self.fromWorkspace(workspace)
         self._refreshModuleUI()
         self.aiChatDialog.loadChat()
+        self._updateAutoSaveInterval()
 
     def _refreshModuleUI(self):
         """Update UI components that depend on current settings/workspace."""
@@ -3089,6 +3091,52 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryBrowser.filterEdit.setText(module.uid())
         self.treeWidget.clearSelection()
 
+    def toWorkspace(self) -> workspace.Workspace:
+        """Capture current UI state into a Workspace object."""
+        ws = getWorkspace(workspace.currentWorkspace.name)
+        
+        # Sync current global settings into workspace settings before saving
+        ws.settings.fromDict(settings.toDict())
+        
+        tree = self.treeWidget
+        rootModules = tree.moduleModel.rootModule().children()
+        allModules = workspace.flattenModules(rootModules)
+        
+        ws.file.modules = rootModules
+        ws.file.expanded = [bool(tree.isExpanded(tree.moduleModel.indexForModule(m))) for m in allModules]
+        
+        return ws
+
+    def fromWorkspace(self, ws: workspace.Workspace):
+        """Populate UI from the Workspace object."""
+        # Update workspace combo if it's not already correct
+        self.workspaceWidget.blockSignals(True)
+        idx = self.workspaceWidget.combo.findData(ws.name)
+        if idx >= 0:
+            self.workspaceWidget.combo.setCurrentIndex(idx)
+        self.workspaceWidget.blockSignals(False)
+
+        self.treeWidget.clear()
+
+        for module in ws.file.modules:
+            self.treeWidget.moduleModel.addModuleAt(module)
+
+        if ws.file.expanded:
+            rootModules = self.treeWidget.moduleModel.rootModule().children()
+            allModules = workspace.flattenModules(rootModules)
+            for m, isExpanded in zip(allModules, ws.file.expanded):
+                if isExpanded:
+                    idx = self.treeWidget.moduleModel.indexForModule(m)
+                    if idx.isValid():
+                        self.treeWidget.setExpanded(idx, True)
+
+
+
+    def _updateAutoSaveInterval(self):
+        """Update timer interval from global settings."""
+        interval_ms = settings.autoSaveInterval * 60 * 1000
+        self.autoSaveTimer.start(interval_ms)
+
     def saveAppSettings(self):
         """Save app-specific settings like active workspace and window geometry."""
         settings = QSettings("RigBuilder")
@@ -3123,12 +3171,17 @@ class RigBuilderWindow(QFrame):
                     splitter.restoreState(state)
 
         # Restore workspace
-        workspaceName = settings.value("activeWorkspace", "default")
+        workspaceName = settings.value("activeWorkspace") or "default"
+        if not Workspace.exists(workspaceName):
+            logger.warning(f"Workspace '{workspaceName}' not found, switching to default.")
+            workspaceName = "default"
         self.workspaceWidget.switchWorkspace(workspaceName)
 
-    def saveCurrentWorkspace(self):
-        """Save the current workspace state to disk."""
-        self.workspaceWidget.toWorkspace().save()
+    def _onAutoSaveTimer(self):
+        """Handle periodic autosave."""
+        self.toWorkspace().save()
+        timestamp = time.strftime("%H:%M")
+        print(f"Workspace '{workspace.currentWorkspace.name}' autosaved at {timestamp}")
 
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing
@@ -3139,7 +3192,7 @@ class RigBuilderWindow(QFrame):
         trackFileChangesThreads.clear()
         
         self.saveAppSettings()
-        self.saveCurrentWorkspace()
+        self.toWorkspace().save()
 
         # Call parent close event
         super().closeEvent(event)

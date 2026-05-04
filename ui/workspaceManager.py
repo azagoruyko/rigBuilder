@@ -1,33 +1,33 @@
 from __future__ import annotations
 import os
-from datetime import datetime
 from functools import partial
-from typing import List, Protocol, Optional
+from typing import List, Optional, Union
 
 from ..qt import *
 from ..settings import (
-    settings, 
-    RIG_BUILDER_USER_PATH, 
-    RIG_BUILDER_PATH,
+    Settings,
     RIG_BUILDER_WORKSPACES_PATH
 )
 from .. import workspace
-from ..workspace import Workspace, flattenModules
+from ..workspace import Workspace
 from ..utils import replaceSpecialChars
 from ..client.connectionManager import connectionManager
 
-class WorkspaceMainWindow(Protocol):
-    """Protocol for the main window passed to UI sync methods. Avoids depending on ui (circular import)."""
-    treeWidget: object
-    logger: object
-    hostCombo: object
-    moduleBrowser: object
+_workspaceCache: dict[str, Workspace] = {}
+
+def getWorkspace(name: str) -> Workspace:
+    """Retrieve workspace from cache or load it."""
+    if name in _workspaceCache:
+        return _workspaceCache[name]
     
-    def switchWorkspace(self, folderPath: str): ...
-    def _refreshModuleBrowserSource(self): ...
+    ws = Workspace.load(name)
+    _workspaceCache[name] = ws
+    return ws
 
 class WorkspaceManagerDialog(QDialog):
     """Dialog for listing, creating, and removing workspaces."""
+    workspaceSwitchRequested = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Workspace Manager")
@@ -127,7 +127,7 @@ class WorkspaceManagerDialog(QDialog):
 
     def _onSelectionChanged(self):
         ws = self.selectedWorkspace()
-        self.removeBtn.setEnabled(ws is not None and ws.name.lower() != "default")
+        self.removeBtn.setEnabled(ws and ws.name.lower() != "default")
         self._refreshSettings(ws)
 
     def _refreshSettings(self, ws: Workspace):
@@ -138,7 +138,7 @@ class WorkspaceManagerDialog(QDialog):
 
         self.settingsGroup.setEnabled(True)
         self.settingsGroup.setTitle(f"Settings: {ws.name}")
-        
+
         self._blockSettingsSignals = True
         self.modulesPathEdit.setText(ws.settings.modulesPath)
         self.vscodeEdit.setText(ws.settings.vscode)
@@ -171,14 +171,7 @@ class WorkspaceManagerDialog(QDialog):
 
         if hasattr(ws.settings, key):
             setattr(ws.settings, key, value)
-            ws.save() # Workspace.save saves both workspace file and settings.json
-            
-            # If this is the active workspace, sync global settings immediately
-            if workspace.currentWorkspace.name == ws.name:
-                settings.fromDict(ws.settings.toDict())
-                self.parent().mainWindow._refreshHostCombo()
-                self.parent()._refreshModuleBrowserSource()
-                self.parent()._updateAutoSaveInterval()
+            ws.save()
 
     def _onLineEditChanged(self, key, edit):
         self._onSettingChanged(key, edit.text())
@@ -191,7 +184,7 @@ class WorkspaceManagerDialog(QDialog):
         if not ws:
             return
             
-        startDir = self.modulesPathEdit.text() or ws.folderPath() or RIG_BUILDER_PATH
+        startDir = self.modulesPathEdit.text() or ws.folderPath
         path = QFileDialog.getExistingDirectory(self, "Select Modules Directory", startDir)
         if path:
             self.modulesPathEdit.setText(path)
@@ -200,19 +193,19 @@ class WorkspaceManagerDialog(QDialog):
     def refresh(self):
         self.listWidget.clear()
 
-        for ws in Workspace.list():
-            item = QListWidgetItem(f"💼 {ws.name}")
-            item.setData(Qt.UserRole, ws.name)
+        for wsName in Workspace.list():
+            ws = getWorkspace(wsName)
+            item = QListWidgetItem(f"💼 {wsName}")
+            item.setData(Qt.UserRole, ws)
             self.listWidget.addItem(item)
             
-            if ws.name == workspace.currentWorkspace.name:
+            if wsName == workspace.currentWorkspace.name:
                 self.listWidget.setCurrentItem(item)
 
     def selectedWorkspace(self) -> Optional[Workspace]:
         item = self.listWidget.currentItem()
-        if not item:
-            return None
-        return Workspace.load(item.data(Qt.UserRole))
+        if item:
+            return item.data(Qt.UserRole)
 
     def _onNew(self):
         name, ok = QInputDialog.getText(self, "New Workspace", "Workspace Name:")
@@ -221,6 +214,7 @@ class WorkspaceManagerDialog(QDialog):
 
         name = replaceSpecialChars(name.strip())
         if not name:
+            QMessageBox.warning(self, "Workspace Manager", "Workspace name cannot be empty.")
             return
 
         if Workspace.exists(name):
@@ -241,24 +235,26 @@ class WorkspaceManagerDialog(QDialog):
         if res != QMessageBox.Yes:
             return
 
+        # Switch to default if we're deleting the active workspace
         if ws.name == workspace.currentWorkspace.name:
-            self.parent().switchWorkspace("default")
+            self.workspaceSwitchRequested.emit("default")
 
         if ws.delete():
+            _workspaceCache.pop(ws.name, None)
             self.refresh()
 
     def _onOpenFolder(self):
         ws = self.selectedWorkspace()
-        if ws and os.path.exists(ws.folderPath()):
-            os.startfile(ws.folderPath())
+        if ws:
+            os.startfile(ws.folderPath)
 
 class WorkspaceWidget(QWidget):
     """UI Widget for workspace selection and management."""
     workspaceChanged = Signal(object) # Workspace
+    aboutToChangeWorkspace = Signal()
 
-    def __init__(self, mainWindow: WorkspaceMainWindow, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.mainWindow = mainWindow
         self._blockSignals = False
 
         self.combo = QComboBox()
@@ -275,103 +271,50 @@ class WorkspaceWidget(QWidget):
         layout.addWidget(self.combo)
         layout.addWidget(self.manageBtn)
         self.setLayout(layout)
-
-        self.autoSaveTimer = QTimer(self)
-        self.autoSaveTimer.timeout.connect(self._onAutoSaveTimer)
-
         self.refreshWorkspaces()        
 
-    def toWorkspace(self) -> Workspace:
-        """Capture current UI state into a Workspace object."""
-
-        ws = Workspace.load(workspace.currentWorkspace.name)
-        
-        # Sync current global settings into workspace settings before saving
-        ws.settings.fromDict(settings.toDict())
-        
-        tree = self.mainWindow.treeWidget
-        rootModules = tree.moduleModel.rootModule().children()
-        allModules = flattenModules(rootModules)
-        
-        ws.modules = rootModules
-        ws.expanded = [bool(tree.isExpanded(tree.moduleModel.indexForModule(m))) for m in allModules]
-        
-        return ws
-
-    def fromWorkspace(self, workspace: Workspace):
-        """Populate UI from the Workspace object."""
-        self._blockSignals = True
-        idx = self.combo.findData(workspace.name)
-        if idx >= 0:
-            self.combo.setCurrentIndex(idx)
-        self._blockSignals = False
-
-        self.mainWindow.treeWidget.clear()
-
-        for module in workspace.modules:
-            self.mainWindow.treeWidget.moduleModel.addModuleAt(module)
-
-        if workspace.expanded:
-            rootModules = self.mainWindow.treeWidget.moduleModel.rootModule().children()
-            allModules = flattenModules(rootModules)
-            for m, isExpanded in zip(allModules, workspace.expanded):
-                if isExpanded:
-                    idx = self.mainWindow.treeWidget.moduleModel.indexForModule(m)
-                    if idx.isValid():
-                        self.mainWindow.treeWidget.setExpanded(idx, True)
 
     def refreshWorkspaces(self):
         """Update the combo box from disk."""
         self._blockSignals = True
         self.combo.clear()
 
-        for ws in Workspace.list():
-            self.combo.addItem(f"💼 {ws.name}", ws.name)
+        if not Workspace.exists(workspace.currentWorkspace.name):
+            self.switchWorkspace("default")
+
+        for wsName in Workspace.list():
+            ws = getWorkspace(wsName)
+            self.combo.addItem(f"💼 {wsName}", ws)
         
         idx = self.combo.findData(workspace.currentWorkspace.name)
         if idx >= 0:
             self.combo.setCurrentIndex(idx)
         self._blockSignals = False
 
-    def _refreshModuleBrowserSource(self):
-        self.mainWindow.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
-        self.mainWindow.moduleBrowser.refreshModules()
+    def switchWorkspace(self, ws: Union[str, Workspace]):
+        if isinstance(ws, str):
+            ws = getWorkspace(ws)
 
-    def switchWorkspace(self, name: str):
-        ws = Workspace.load(name)
         workspace.currentWorkspace = ws
         ws.activate()
 
-        self._updateAutoSaveInterval()
-        self._refreshModuleBrowserSource()
-        self.fromWorkspace(ws)
         self.workspaceChanged.emit(ws)
 
     def _onComboChanged(self, index: int):
         if self._blockSignals:
             return
 
-        name = self.combo.itemData(index)
+        ws = self.combo.itemData(index)
 
         # Save current IF one was active and it's a DIFFERENT workspace
-        if workspace.currentWorkspace.name != name:
-            self.toWorkspace().save()
+        if workspace.currentWorkspace.name != ws.name:
+            self.aboutToChangeWorkspace.emit()
 
-        self.switchWorkspace(name)
+        self.switchWorkspace(ws)
 
     def _onManage(self):
-        dialog = WorkspaceManagerDialog(self)
+        dialog = WorkspaceManagerDialog(parent=self)
+        dialog.workspaceSwitchRequested.connect(self.switchWorkspace)
         dialog.exec()
         self.refreshWorkspaces()
 
-    def _onAutoSaveTimer(self):
-        """Triggered by the timer. Saves the current workspace state to a sidecar file."""
-        workspace.currentWorkspace.save()
-        
-        timestamp = datetime.now().strftime("%H:%M")
-        print(f"Workspace '{workspace.currentWorkspace.name}' autosaved at {timestamp}")
-
-    def _updateAutoSaveInterval(self):
-        """Update timer interval from global settings."""
-        interval_ms = settings.autoSaveInterval * 60 * 1000
-        self.autoSaveTimer.start(interval_ms)

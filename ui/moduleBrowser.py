@@ -651,7 +651,7 @@ class ModuleBrowser(QWidget):
         UidManager.sync()
 
         self.indexer.filePath = os.path.join(
-            workspace.currentWorkspace.folderPath(), "moduleIndex.json")
+            workspace.currentWorkspace.folderPath, "moduleIndex.json")
         self.indexer.refresh()
         self._startIndexing()
 
