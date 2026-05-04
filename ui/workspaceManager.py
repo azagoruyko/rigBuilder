@@ -5,6 +5,7 @@ from typing import List, Optional, Union
 
 from ..qt import *
 from ..settings import (
+    settings, # global settings
     Settings,
     RIG_BUILDER_WORKSPACES_PATH
 )
@@ -37,7 +38,6 @@ class WorkspaceManagerDialog(QDialog):
 
         # 1. Left Panel (Workspace List)
         self.listWidget = QListWidget()
-        self.listWidget.itemDoubleClicked.connect(self.accept)
 
         self.newBtn = QPushButton("➕")
         self.newBtn.setAutoDefault(False)
@@ -108,7 +108,6 @@ class WorkspaceManagerDialog(QDialog):
         self.autoSaveIntervalSpin.valueChanged.connect(partial(self._onSettingChanged, "autoSaveInterval"))
         self.settingsLayout.addRow("Auto-save Interval:", self.autoSaveIntervalSpin)
 
-
         # 3. Main Layout
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(listPanel)
@@ -124,10 +123,8 @@ class WorkspaceManagerDialog(QDialog):
 
     def _onSelectionChanged(self):
         ws = self.selectedWorkspace()
-        self.removeBtn.setEnabled(ws and ws.name.lower() != "default")
-        self._refreshSettings(ws)
+        self.removeBtn.setEnabled(ws is not None and ws.name != "default")
 
-    def _refreshSettings(self, ws: Workspace):
         if not ws:
             self.settingsGroup.setEnabled(False)
             self.settingsGroup.setTitle("Workspace Settings")
@@ -144,8 +141,6 @@ class WorkspaceManagerDialog(QDialog):
         self.ollamaModelEdit.setText(ws.settings.ollamaModel)
         self.ollamaEmbeddingModelEdit.setText(ws.settings.ollamaEmbeddingModel)
         self.autoSaveIntervalSpin.setValue(ws.settings.autoSaveInterval)
-
-
         self._blockSettingsSignals = False
 
     def _onSettingChanged(self, key, value):
@@ -156,12 +151,24 @@ class WorkspaceManagerDialog(QDialog):
         if not ws:
             return
 
-        if hasattr(ws.settings, key):
-            setattr(ws.settings, key, value)
-            ws.save()
+        if getattr(ws.settings, key) == value:
+            return
+
+        setattr(ws.settings, key, value)
+        ws.save()
+
+        # update global settings as well
+        if ws.folderPath() == settings.workspacePath:
+            setattr(settings, key, value)
 
     def _onLineEditChanged(self, key, edit):
-        self._onSettingChanged(key, edit.text())
+        ws = self.selectedWorkspace()
+        value = edit.text().strip()
+        if key == "modulesPath" and (not value or not os.path.exists(value)):
+            value = os.path.join(ws.folderPath(), "modules")
+            edit.setText(value)
+
+        self._onSettingChanged(key, value)
 
     def _onComboChanged(self, key, combo, _idx):
         self._onSettingChanged(key, combo.currentData())
@@ -171,7 +178,7 @@ class WorkspaceManagerDialog(QDialog):
         if not ws:
             return
             
-        startDir = self.modulesPathEdit.text() or ws.folderPath
+        startDir = self.modulesPathEdit.text() or ws.folderPath()
         path = QFileDialog.getExistingDirectory(self, "Select Modules Directory", startDir)
         if path:
             self.modulesPathEdit.setText(path)
@@ -185,8 +192,8 @@ class WorkspaceManagerDialog(QDialog):
             item = QListWidgetItem(f"💼 {wsName}")
             item.setData(Qt.UserRole, ws)
             self.listWidget.addItem(item)
-            
-            if wsName == workspace.currentWorkspace.name:
+
+            if ws.folderPath() == settings.workspacePath:
                 self.listWidget.setCurrentItem(item)
 
     def selectedWorkspace(self) -> Optional[Workspace]:
@@ -208,13 +215,13 @@ class WorkspaceManagerDialog(QDialog):
             QMessageBox.warning(self, "Workspace Manager", f"Workspace '{name}' already exists.")
             return
 
-        ws = Workspace(name)
+        ws = Workspace(name)        
         ws.save()
         self.refresh()
 
     def _onRemove(self):
         ws = self.selectedWorkspace()
-        if not ws or ws.name.lower() == "default":
+        if not ws:
             return
 
         res = QMessageBox.question(self, "Workspace Manager", 
@@ -224,7 +231,7 @@ class WorkspaceManagerDialog(QDialog):
             return
 
         # Switch to default if we're deleting the active workspace
-        if ws.name == workspace.currentWorkspace.name:
+        if ws.folderPath() == settings.workspacePath:
             self.workspaceSwitchRequested.emit("default")
 
         if ws.delete():
@@ -234,16 +241,18 @@ class WorkspaceManagerDialog(QDialog):
     def _onOpenFolder(self):
         ws = self.selectedWorkspace()
         if ws:
-            os.startfile(ws.folderPath)
+            os.startfile(ws.folderPath())
 
 class WorkspaceWidget(QWidget):
     """UI Widget for workspace selection and management."""
     workspaceChanged = Signal(object) # Workspace
     aboutToChangeWorkspace = Signal()
+    updateRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._blockSignals = False
+
+        self._currentWorkspace = None
 
         self.combo = QComboBox()
         self.combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -259,50 +268,43 @@ class WorkspaceWidget(QWidget):
         layout.addWidget(self.combo)
         layout.addWidget(self.manageBtn)
         self.setLayout(layout)
-        self.refreshWorkspaces()        
+        self.refreshWorkspaces()
 
+    def currentWorkspace(self) -> Optional[Workspace]:
+        """Get current workspace."""
+        return self._currentWorkspace
 
     def refreshWorkspaces(self):
-        """Update the combo box from disk."""
-        self._blockSignals = True
+        """Update the combo box from workspace list."""
+        self.combo.blockSignals(True)
         self.combo.clear()
 
-        # If current workspace doesn't exist anymore, fallback to default
-        if not Workspace.exists(workspace.currentWorkspace.name):
-            self.switchWorkspace("default")
-
-        for wsName in Workspace.list():
-            self.combo.addItem(f"💼 {wsName}", wsName)
-        
-        idx = self.combo.findData(workspace.currentWorkspace.name)
-        if idx >= 0:
-            self.combo.setCurrentIndex(idx)
-        self._blockSignals = False
+        for i, wsName in enumerate(Workspace.list()):
+            ws = getWorkspace(wsName)
+            self.combo.addItem(f"💼 {wsName}", ws)
+            if ws.folderPath() == settings.workspacePath:
+                self.combo.setCurrentIndex(i)
+                
+        self.combo.blockSignals(False)
 
     def switchWorkspace(self, name: str):
+        """Switch to workspace."""
+        self.aboutToChangeWorkspace.emit()
+
         ws = getWorkspace(name)
-        workspace.currentWorkspace = ws
         ws.activate()
+        self._currentWorkspace = ws
 
         self.workspaceChanged.emit(ws)
 
     def _onComboChanged(self, index: int):
-        if self._blockSignals:
-            return
-
-        wsName = self.combo.itemData(index)
-        if not wsName:
-            return
-
-        # Save current IF one was active and it's a DIFFERENT workspace
-        if workspace.currentWorkspace.name != wsName:
-            self.aboutToChangeWorkspace.emit()
-
-        self.switchWorkspace(wsName)
+        ws = self.combo.itemData(index)
+        self.switchWorkspace(ws.name)
 
     def _onManage(self):
         dialog = WorkspaceManagerDialog(parent=self)
         dialog.workspaceSwitchRequested.connect(self.switchWorkspace)
         dialog.exec()
-        self.refreshWorkspaces()
 
+        self.refreshWorkspaces()
+        self.updateRequested.emit()

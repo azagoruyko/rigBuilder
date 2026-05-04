@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
 from .settings import (
+    settings,
     Settings, 
     RIG_BUILDER_USER_PATH, 
     RIG_BUILDER_PATH,
@@ -87,62 +88,66 @@ class WorkspaceFile:
 
 class Workspace:
     """Represents a local project workspace with its own modules and settings."""
-    def __init__(self, name: str):
-        self.name = name
-        self.folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, name)
+    def __init__(self, name: str=""):
+        self.name = name or "default"
         self.file = WorkspaceFile()
         
         self.settings = Settings()
-        self.settings.modulesPath = os.path.join(self.folderPath, "modules")
-        self.settings.historyPath = os.path.join(self.folderPath, "history")
+
+        # initial settings
+        self.settings.workspacePath = self.folderPath()
+        self.settings.historyPath = os.path.join(self.folderPath(), "history")
+        self.settings.modulesPath = os.path.join(self.folderPath(), "modules")
+
+        if self.name == "default":
+            self.settings.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")        
+
+    def folderPath(self) -> str:
+        """Return workspace folder path."""
+        return os.path.join(RIG_BUILDER_WORKSPACES_PATH, self.name)
 
     def save(self) -> None:
         """Save workspace state."""
-        os.makedirs(self.folderPath, exist_ok=True)
-        self.file.save(os.path.join(self.folderPath, "workspace.rbws"))
-        self.settings.save(os.path.join(self.folderPath, "settings.json"))
+        for f in [self.folderPath(), self.settings.modulesPath, self.settings.historyPath]:
+            os.makedirs(f, exist_ok=True)
+
+        self.file.save(os.path.join(self.folderPath(), "workspace.rbws"))
+        self.settings.save(os.path.join(self.folderPath(), "settings.json"))
 
     @classmethod
     def load(cls, name: str) -> Workspace:
         """Load workspace data."""
         folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, name)
 
-        workspace = cls(name)
-        workspace.file = WorkspaceFile.load(os.path.join(folderPath, "workspace.rbws"))
-        workspace.settings.load(os.path.join(folderPath, "settings.json"))
+        ws = cls(name)
+        ws.file = WorkspaceFile.load(os.path.join(folderPath, "workspace.rbws"))
+        ws.settings.load(os.path.join(folderPath, "settings.json"))
 
-        # Fallback to default paths for invalid paths
-        if not os.path.exists(workspace.settings.historyPath):
-            workspace.settings.historyPath = os.path.join(folderPath, "history")
+        # fallback paths
+        ws.settings.workspacePath = ws.folderPath()
+        ws.settings.historyPath = os.path.join(ws.folderPath(), "history")
+        
+        if not os.path.exists(ws.settings.modulesPath):
+            ws.settings.modulesPath = os.path.join(ws.folderPath(), "modules")
+        
+        return ws
 
-        if not os.path.exists(workspace.settings.modulesPath):
-            workspace.settings.modulesPath = os.path.join(folderPath, "modules")
-
-        return workspace
-
-    def activate(self) -> bool:
+    def activate(self):
         """Core activation: populate runtime Settings from this workspace."""        
         # Ensure directories and repos exist
         for p in [self.settings.historyPath, self.settings.modulesPath]:
             os.makedirs(p, exist_ok=True)        
         
-        # Refresh UID Manager
-        UidManager.sync()
-
         # Update global settings from workspace settings
-        from .settings import settings
         settings.fromDict(self.settings.toDict())
 
-        # Update current global workspace instance
-        global currentWorkspace
-        currentWorkspace = self
-
-        return True
+        # Refresh UID Manager
+        UidManager.sync()
 
     def delete(self) -> bool:
         """Delete the entire workspace folder."""
         try:
-            forceRemove(self.folderPath)
+            forceRemove(self.folderPath())
             return True
         except Exception as e:
             print(f"Failed to delete workspace folder: {e}")
@@ -165,16 +170,12 @@ class Workspace:
         folderPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, name)
         return os.path.exists(folderPath)
 
-def getOrCreateDefaultWorkspace() -> Workspace:
-    """Get default workspace or create it if it doesn't exist."""
-    if Workspace.exists("default"):
-        return Workspace.load("default")
+# Initialize default workspace
 
-    ws = Workspace("default")
-    ws.settings.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")
-    ws.save()
-    
-    return ws
+if Workspace.exists("default"):
+    defaultWorkspace = Workspace.load("default")
+else:
+    defaultWorkspace = Workspace()
+    defaultWorkspace.save()
 
-currentWorkspace = getOrCreateDefaultWorkspace()
-currentWorkspace.activate()
+defaultWorkspace.activate()

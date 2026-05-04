@@ -12,7 +12,6 @@ import asyncio
 
 from ..qt import *
 from ..core import Module, MODULE_EXT, MODULE_EXTS, UidManager
-from .. import workspace
 from .. import settings as settings_module
 from ..settings import settings
 from ..logger import logger
@@ -647,8 +646,7 @@ class ModuleBrowser(QWidget):
         self._updatePathLabel()
         UidManager.sync()
 
-        self.indexer.filePath = os.path.join(
-            workspace.currentWorkspace.folderPath, "moduleIndex.json")
+        self.indexer.filePath = os.path.join(settings.workspacePath, "moduleIndex.json")
         self.indexer.refresh()
         self._startIndexing()
 

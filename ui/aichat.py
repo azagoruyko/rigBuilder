@@ -6,7 +6,6 @@ import copy
 import markdown
 from ..qt import *
 
-from .. import workspace
 from ..ai import engine
 from ..settings import settings, RIG_BUILDER_PATH
 
@@ -133,11 +132,7 @@ class AIChatDialog(QDialog):
 
 
     def saveChat(self):
-        ws = workspace.currentWorkspace
-        if not ws: 
-            return
-
-        path = os.path.join(ws.folderPath, "chat.txt")
+        path = os.path.join(settings.workspacePath, "chat.txt")
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self.messages, f, indent=2, ensure_ascii=False)
@@ -145,12 +140,7 @@ class AIChatDialog(QDialog):
             logger.error(f"Failed to save chat: {e}")
 
     def loadChat(self):
-        ws = workspace.currentWorkspace
-        if not ws: 
-            return
-
-        self.messages = []
-        path = os.path.join(ws.folderPath, "chat.txt")
+        path = os.path.join(settings.workspacePath, "chat.txt")
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -350,7 +340,7 @@ class AIChatDialog(QDialog):
             """
             Get the current state of Rig Builder.
             Useful for understanding the context the user is currently working in.
-            Returns the selected host, the active workspace, the currently selected module in the tree (its name and documentation),
+            Returns the selected host and the currently selected module in the tree (its name and documentation),
             and the python imports defined in the module's run code.
             Use this to understand what the user is currently selecting or working on.
             """
@@ -367,7 +357,6 @@ class AIChatDialog(QDialog):
 
             state = f'''
             Host: {self.aiToolsContext["host"].name}, use appropriate coding standards for this host.
-            Workspace: {self.aiToolsContext["workspace"].name}
             Selected module: {m.name() if m else 'No module'}
             Module documentation:{'\n' + m.doc() if m else 'No documentation'}
             Imports: {'; '.join(imports) if imports else 'No imports'}
@@ -551,11 +540,8 @@ class AIChatDialog(QDialog):
             """
             from ..moduleIndexer import ModuleIndexer
             import asyncio
-            ws = workspace.currentWorkspace
-            if not ws:
-                return "No workspace active."
             
-            indexer = ModuleIndexer(os.path.join(ws.folderPath, "moduleIndex.json"))
+            indexer = ModuleIndexer(os.path.join(settings.workspacePath, "moduleIndex.json"))
             indexer.refresh()
             
             try:

@@ -2303,8 +2303,8 @@ class RigBuilderWindow(QFrame):
         self.aiChatBtn.clicked.connect(self._onOpenAIChat)
  
         self.workspaceWidget = WorkspaceWidget(parent=self)
-        self.workspaceWidget.aboutToChangeWorkspace.connect(lambda: self.toWorkspace().save())
         self.workspaceWidget.workspaceChanged.connect(self._onWorkspaceChanged)
+        self.workspaceWidget.aboutToChangeWorkspace.connect(self._onAboutToChangeWorkspace)
 
         self.autoSaveTimer = QTimer(self)
         self.autoSaveTimer.timeout.connect(self._onAutoSaveTimer)
@@ -2371,6 +2371,8 @@ class RigBuilderWindow(QFrame):
 
         self.moduleBrowser = ModuleBrowser()
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.syncModule)
+        
+        self.workspaceWidget.updateRequested.connect(self.moduleBrowser.refreshModules)
 
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -2653,7 +2655,7 @@ class RigBuilderWindow(QFrame):
             "code": editor.toPlainText(),
             "selectedCode":editor.textCursor().selectedText(),
             "host":self.hostCombo.currentData(),
-            "workspace":workspace.currentWorkspace.name,
+            "workspace":self.workspaceWidget.currentWorkspace().name,
             "selectedModule":m
         }
 
@@ -2754,20 +2756,6 @@ class RigBuilderWindow(QFrame):
         """Toggle 'Stay on Top' window flag."""
         self.setWindowFlag(Qt.WindowStaysOnTopHint, state)
         self.show()
- 
-    def _onWorkspaceChanged(self, workspace):
-        logger.info(f"Workspace changed: {workspace.name}")
-        self.fromWorkspace(workspace)
-        self._refreshModuleUI()
-        self.aiChatDialog.loadChat()
-        self._updateAutoSaveInterval()
-
-    def _refreshModuleUI(self):
-        """Update UI components that depend on current settings/workspace."""
-        self._refreshHostCombo()
-        self.moduleHistoryBrowser.syncModuleHistory()
-        self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
-        self.moduleBrowser.refreshModules()
 
     def menu(self):
         menu = QMenu(self)
@@ -3062,9 +3050,26 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryBrowser.filterEdit.setText(module.uid())
         self.treeWidget.clearSelection()
 
-    def toWorkspace(self) -> workspace.Workspace:
-        """Capture current UI state into a Workspace object."""
-        ws = getWorkspace(workspace.currentWorkspace.name)
+    def _onAboutToChangeWorkspace(self):
+        """Handle about to change workspace event."""
+        if self.workspaceWidget.currentWorkspace():
+            self.saveToWorkspace()
+ 
+    def _onWorkspaceChanged(self, ws: workspace.Workspace):
+        """Handle workspace change event."""
+        self.loadFromWorkspace(ws)
+        self.aiChatDialog.loadChat()
+        self._updateAutoSaveInterval()
+        self._refreshHostCombo()
+        self.moduleHistoryBrowser.syncModuleHistory()
+        self.moduleBrowser.modulesAutoReloadWatcher.setRoots([ws.settings.modulesPath])
+        self.moduleBrowser.refreshModules()
+
+        logger.info(f"Workspace changed: {ws.name}")
+        
+    def saveToWorkspace(self):
+        """Save UI state to active workspace."""
+        ws = self.workspaceWidget.currentWorkspace()
         
         # Sync current global settings into workspace settings before saving
         ws.settings.fromDict(settings.toDict())
@@ -3075,17 +3080,17 @@ class RigBuilderWindow(QFrame):
         
         ws.file.modules = rootModules
         ws.file.expanded = [bool(tree.isExpanded(tree.moduleModel.indexForModule(m))) for m in allModules]
-        
-        return ws
+        ws.save()
 
-    def fromWorkspace(self, ws: workspace.Workspace):
+    def loadFromWorkspace(self, ws: workspace.Workspace):
         """Populate UI from the Workspace object."""
         # Update workspace combo if it's not already correct
-        self.workspaceWidget.blockSignals(True)
-        idx = self.workspaceWidget.combo.findData(ws.name)
+        self.workspaceWidget.combo.blockSignals(True)
+
+        idx = self.workspaceWidget.combo.findData(ws)
         if idx >= 0:
             self.workspaceWidget.combo.setCurrentIndex(idx)
-        self.workspaceWidget.blockSignals(False)
+        self.workspaceWidget.combo.blockSignals(False)
 
         self.treeWidget.clear()
 
@@ -3101,8 +3106,6 @@ class RigBuilderWindow(QFrame):
                     if idx.isValid():
                         self.treeWidget.setExpanded(idx, True)
 
-
-
     def _updateAutoSaveInterval(self):
         """Update timer interval from global settings."""
         interval_ms = settings.autoSaveInterval * 60 * 1000
@@ -3110,40 +3113,40 @@ class RigBuilderWindow(QFrame):
 
     def saveAppSettings(self):
         """Save app-specific settings like active workspace and window geometry."""
-        settings = QSettings("RigBuilder")
-        settings.setValue("activeWorkspace", workspace.currentWorkspace.name)
-        settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("pinned", self.windowPinBtn.isChecked())
+        appSettings = QSettings("RigBuilder")
+        appSettings.setValue("activeWorkspace", self.workspaceWidget.currentWorkspace().name)
+        appSettings.setValue("geometry", self.saveGeometry())
+        appSettings.setValue("pinned", self.windowPinBtn.isChecked())
         
         # Save splitter states
         for idx, splitter in enumerate(self._splitters["widgets"]):
-            settings.setValue(f"splitter{idx}", splitter.saveState())
-        settings.setValue(f"splitterVersion", self._splitters["version"])        
-        settings.sync()
+            appSettings.setValue(f"splitter{idx}", splitter.saveState())
+        appSettings.setValue(f"splitterVersion", self._splitters["version"])        
+        appSettings.sync()
 
     def loadAppSettings(self):
         """Load app-specific settings."""
-        settings = QSettings("RigBuilder")
+        appSettings = QSettings("RigBuilder")
         
         # Restore window geometry
-        geometry = settings.value("geometry")
+        geometry = appSettings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
 
-        pinned = settings.value("pinned", False, type=bool)
+        pinned = appSettings.value("pinned", False, type=bool)
         self.windowPinBtn.setChecked(pinned)
         self.pinWindow(pinned)
         
         # Restore splitter states
-        splittersVersion = settings.value("splitterVersion", 0, type=int)
+        splittersVersion = appSettings.value("splitterVersion", 0, type=int)
         if splittersVersion == self._splitters["version"]: # restore only if versions match
             for idx, splitter in enumerate(self._splitters["widgets"]):
-                state = settings.value(f"splitter{idx}")
+                state = appSettings.value(f"splitter{idx}")
                 if state:
                     splitter.restoreState(state)
 
         # Restore workspace
-        workspaceName = settings.value("activeWorkspace") or "default"
+        workspaceName = appSettings.value("activeWorkspace", "default")
         if not Workspace.exists(workspaceName):
             logger.warning(f"Workspace '{workspaceName}' not found, switching to default.")
             workspaceName = "default"
@@ -3151,9 +3154,10 @@ class RigBuilderWindow(QFrame):
 
     def _onAutoSaveTimer(self):
         """Handle periodic autosave."""
-        self.toWorkspace().save()
+        self.saveToWorkspace()
+        ws = self.workspaceWidget.currentWorkspace()
         timestamp = time.strftime("%H:%M")
-        print(f"Workspace '{workspace.currentWorkspace.name}' autosaved at {timestamp}")
+        print(f"Workspace '{ws.name}' autosaved at {timestamp}")
 
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing
@@ -3164,7 +3168,7 @@ class RigBuilderWindow(QFrame):
         trackFileChangesThreads.clear()
         
         self.saveAppSettings()
-        self.toWorkspace().save()
+        self.saveToWorkspace()
 
         # Call parent close event
         super().closeEvent(event)
