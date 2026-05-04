@@ -12,7 +12,7 @@ class StandaloneServer(HostServer):
         return {
             "ok": True,
             "host": "standalone",
-            "name": "Standalone"
+            "name": self._name or "Standalone"
         }
 
 # API functions mostly used by the client's widgets

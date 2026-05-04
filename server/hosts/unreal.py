@@ -17,8 +17,8 @@ from rigBuilder.server.hosts import HostServer
 class UnrealServer(HostServer):
     """Dispatches execution to Unreal's main thread via a persistent Slate post-tick callback and a task queue."""
 
-    def __init__(self, discoveryPort: int = 51605):
-        super().__init__(discoveryPort)
+    def __init__(self, discoveryPort: int = 51605, name: str = ""):
+        super().__init__(discoveryPort, name)
         self._queue = queue.Queue()
         self._tick_handle = None
 
@@ -66,7 +66,7 @@ class UnrealServer(HostServer):
         return {
             "ok": True,
             "host": "unreal",
-            "name": f"Unreal {unreal.SystemLibrary.get_engine_version()}"
+            "name": self._name or f"Unreal {unreal.SystemLibrary.get_engine_version()}"
         }
 
 
