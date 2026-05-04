@@ -452,9 +452,7 @@ class SearchWorker(QThread):
 
     def run(self):
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(self.indexer.search(self.query, k=self.k))
+            results = asyncio.run(self.indexer.search(self.query, k=self.k))
             self.finished.emit(self.query, results)
         except Exception as e:
             logger.error(f"Semantic Search Error: {e}")
@@ -632,9 +630,8 @@ class ModuleBrowser(QWidget):
     # ------------------------------------------------------------------
 
     def _setupAutoReloadWatcher(self):
-        watchRoots = [settings.modulesPath]
         self.modulesAutoReloadWatcher = DirectoryWatcher(
-            watchRoots,
+            [settings.modulesPath],
             filePatterns=["*" + ext for ext in MODULE_EXTS],
             debounceMs=700,
             recursive=True,
@@ -710,10 +707,7 @@ class ModuleBrowser(QWidget):
                     score = scores.get(absF, 0.0)
 
             model.setScore(nameItem, score)
-
-            showItem = (not isSearching) or (
-                score >= 0.5 or
-                (semanticMatches is not None and absF in semanticMatches))
+            showItem = (not isSearching) or score >= 0.5
             nameItem.setData(not showItem, _HIDDEN_ROLE)
 
         # 2. Update folder visibility based on their children

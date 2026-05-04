@@ -29,8 +29,7 @@ class ModuleIndexer:
             return {"modules": {}, "model": ""}
             
         try:
-            data = loadJson(self.filePath)
-            return data
+            return loadJson(self.filePath)
         except Exception as e:
             print(f"Error loading index cache: {e}")
             return {"modules": {}, "model": ""}
@@ -45,10 +44,6 @@ class ModuleIndexer:
             saveJson(self.filePath, self.cache)
         except Exception as e:
             print(f"Error saving index cache: {e}")
-
-    def _getMtime(self, filePath: str) -> float:
-        """Get the last modification time of a file."""
-        return os.path.getmtime(filePath)
 
     def _extractIndexableText(self, filePath: str) -> str:
         """Extract name, docs, and attributes labels for indexing using core.Module."""
@@ -104,7 +99,7 @@ class ModuleIndexer:
 
         for f in moduleFiles:
             absPath = os.path.abspath(f).lower()
-            currentMtime = self._getMtime(absPath)
+            currentMtime = os.path.getmtime(absPath)
             
             cachedData = self.cache["modules"].get(absPath)
             

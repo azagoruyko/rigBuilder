@@ -139,10 +139,7 @@ def getModuleHistoryEntries(
             continue
 
         rev, dateStr, subject = parts[0], " ".join(parts[1:4]), " ".join(parts[4:])
-        files = []
-        for line in lines[1:]:
-            files.append(line)
-
+        files = lines[1:]
         entries.append({"rev": rev, "subject": subject, "date": dateStr, "files": files})
     
     return entries
@@ -385,7 +382,7 @@ class ModuleHistoryBrowser(QWidget):
             
             # Keep alive in global list
             activeWorkers.append(dlg._worker)
-            dlg._worker.finished.connect(lambda: activeWorkers.remove(dlg._worker) if dlg._worker in activeWorkers else None)
+            dlg._worker.finished.connect(lambda: activeWorkers.remove(dlg._worker))
             
             dlg._worker.finished.connect(onFinished)
             dlg._worker.start()

@@ -68,8 +68,7 @@ class DirectoryWatcher(QObject):
     def refreshWatchedPaths(self):
         paths = set()
         for root in self.roots:
-            walkIterator = os.walk(root)
-            for dirPath, _, fileNames in walkIterator:
+            for dirPath, _, fileNames in os.walk(root):
                 paths.add(dirPath)
                 for fileName in fileNames:
                     fileNameLower = fileName.lower()

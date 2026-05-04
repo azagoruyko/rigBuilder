@@ -243,7 +243,7 @@ class DiffBrowserWidget(QWidget):
             
             # Keep alive in global list
             activeWorkers.append(worker)
-            worker.finished.connect(lambda: activeWorkers.remove(worker) if worker in activeWorkers else None)
+            worker.finished.connect(lambda: activeWorkers.remove(worker))
             
             worker.start()
             self.worker = worker

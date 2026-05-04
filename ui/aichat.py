@@ -4,11 +4,11 @@ import json
 import copy
 
 import markdown
+from ..qt import *
 
 from .. import workspace
-from ..qt import *
 from ..ai import engine
-from ..settings import settings
+from ..settings import settings, RIG_BUILDER_PATH
 
 from pygments.formatters import HtmlFormatter
 from ..logger import logger
@@ -299,7 +299,7 @@ class AIChatDialog(QDialog):
 
     def _formatMessageToMarkdown(self, msg):
         """Convert a message object to a Markdown string."""
-        role = msg.get('role', 'unknown').capitalize()
+        role = msg.get('role', 'unknown')
         content = msg.get('content', '')
         formattedContent = self._formatThinking(content)
         
@@ -310,12 +310,12 @@ class AIChatDialog(QDialog):
                 formattedContent = toolLine
             else:
                 formattedContent += f"\n\n{toolLine}"
-        elif not formattedContent and msg.get('role') == 'assistant':
+        elif not formattedContent and role == 'assistant':
             formattedContent = "Thinking...maybe hanging..."
         
-        if msg.get('role') == 'user':
-            return f"### 👤 {role}\n{formattedContent}\n\n"
-        elif msg.get('role') == 'tool':
+        if role == 'user':
+            return f"### 👤 {role.capitalize()}\n{formattedContent}\n\n"
+        elif role == 'tool':
             return "" # Skip raw tool results in history for now
         else:
             return f"### 🤖 Assistant\n{formattedContent}\n\n"
@@ -559,10 +559,8 @@ class AIChatDialog(QDialog):
             indexer.refresh()
             
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                results = loop.run_until_complete(indexer.search(query, k=10))
-                
+                results = asyncio.run(indexer.search(query, k=10))
+
                 if not results:
                     return "No results found."
                 

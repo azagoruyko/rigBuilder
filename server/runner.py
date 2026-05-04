@@ -66,7 +66,7 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
     if not module:
         return _emitError(emitFn, runId, f"Module not found at path: {modulePath}")
 
-    extraContext = _interactiveContexts.get(contextKey) or {}
+    extraContext = _interactiveContexts.get(contextKey, {})
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -110,12 +110,11 @@ def executeModuleCode(moduleXml: str, modulePath: str, code: str, emitFn, runId:
     return _runWithModuleXml(moduleXml, modulePath, emitFn, runId, contextKey, _action)
 
 
-
 def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
     """Execute host-side Python code and return JSON-serializable context."""
 
     # Retrieve or create the accumulated interactive context.
-    context = _interactiveContexts.get(contextKey) or {}
+    context = _interactiveContexts.get(contextKey, {})
     capture = _StreamCapture(emitFn, runId)
 
     with captureOutput(capture):
@@ -124,10 +123,7 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
             if result is not None:
                 print(repr(result))
         except Exception as e:
-            msg = str(e)
-            tb = getErrorStack()
-            emitFn({"event": "error", "id": runId, "text": msg, "traceback": tb})
-            return {"ok": False, "error": msg, "traceback": tb, "id": runId}
+            return _emitError(emitFn, runId, str(e), getErrorStack())
 
     # Store surviving user variables for the next interactive call.
     if contextKey:

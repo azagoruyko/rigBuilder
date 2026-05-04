@@ -8,6 +8,7 @@ import inspect
 import sys
 import shutil
 import logging
+import textwrap
 import xml.etree.ElementTree as ET
 from functools import partial
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
@@ -178,6 +179,7 @@ class AttributesWidget(QWidget):
         self.updateWidget(attrWidgetIndex)
         self.updateWidgetStyle(attrWidgetIndex)
 
+    @staticmethod
     def _wrapper(f: Callable[..., object]):
         def inner(self, attrWidgetIndex: int, *args, **kwargs):
             attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
@@ -357,7 +359,7 @@ class AttributesTabWidget(QTabWidget):
         self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"], parent=self)
         self.searchAndReplaceDialog.onReplace.connect(self._onReplace)
 
-        self.currentChanged.connect(self._onTabChanged)
+        self.currentChanged.connect(self.selectTab)
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
@@ -395,9 +397,6 @@ class AttributesTabWidget(QTabWidget):
             attr.set(v)
 
         self.updateTabs()
-
-    def _onTabChanged(self, idx: int):
-        self.selectTab(idx)
 
     def selectTab(self, idx: int):
         """Switch to tab at index and build attributes widget."""
@@ -725,9 +724,7 @@ class ModuleModel(QAbstractItemModel):
         if not index.isValid():
             return Qt.ItemIsDropEnabled
         
-        module = index.internalPointer()
         f = Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
-        
         return f | Qt.ItemIsEditable
 
     # Helpers for structural changes
@@ -802,9 +799,7 @@ class ModuleModel(QAbstractItemModel):
         return Qt.CopyAction | Qt.MoveAction
 
     def canDropMimeData(self, data: QMimeData, action: Qt.DropAction, row: int, column: int, parent: QModelIndex) -> bool:
-        if data.hasFormat("application/x-rigbuilder-module-internal") or data.hasUrls():
-            return True
-        return False
+        return data.hasFormat("application/x-rigbuilder-module-internal") or data.hasUrls()
 
     def dropMimeData(self, data: QMimeData, action: Qt.DropAction, row: int, column: int, parent: QModelIndex) -> bool:
         if action == Qt.IgnoreAction:
@@ -850,14 +845,7 @@ class ModuleModel(QAbstractItemModel):
             if not self._draggedModules:
                 return False
 
-            # Sort dragged modules by current parent and row to make moves predictable
-            sortedModules = list(self._draggedModules)
-            if action == Qt.MoveAction:
-                # When moving, sort by reverse row to handle parent shifts better if needed,
-                # but for simplicity, let's just use original order and check validity.
-                pass
-
-            for m in sortedModules:
+            for m in self._draggedModules:
                 oldParent = m.parent() or self._rootModule
                 try:
                     oldRow = oldParent.children().index(m)
@@ -898,8 +886,7 @@ class ModuleModel(QAbstractItemModel):
         
     def isInsideReferenceModule(self, module: Module) -> bool:
         """Recursive helper to find the reference counterpart (source definition) of a module."""
-        refFile = module.referenceFile()
-        if refFile:
+        if module.referenceFile():
             return True
 
         parent = module.parent()
@@ -1362,19 +1349,15 @@ class ModuleTreeWidget(QTreeView):
         if not modules:
             return
             
-        self.clipboard = []
-        for m in modules:
-            self.clipboard.append(m.copy())
+        self.clipboard = [m.copy() for m in modules]
         
     def cutModules(self):
         """Cut selected modules to clipboard."""
         modules = self.selectedModules()
         if not modules:
             return
-            
-        self.clipboard = []
-        for m in modules:
-            self.clipboard.append(m.copy())
+
+        self.clipboard = [m.copy() for m in modules]
         
         self.removeModule(askConfirmation=False)
 
@@ -1840,7 +1823,6 @@ class EditAttributesTabWidget(QTabWidget):
     def clearTabs(self):
         for _ in range(self.count()):
             self.clearTab(0)
-        self.clear()
 
 class EditAttributesDialog(QDialog):
     def __init__(self, module: Module, currentIndex: int = 0, **kwargs):
@@ -2712,9 +2694,7 @@ class RigBuilderWindow(QFrame):
         editor = self.codeEditorWidget.editorWidget
         cursor = editor.textCursor()
         if not cursor.hasSelection():
-            return
-            
-        import textwrap
+            return        
         
         startPos = cursor.selectionStart()
         endPos = cursor.selectionEnd()
@@ -3034,11 +3014,7 @@ class RigBuilderWindow(QFrame):
     def runModule(self):
         """Run module on the host server."""
         def getChildrenCount(m: Module) -> int:
-            count = 0
-            for ch in m.children():
-                count += 1
-                count += getChildrenCount(ch)
-            return count
+            return sum(1 + getChildrenCount(ch) for ch in m.children())
 
         currentModule = self.treeWidget.currentModule()
         if not currentModule:

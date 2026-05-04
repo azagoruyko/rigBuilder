@@ -71,7 +71,7 @@ class DiscoveryServer(QObject):
                         host = msg.get("host", "unknown")
                         cmdPort = msg.get("cmdPort")
                         eventPort = msg.get("eventPort")
-                        name = msg.get("name", f"{host.capitalize()}")
+                        name = msg.get("name", host.capitalize())
 
                         entry = {
                             "host": host,
@@ -151,13 +151,9 @@ class ConnectionManager(QObject):
 
     def servers(self) -> dict:
         """Return all currently discovered hosts."""
-        # We only return discovered hosts now
-        result = {}
-        for entry in self.discoveryServer.discoveredHosts().values():
-            result[entry["name"]] = entry
-        return result
+        return {entry["name"]: entry for entry in self.discoveryServer.discoveredHosts().values()}
 
-    def findServer(self, name: str) -> dict | None:
+    def findServer(self, name: str) -> Optional[dict]:
         """Return a server entry dict by name, or None if not found."""
         for entry in self.discoveryServer.discoveredHosts().values():
             if entry["name"] == name:
