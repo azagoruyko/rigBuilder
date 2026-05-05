@@ -9,6 +9,9 @@ RIG_BUILDER_USER_PATH = os.path.normpath(os.path.join(os.path.expanduser("~"), "
 SETTINGS_PATH = os.path.join(RIG_BUILDER_USER_PATH, "settings.json")
 RIG_BUILDER_WORKSPACES_PATH = os.path.join(RIG_BUILDER_USER_PATH, "workspaces")
 
+MODULE_EXT = ".rb" # default extension for new/saved modules
+MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
+
 logger = logging.getLogger('rigBuilder')
 
 class Settings:

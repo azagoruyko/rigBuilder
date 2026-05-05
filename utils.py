@@ -369,4 +369,24 @@ def detectHostByCode(code) -> str:
                 if line.startswith(importLine):
                     return host
 
-    return ""            
+    return ""
+
+def relativePath(path: str, root: str) -> str:
+    """Calculate relative path from root directory."""
+    path = os.path.normpath(path)
+    root = os.path.normpath(root)
+    if path.lower().startswith(root.lower() + os.sep):
+        return path[len(root) + 1:]
+    else:
+        return path
+
+def displayPath(path: str) -> str:
+    """Get display string for relative path."""
+    path = path.replace("\\", "/")
+    items = path.split("/")
+    
+    MaxPathItems = 3
+    if len(items) > MaxPathItems: # c: folder child module.xml => ../child/module.xml
+        path = "../"+"/".join(items[-MaxPathItems:])
+
+    return path

@@ -8,14 +8,12 @@ import xml.etree.ElementTree as ET
 from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
 from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson
 from .widgets import core as widgets_core
+from .uidManager import UidManager
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
 
-from .settings import settings
-
-MODULE_EXT = ".rb" # default extension for new/saved modules
-MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
+from .settings import settings, MODULE_EXTS
 
 ATTR_PREFIX = "attr_"
 
@@ -35,84 +33,6 @@ class DictExt(dict):
     def __setattr__(self, name: str, value: Any):
         self[name] = value
 
-class UidManager:
-    _uids: dict[str, str] = {}
-
-    @classmethod
-    def sync(cls):
-        """Sync cached UIDs from modules directory."""
-        cls._uids = cls.findUids(settings.modulesPath)
-
-    @classmethod
-    def get(cls, uid: str) -> Optional[str]:
-        """Get file path by UID."""
-        return cls._uids.get(uid)
-
-    @classmethod
-    def uids(cls) -> dict[str, str]:
-        """Get all cached UIDs."""
-        return cls._uids
-
-    @classmethod
-    def resolve(cls, spec: str) -> str:
-        """Resolve spec (path or uid) to module file path, or empty string if not found."""
-        if not spec:
-            return ""
-            
-        modulePath = cls.get(spec)
-        if not modulePath:
-            root = settings.modulesPath
-            spec = os.path.expandvars(spec)
-
-            specPaths = [
-                root + spec + ext
-                for root in ("", f"{root}/")
-                for ext in ("",) + MODULE_EXTS
-            ]
-
-            for path in specPaths:
-                if os.path.exists(path):
-                    modulePath = path
-                    break
-
-        return os.path.normpath(modulePath) if modulePath else ""
-
-    @staticmethod
-    def getUidFromFile(path: str) -> Optional[str]:
-        """Extract UID from a module file (.rb or .xml)."""
-        if any(path.endswith(ext) for ext in MODULE_EXTS):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    l = f.readline()  # read first line
-                r = re.search("uid=\"(\\w*)\"", l)
-                if r:
-                    return r.group(1)
-            except Exception:
-                pass
-        return None
-
-    @classmethod
-    def findUids(cls, path: str) -> dict[str, str]:
-        """Find all UIDs and their file paths in directory."""
-        uids = {}
-        for fpath in sorted(glob.iglob(path + "/*")):
-            if os.path.isdir(fpath):
-                uids.update(cls.findUids(fpath))
-            elif any(fpath.endswith(ext) for ext in MODULE_EXTS):
-                uid = cls.getUidFromFile(fpath)
-                if uid:
-                    uids[uid] = fpath
-        return uids
-
-
-def calculateRelativePath(path: str, root: str) -> str:
-    """Calculate relative path from root directory."""
-    path = os.path.normpath(path)
-    root = os.path.normpath(root)
-    if path.lower().startswith(root.lower() + os.sep):
-        return path[len(root) + 1:]
-    else:
-        return path
 
 class ExitModuleException(Exception):pass
 class AttributeResolverError(Exception):pass
@@ -353,7 +273,7 @@ class Attribute(object):
         else:
             self._setDefaultValue(ctx["value"])
 
-    def findConnectionSource(self) -> Optional['Attribute']:
+    def findConnectionSource(self) -> Optional[Attribute]:
         """Find source attribute for connection."""
         if self._module and self._module._parent and self._connect:
             srcAttr = self._module._parent.findAttributeByPath(self._connect)
@@ -577,7 +497,7 @@ class Module(object):
         """Get root module in hierarchy."""
         return self._parent.root() if self._parent else self
 
-    def children(self) -> List['Module']:
+    def children(self) -> List[Module]:
         """Get list of child modules."""
         return list(self._children)
 
@@ -725,42 +645,10 @@ class Module(object):
 
         return module
 
-    def loadedFromStore(self) -> bool:
-        """Check if module was loaded from the modules store."""
-        return self._uid in UidManager.uids()
-
     def referenceFile(self) -> Optional[str]:
         """Get reference file path."""
         return UidManager.get(self._uid)
 
-    def relativePath(self) -> str:
-        """Get relative path from modules directory."""
-        path = UidManager.resolve(self._uid)
-        if self.loadedFromStore():
-            return calculateRelativePath(path, settings.modulesPath)
-        else:
-            return path
-
-    def relativePathString(self) -> str:
-        """Get display string for relative path."""
-        filePath = UidManager.resolve(self._uid)
-        if not filePath:
-            return ""
-
-        path = ""
-        if self.loadedFromStore():
-            path = self.relativePath().replace("\\", "/")
-        else:
-            normLoadedPath = filePath.replace("\\", "/")
-            items = normLoadedPath.split("/")
-            MaxPathItems = 3
-            if len(items) > MaxPathItems: # c: folder child module.xml
-                path = "../"+"/".join(items[-MaxPathItems:])
-            else:
-                path = normLoadedPath
-
-        return os.path.splitext(path)[0]
-        
     def embed(self):
         """Embed module by clearing UID."""
         self._uid = ""
@@ -777,7 +665,7 @@ class Module(object):
         for ch in self._children:
             ch.sync()
 
-    def syncWith(self, other: 'Module') -> bool:
+    def syncWith(self, other: Module) -> bool:
         """Sync module structure and data with another module. Returns True on success."""
         self._uid = other._uid
         self._runCode = other._runCode
@@ -866,7 +754,7 @@ class Module(object):
         return m
 
     @staticmethod
-    def loadModule(spec: str, *, sync: bool = True) -> 'Module': # spec can be full path, relative path or uid
+    def loadModule(spec: str, *, sync: bool = True) -> Module: # spec can be full path, relative path or uid
         """Load module by spec (path, relative path, or UID)."""
         modulePath = UidManager.resolve(spec)
         if not modulePath:
@@ -926,7 +814,7 @@ class Module(object):
         
         return attr
 
-    def findModuleByPath(self, path: str) -> Optional['Module']:
+    def findModuleByPath(self, path: str) -> Optional[Module]:
         """Find a module by its path string (e.g., 'Root/Child/Grandchild' or 'Child/Grandchild')."""
         if not path or path == ".":
             return self
@@ -993,7 +881,7 @@ class Module(object):
     def run(
         self,
         *,
-        callback: Optional[Callable[['Module'], None]] = None,
+        callback: Optional[Callable[[Module], None]] = None,
         context: Optional[dict[str, Any]] = None,
     ) -> DictExt[str, Any]:
         """Execute module code and child modules."""

@@ -15,7 +15,8 @@ from .settings import (
     RIG_BUILDER_WORKSPACES_PATH
 )
 
-from .core import Module, UidManager
+from .core import Module
+from .uidManager import UidManager
 from .utils import forceRemove
 
 def flattenModules(roots: List[Module]) -> List[Module]:

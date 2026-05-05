@@ -11,9 +11,9 @@ import markdown
 import asyncio
 
 from ..qt import *
-from ..core import Module, MODULE_EXT, MODULE_EXTS, UidManager
-from .. import settings as settings_module
-from ..settings import settings
+from ..core import Module
+from ..uidManager import UidManager
+from ..settings import settings, MODULE_EXT, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
@@ -610,8 +610,8 @@ class ModuleBrowser(QWidget):
 
     def _updatePathLabel(self):
         path = os.path.normpath(settings.modulesPath)
-        userRoot = os.path.normpath(settings_module.RIG_BUILDER_USER_PATH)
-        appRoot = os.path.normpath(settings_module.RIG_BUILDER_PATH)
+        userRoot = os.path.normpath(RIG_BUILDER_USER_PATH)
+        appRoot = os.path.normpath(RIG_BUILDER_PATH)
 
         if path.lower().startswith(userRoot.lower()):
             rel = os.path.relpath(path, userRoot)

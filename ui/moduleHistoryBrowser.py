@@ -7,36 +7,16 @@ import subprocess
 from typing import Any, List, Optional, Tuple
 from xml.sax.saxutils import escape
 
-from ..core import Module, UidManager
+from ..qt import *
+from ..core import Module
+from ..uidManager import UidManager
 from ..settings import settings
 from ..gitrepo import GitRepo
-from ..qt import (
-    QDesktopServices,
-    QDialog,
-    QLineEdit,
-    QLabel,
-    QDialogButtonBox,
-    QMessageBox,
-    QMenu,
-    Qt,
-    QTextBrowser,
-    QUrl,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QWidget,
-    QTextCursor,
-    Signal,
-    QThread,
-    QFrame,
-)
 from .utils import centerWindow
 from .diffBrowser import DiffBrowserDialog
 from .. import ai
 from ..ai import engine
 
-
-# --- Constants ---
 activeWorkers = []
 
 GIT_INSTALL_URL = "https://git-scm.com/downloads"

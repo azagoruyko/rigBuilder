@@ -19,6 +19,7 @@ from ..ai.engine import IS_OLLAMA_AVAILABLE
 from ..client.connectionManager import connectionManager
 from ..client.hostExecutor import hostExecutor
 from ..core import *
+from ..uidManager import UidManager
 from ..logger import logger, logHandler
 from ..qt import *
 from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
@@ -636,7 +637,12 @@ class ModuleModel(QAbstractItemModel):
                 return icon + name + " "
 
             elif column == 1:
-                return module.relativePathString().replace("\\", "/") + " "
+                ref = module.referenceFile()
+                if ref:
+                    path = relativePath(ref, settings.modulesPath).replace("\\", "/")
+                    return os.path.splitext(path)[0]
+                else:
+                    return ""
 
             elif column == 2:
                 return module.uid()[:8]
@@ -1185,7 +1191,7 @@ class ModuleTreeWidget(QTreeView):
         commitMessage = ""
 
         # Build list for description
-        desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), m.relativePath() or p) for m, p, _ in saveData])
+        desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), relativePath(p, settings.modulesPath)) for m, p, _ in saveData])
 
         if historyEnabled:
             modulesToSave = [m for m, _, _ in saveData]

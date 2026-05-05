@@ -8,7 +8,6 @@ from ..ai import engine
 from ..core import Module
 from ..logger import logger
 
-
 activeWorkers = []
 
 class DocGeneratorWorker(QThread):

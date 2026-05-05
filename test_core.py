@@ -9,12 +9,11 @@ from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, DataAccessor, DictExt,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, APIError,
-    calculateRelativePath,
     printError, printWarning, exitModule,
-    APIRegistry, UidManager
-)
+    APIRegistry)
+from rigBuilder.uidManager import UidManager
 from rigBuilder.settings import settings, RIG_BUILDER_USER_PATH
-from rigBuilder.utils import copyJson
+from rigBuilder.utils import copyJson, relativePath
 
 
 # ============================================================================
@@ -1262,7 +1261,7 @@ class TestModuleFileOperations:
             f.write("<module name=\"test\"><run></run><attributes></attributes><children></children></module>")
 
         uid = UidManager.getUidFromFile(filePath)
-        assert uid is None
+        assert uid == ""
 
     def testGetUidFromNonXmlFile(self, tempDir):
         """Test UidManager.getUidFromFile with non-XML file."""
@@ -1271,7 +1270,7 @@ class TestModuleFileOperations:
             f.write("This is not an XML file")
 
         uid = UidManager.getUidFromFile(filePath)
-        assert uid is None
+        assert uid == ""
 
     def testModuleSyncWithNoChildren(self):
         """Test sync on module without children."""
@@ -1813,18 +1812,18 @@ class TestIntegration:
 class TestPathAndSettings:
     """Tests for path and settings helpers."""
 
-    def testCalculateRelativePath_insideRoot(self):
-        """calculateRelativePath should strip root prefix (case-insensitive)."""
+    def testRelativePath_insideRoot(self):
+        """relativePath should strip root prefix (case-insensitive)."""
         root = os.path.join("C:\\", "Projects", "Rig")
         path = os.path.join("C:\\", "Projects", "Rig", "sub", "file.xml")
-        result = calculateRelativePath(path, root.lower())
+        result = relativePath(path, root.lower())
         assert result == os.path.join("sub", "file.xml")
 
-    def testCalculateRelativePath_outsideRoot(self):
-        """calculateRelativePath should return original path when outside root."""
+    def testRelativePath_outsideRoot(self):
+        """relativePath should return original path when outside root."""
         root = os.path.join("C:\\", "Projects", "Rig")
         path = os.path.join("C:\\", "Other", "Rig", "file.xml")
-        result = calculateRelativePath(path, root)
+        result = relativePath(path, root)
         assert result == os.path.normpath(path)
 
     def testGetModulesPath(self):

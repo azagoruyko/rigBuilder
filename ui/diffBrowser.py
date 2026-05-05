@@ -9,9 +9,7 @@ from ..logger import logger
 from .. import ai
 from ..ai import engine
 
-
 activeWorkers = []
-
 
 def calculateModulesDiff(modules: List[Module]) -> str:
     """Calculate unified diffs for a list of modules against their disk state."""
