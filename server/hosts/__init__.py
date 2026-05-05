@@ -19,7 +19,7 @@ if RIG_BUILDER_PATH not in sys.path:
     sys.path.append(RIG_BUILDER_PATH)
 
 from rigBuilder.server.hosts.{host} import {HostClass}
-rigBuilderServer = {HostClass}({discoveryPort}, name="")
+rigBuilderServer = {HostClass}({discoveryPort})
 rigBuilderServer.start()"""
 
 MODULE_EXECUTION_TIMEOUT = 86400 # 24 hours
@@ -46,11 +46,10 @@ class HostServer:
         rigbuilder-registration — re-registers with the discovery server periodically
     """
 
-    def __init__(self, discoveryPort=51605, name: str = ""):
+    def __init__(self, discoveryPort=51605):
         self._pullPort = 0
         self._pubPort = 0
         self._discoveryPort = discoveryPort
-        self._name = name  # optional user-visible label; overrides the auto-detected host name
         self._ctx = None
         self._running = False
         # _pubQueue carries event dicts; _pubLoop is the only thread that calls send_string.
@@ -271,7 +270,7 @@ class HostServer:
 
     def ping(self) -> dict:
         """Return server identity. Override to include host name and version."""
-        return {"ok": True, "host": "standalone", "name": self._name or "Standalone"}
+        return {"ok": True, "host": "standalone", "name": "Standalone"}
 
     def runModule(self, msg: dict) -> dict:
         """Execute a module XML payload; return updated XML."""
@@ -311,4 +310,4 @@ class HostServer:
                 return {"ok": True, "workspace": name}
             return {"ok": False, "error": f"Workspace {name!r} does not exist"}
 
-        return self._scheduleHostExecution(task, timeout=30)
+        return self._scheduleHostExecution(task, timeout=30)

@@ -21,7 +21,7 @@ class BlenderServer(HostServer):
         return {
             "ok": True,
             "host": "blender",
-            "name": self._name or f"Blender {bpy.app.version_string}"
+            "name": f"Blender {bpy.app.version_string}"
         }
 
 # API functions mostly used by the client's widgets

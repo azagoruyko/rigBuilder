@@ -27,7 +27,7 @@ class HoudiniServer(HostServer):
         return {
             "ok": True,
             "host": "houdini",
-            "name": self._name or f"Houdini {hou.applicationVersionString()}"
+            "name": f"Houdini {hou.applicationVersionString()}"
         }
 
 

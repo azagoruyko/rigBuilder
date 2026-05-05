@@ -22,7 +22,7 @@ class MayaServer(HostServer):
         return {
             "ok": True,
             "host": "maya",
-            "name": self._name or f"Maya {cmds.about(version=True)}"
+            "name": f"Maya {cmds.about(version=True)}"
         }
 
 # API functions mostly used by the client's widgets

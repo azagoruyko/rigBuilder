@@ -27,7 +27,7 @@ class DiscoveryServer(QObject):
         self._port = port
         self._running = False
         self._thread = None
-        self._discoveredHosts = {} # (address, cmdPort) -> entry
+        self._discoveredHosts = {} # cmdPort -> entry
 
     def start(self):
         if self._running:
@@ -73,20 +73,25 @@ class DiscoveryServer(QObject):
                         eventPort = msg.get("eventPort")
                         name = msg.get("name", host.capitalize())
 
-                        entry = {
-                            "host": host,
-                            "cmdPort": cmdPort,
-                            "eventPort": eventPort,
-                            "name": name,
-                            "discovered": True,
-                            "lastSeen": time.time()
-                        }
-                        
-                        key = cmdPort
-                        isNew = key not in self._discoveredHosts
-                        self._discoveredHosts[key] = entry
+                        if cmdPort in self._discoveredHosts:
+                            self._discoveredHosts[cmdPort].update({"lastSeen": time.time()})
+                        else: # when new server is discovered
+                            count = 0
+                            for entry in self._discoveredHosts.values():
+                                if entry["name"].startswith(name):
+                                    count += 1
 
-                        if isNew:
+                            nameSuffix = f" ({count})" if count > 0 else ""
+
+                            entry = {
+                                "host": host,
+                                "cmdPort": cmdPort,
+                                "eventPort": eventPort,
+                                "name": name + nameSuffix,
+                                "lastSeen": time.time()
+                            }
+
+                            self._discoveredHosts[cmdPort] = entry
                             self.hostDiscovered.emit()
                     else:
                         logger.warning(f"Discovery: unknown command {cmd!r}")
