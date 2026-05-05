@@ -2294,7 +2294,6 @@ class RigBuilderWindow(QFrame):
         self.hostCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.hostCombo.currentIndexChanged.connect(self._onHostComboChanged)
         connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
-        self._refreshHostCombo()
 
         self.hostManageBtn = QPushButton("⚙️")
         self.hostManageBtn.setToolTip("Manage hosts")
@@ -2627,12 +2626,15 @@ class RigBuilderWindow(QFrame):
         try:
             conn = connectionManager.connect(name, parent=self)
             conn.onConnectionLost.connect(self._onHostConnectionLost)
-            # Subtle visual indicator of active connection
-            self.hostCombo.setStyleSheet("color: #6ea7ff; font-weight: bold;")
+            
         except Exception as e:
             logger.error(f"Failed to connect to {name}: {e}")
             self.hostCombo.setStyleSheet("color: #ff6b6b;")
             connectionManager.disconnect()
+        else:
+            self.hostCombo.setStyleSheet("color: #6ea7ff; font-weight: bold;")
+            ws = self.workspaceWidget.currentWorkspace()
+            hostExecutor.switchWorkspace(ws.name)
 
     def _onHostConnectionLost(self, reason: str):
         connectionManager.disconnect()
@@ -3070,6 +3072,8 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryBrowser.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([ws.settings.modulesPath])
         self.moduleBrowser.refreshModules()
+
+        hostExecutor.switchWorkspace(ws.name)
 
         logger.info(f"Workspace changed: {ws.name}")
         

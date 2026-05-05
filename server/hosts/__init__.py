@@ -172,6 +172,9 @@ class HostServer:
             elif cmd == "executeCode":
                 reply = self.executeCode(msg)
 
+            elif cmd == "switchWorkspace":
+                reply = self.switchWorkspace(msg)
+
             else:
                 reply = {"ok": False, "error": f"unknown command: {cmd}"}
 
@@ -297,4 +300,15 @@ class HostServer:
             lambda: executeCode(msg["code"], self.emit, msg["id"], msg.get("contextKey", "")),
             timeout=CODE_EXECUTION_TIMEOUT,
         )
-        
+
+    def switchWorkspace(self, msg: dict) -> dict:
+        """Switch workspace on the server side."""
+        def task():
+            from rigBuilder.workspace import Workspace
+            name = msg.get("name", "default")
+            if Workspace.exists(name):
+                Workspace.load(name).activate()
+                return {"ok": True, "workspace": name}
+            return {"ok": False, "error": f"Workspace {name!r} does not exist"}
+
+        return self._scheduleHostExecution(task, timeout=30)

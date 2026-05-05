@@ -102,4 +102,12 @@ class HostExecutor(QObject):
                 self.onError.emit(f"Failed to sync state from server: {e}", "")
         return None  # error already shown via streaming onError
 
+    @executionGate
+    def switchWorkspace(self, name: str) -> bool:
+        """Switch workspace on the active server."""
+        if not self._conn:
+            return False
+        reply = self._conn.switchWorkspace(name)
+        return reply.get("ok", False)
+
 hostExecutor = HostExecutor()
