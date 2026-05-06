@@ -17,12 +17,20 @@ ch = module.child("child") # or module.child(0)
 ch.run()
 
 ]]></run>
-<doc><![CDATA[## Example docs
+<doc><![CDATA[## Example
 
-You can use links here
-- [Rig Builder docs](https://github.com/azagoruyko/rigBuilder/wiki/Documentation)
+Documentation supports `Markdown` syntax, even code blocks.
+
+```
+def someFunc():
+	pass
+```
+
+Links supported as well.
+- [Project page](https://github.com/azagoruyko/rigBuilder)
 - [Open example module](module:example)
-]]></doc>
+
+Happy creating!]]></doc>
 <attributes>
 <attr name="" template="button" category="General" connect=""><![CDATA[{"command": "# you can set json data directly\nmodule.attr.lineAttr.set({\"value\":5, \"list\":[1,2,3]})\n\n# or with ch/chset\nchset(\"/out_lst\", [\"a\", \"b\", \"c\"])\n\n# or even with @ syntax\n@set_slider(10)", "label": "Press me", "color": "#176f1a", "default": "command"}]]></attr>
 <attr name="" template="label" category="General" connect=""><![CDATA[{"text": "<center><h3>You can use html markup here</h3></center>", "default": "text"}]]></attr>
