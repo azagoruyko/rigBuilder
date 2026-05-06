@@ -393,7 +393,7 @@ class AttrsWrapper: # attributes getter/setter
             else:
                 raise AttributeError("Attribute '{}' not found".format(name))
 
-class DataAccessor(): # for accessing data with @_data suffix inside a module's code
+class AttributeDataAccessor: # for accessing data with @_data suffix inside a module's code
     def __init__(self, attr: Attribute):
         self._attr = attr
 
@@ -859,7 +859,7 @@ class Module:
         for attr in self._attributes:
             ctx[ATTR_PREFIX + attr._name] = attr._defaultValue()
             ctx[ATTR_PREFIX + "set_" + attr._name] = attr.set
-            ctx[ATTR_PREFIX + attr._name + "_data"] = DataAccessor(attr)            
+            ctx[ATTR_PREFIX + attr._name + "_data"] = AttributeDataAccessor(attr)            
 
         return ctx
 

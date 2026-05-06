@@ -6,7 +6,7 @@ import shutil
 import xml.etree.ElementTree as ET
 
 from rigBuilder.core import (
-    Attribute, Module, AttrsWrapper, DataAccessor, DictExt,
+    Attribute, Module, AttrsWrapper, AttributeDataAccessor, DictExt,
     ExitModuleException, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, APIError,
     printError, printWarning, exitModule,
@@ -1409,9 +1409,9 @@ class TestHelperClasses:
         with pytest.raises(AttributeError):
             _ = simpleModule.attr.nonexistent
 
-    def testDataAccessor(self, simpleAttribute):
-        """Test DataAccessor for data access."""
-        accessor = DataAccessor(simpleAttribute)
+    def testAttributeDataAccessor(self, simpleAttribute):
+        """Test AttributeDataAccessor for data access."""
+        accessor = AttributeDataAccessor(simpleAttribute)
 
         # Get/set
         assert accessor["value"] == 10.5
