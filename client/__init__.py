@@ -127,52 +127,54 @@ class HostClient(QObject):
         so processEvents() cannot cause a deadlock even when called from the GUI thread.
         """
         runId = uuid.uuid4().hex
-        msg = {**msg, "id": runId}
-        reply_queue = queue.Queue(maxsize=1)
+        msg["id"] = runId
 
+        reply_queue = queue.Queue(maxsize=1)
         with self._replyLock:
             self._pendingReplies[runId] = reply_queue
 
-        with self._lock:
-            if not self._running or self._push.closed:
-                with self._replyLock:
-                    self._pendingReplies.pop(runId, None)
-                return {"ok": False, "error": "connection stopping"}
-            try:
-                self._push.send_string(json.dumps(msg))
-            except zmq.ZMQError:
-                with self._replyLock:
-                    self._pendingReplies.pop(runId, None)
-                return {"ok": False, "error": "socket error during send"}
-
-        app = QApplication.instance()
-        isGuiThread = app and app.thread() == QThread.currentThread()
-
         try:
+            # --- 1. Push the command to the server ---
+            with self._lock:
+                if not self._running or self._push.closed:
+                    return {"ok": False, "error": "connection stopping"}
+                
+                try:
+                    self._push.send_string(json.dumps(msg))
+                except zmq.ZMQError:
+                    return {"ok": False, "error": "socket error during send"}
+
+            # --- 2. Wait for the asynchronous reply ---
+            app = QApplication.instance()
+            isGuiThread = app and app.thread() == QThread.currentThread()
+
             if isGuiThread:
+                # GUI thread: poll the queue so we can process UI events (prevents freezing)
                 deadline = time.time() + timeout_seconds
-                while True:
+                while time.time() < deadline:
                     try:
                         reply = reply_queue.get_nowait()
                         app.processEvents()
                         return reply
                     except queue.Empty:
-                        pass
-                    if not self._running:
-                        return {"ok": False, "error": "connection stopping"}
-                    if time.time() > deadline:
-                        self._emitConnectionLostOnce("Server stopped replying (request timed out).")
-                        return {"ok": False, "error": "server timeout"}
-                    app.processEvents()
-                    time.sleep(0.05)
+                        if not self._running:
+                            return {"ok": False, "error": "connection stopping"}
+                        app.processEvents()
+                        time.sleep(0.05)
             else:
+                # Background thread: efficiently block until the reply arrives
                 try:
                     return reply_queue.get(timeout=timeout_seconds)
                 except queue.Empty:
-                    if self._running:
-                        self._emitConnectionLostOnce("Server stopped replying (request timed out).")
-                    return {"ok": False, "error": "server timeout"}
+                    pass
+
+            # --- 3. Handle Timed Out Requests ---
+            if self._running:
+                self._emitConnectionLostOnce("Server stopped replying (request timed out).")
+            return {"ok": False, "error": "server timeout"}
+
         finally:
+            # --- 4. Cleanup ---
             with self._replyLock:
                 self._pendingReplies.pop(runId, None)
 
