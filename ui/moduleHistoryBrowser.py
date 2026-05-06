@@ -220,7 +220,7 @@ class ModuleHistoryBrowser(QWidget):
             a { color: #55aaee; text-decoration: none; }
             .file { color: #96af8f; font-weight: bold; }
             .message { font-style: italic; color: #cccccc; }
-            .date { color: #888888; font-size: 11px; margin-right: 5px; }
+            .date { color: #888888; margin-right: 5px; }
             p { margin: 2px 0; }
         """)
         self.textBrowser.setContextMenuPolicy(Qt.CustomContextMenu)
