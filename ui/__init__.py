@@ -1774,10 +1774,9 @@ class EditAttributesTabWidget(QTabWidget):
 
         self.tempRunCode = self.module.runCode()
 
-        self.setTabBar(QTabBar())
         self.setMovable(True)
         self.setTabsClosable(True)
-        self.tabBar().mouseDoubleClickEvent = self.tabBarMouseDoubleClickEvent
+        self.tabBarDoubleClicked.connect(self._onTabBarDoubleClicked)
         self.tabCloseRequested.connect(self._onTabCloseRequested)
 
         tabTitlesInOrder = []
@@ -1828,10 +1827,7 @@ class EditAttributesTabWidget(QTabWidget):
                     c = self.module.path().replace(attr.module().path(inclusive=False), "") + "/" + newName # update connection path
                     a.setConnect(c)
 
-    def tabBarMouseDoubleClickEvent(self, event: QMouseEvent):
-        super().mouseDoubleClickEvent(event)
-
-        idx = self.currentIndex()
+    def _onTabBarDoubleClicked(self, idx: int):
         newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, self.tabText(idx))
         if ok:
             self.setTabText(idx, newName)
