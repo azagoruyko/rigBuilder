@@ -24,6 +24,7 @@ def replaceAttrPrefixInverse(code: str) -> str:
     return re.sub(r'{}(\w+)'.format(ATTR_PREFIX), r'@\1', code)
 
 class DictExt(dict):
+    """Extended dictionary with attribute-style access."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -938,6 +939,7 @@ APIRegistry.register("chset", Module().chset)
 # core functions
 
 APIRegistry.register("Module", Module)
+APIRegistry.register("DictExt", DictExt)
 APIRegistry.register("copyJson", copyJson)
 APIRegistry.register("saveJson", saveJson)
 APIRegistry.register("loadJson", loadJson)
