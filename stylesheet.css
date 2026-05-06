@@ -208,10 +208,19 @@ QPushButton:disabled {
    Tabs
    ========================================================================== */
 
+QTabWidget {
+	border: none;
+}
+
 QTabWidget::pane {
 	border: 1px solid #2a313d;
 	border-radius: 5px;
 	top: -1px;
+}
+
+QTabBar {
+	background-color: transparent;
+	border: none;
 }
 
 QTabBar::tab {
@@ -223,6 +232,7 @@ QTabBar::tab {
 	border-top-right-radius: 5px;
 	padding: 6px 10px;
 	margin-right: 2px;
+	outline: none;
 }
 
 QTabBar::tab:hover {
@@ -234,6 +244,7 @@ QTabBar::tab:selected {
 	background-color: #1f232a;
 	color: #f3f4f6;
 	font-weight: 600;
+	border-top: 1px solid #3e7bd6;
 }
 
 QTabBar::close-button {
