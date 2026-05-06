@@ -114,7 +114,7 @@ class AttributesWidget(QWidget):
         attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
 
         menu = QMenu(self)
-        titleAction = menu.addAction(attr.name())
+        titleAction = menu.addAction(attr.name() or "(Unnamed)")
         titleAction.setEnabled(False)
         font = titleAction.font()
         font.setBold(True)
@@ -1562,7 +1562,7 @@ class EditTemplateWidget(QWidget):
 
     def nameContextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
-        titleAction = menu.addAction(self.nameWidget.text())
+        titleAction = menu.addAction(self.nameWidget.text() or "(Unnamed)")
         titleAction.setEnabled(False)
         font = titleAction.font()
         font.setBold(True)
