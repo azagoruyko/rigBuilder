@@ -2362,7 +2362,7 @@ class RigBuilderWindow(QFrame):
         self.attributesTabWidget.attributesChanged.connect(self.codeEditorWidget.updateState)
 
         self.runBtn = QPushButton("🚀 Run")
-        self.runBtn.setToolTip("Execute module from top down in their own context.")
+        self.runBtn.setToolTip("Execute selected module inside the current host.")
         self.runBtn.setStyleSheet("background-color: #3e4f89")
         self.runBtn.clicked.connect(self.runModule)
         self.runBtn.setEnabled(False)
