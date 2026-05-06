@@ -366,11 +366,35 @@ class AttributesTabWidget(QTabWidget):
         menu = QMenu(self)
 
         if self.module:
+            addAttrMenu = menu.addMenu("Add attribute")
+            for templateName in sorted(TemplateWidgets.keys()):
+                addAttrMenu.addAction(templateName, partial(self._onQuickAddAttribute, templateName))
+
+            menu.addSeparator()
             menu.addAction("Edit attributes", self.editAttributes)
             menu.addSeparator()
             menu.addAction("Replace in values", self.searchAndReplaceDialog.exec)
 
         menu.popup(event.globalPos())
+
+    def _onQuickAddAttribute(self, template: str):
+        name, ok = QInputDialog.getText(self, "Quick Add Attribute", "Enter attribute name:", QLineEdit.Normal, "newAttr")
+        if not ok:
+            return
+
+        if name and self.module.findAttribute(name):
+            QMessageBox.warning(self, "Rig Builder", "Attribute already exists")
+            return
+
+        category = self.tabText(self.currentIndex()) or "General"
+        newAttr = Attribute(name=name, template=template, category=category)
+        
+        if template in DEFAULT_WIDGETS_DATA:
+            newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[template]))
+
+        self.module.addAttribute(newAttr)
+        self.attributesChanged.emit()
+        self.updateTabs()
 
     def editAttributes(self):
         dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=self)
