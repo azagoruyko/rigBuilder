@@ -110,7 +110,7 @@ def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit
                 widgets[i]["buttonEnabled"] = False
 
 
-class Attribute(object):
+class Attribute:
     def __init__(
         self,
         name:str = "attr", 
@@ -370,7 +370,7 @@ class Attribute(object):
             
         return d1 != d2
 
-class AttrsWrapper(object): # attributes getter/setter
+class AttrsWrapper: # attributes getter/setter
     def __init__(self, module: Module):
         self._module = module
 
@@ -406,7 +406,7 @@ class DataAccessor(): # for accessing data with @_data suffix inside a module's 
     def __str__(self) -> str:
         return json.dumps(self._attr.data())
 
-class Module(object):
+class Module:
     glob = DictExt() # global memory
 
     def __init__(
