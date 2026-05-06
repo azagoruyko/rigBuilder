@@ -50,10 +50,10 @@ def copyJson(data):
     if data is None:
         return None
 
-    elif type(data) in [list, tuple]:
+    elif isinstance(data,list) or isinstance(data, tuple):
         return [copyJson(x) for x in data]
 
-    elif type(data) == dict:
+    elif isinstance(data, dict):
         return {k: copyJson(data[k]) for k in data}
 
     elif type(data) in [int, float, bool, str]:
