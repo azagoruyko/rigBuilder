@@ -392,7 +392,8 @@ class AIChatDialog(QDialog):
         def getSelectedCode() -> str:
             """
             Get the selected lines from the code editor.
-            Use this when you need to understand the current code selection in the editor.
+            Important: The code belongs to a Rig Builder module. Variables starting with '@' (e.g., @nodeName) represent module attributes.
+            Use `getModuleAttributes()` to inspect these attributes and understand their run-time values before analyzing the code.
             Returns the selected lines as a string.
             """
             if not self.aiToolsContext["selectedModule"]:
@@ -403,6 +404,8 @@ class AIChatDialog(QDialog):
         def readCode() -> str:
             """
             Reads the entire code from the code editor.
+            Important: The code belongs to a Rig Builder module. Variables starting with '@' (e.g., @nodeName) represent module attributes.
+            Use `getModuleAttributes()` to inspect these attributes and understand their run-time values before analyzing the code.
             Returns the code as a string.
             """
             if not self.aiToolsContext["selectedModule"]:
@@ -413,6 +416,7 @@ class AIChatDialog(QDialog):
         def replaceSelectedCode(text: str) -> str:
             """
             Replace the selected code in the editor with the given text.
+            When generating code containing '@' attribute references, you MUST ensure those attributes exist by calling `getModuleAttributes()`.
             Returns 'ok' if successful.
             """
             m = self.aiToolsContext["selectedModule"]
@@ -425,6 +429,7 @@ class AIChatDialog(QDialog):
         def replaceCode(newText: str) -> str:
             """
             Replaces the entire code in the code editor with the given text.
+            When generating code containing '@' attribute references, you MUST ensure those attributes exist by calling `getModuleAttributes()`.
             Returns 'ok' if successful.
             """
             m = self.aiToolsContext["selectedModule"]
