@@ -2835,7 +2835,7 @@ class RigBuilderWindow(QFrame):
         def getVariableValue(v: object) -> Optional[object]:
             try:
                 jv = copyJson(v) # check if v is JSON serializable
-            except Exception:
+            except:
                 return None
 
             if isinstance(jv, str):
@@ -2881,12 +2881,6 @@ class RigBuilderWindow(QFrame):
         runCodeFilePath = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
 
         headerCode = []
-
-        # expose attributes
-        for a in module.attributes():
-            headerCode.append("{}{} = {}".format(ATTR_PREFIX, a.name(), getVariableValue(a.get())))
-            headerCode.append(getFunctionDefinition(a.set, name="{}set_{}".format(ATTR_PREFIX, a.name())))
-            headerCode.append("{}{}_data = {}".format(ATTR_PREFIX, a.name(), a.localData()))
 
         # expose API
         env = module.context()
