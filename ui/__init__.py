@@ -2628,7 +2628,6 @@ class RigBuilderWindow(QFrame):
             conn.onConnectionLost.connect(self._onHostConnectionLost)
             
         except Exception as e:
-            logger.error(f"Failed to connect to {name}: {e}")
             self.hostCombo.setStyleSheet("color: #ff6b6b;")
             connectionManager.disconnect()
         else:
