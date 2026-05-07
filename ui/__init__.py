@@ -1286,29 +1286,6 @@ class ModuleTreeWidget(QTreeView):
         if module:
             mainWindow.attributesTabWidget.updateTabs(module)
 
-    def syncModule(self, filePath: str):
-        """Sync specific module(s) from disk."""
-        
-        def walk(module: Module):
-            if module.referenceFile() == filePath:
-                module.sync()
-            
-            for ch in module.children():
-                walk(ch)
-
-        state = self._getTreeState()
-        self.moduleModel.beginResetModel()
-
-        walk(self.moduleModel.rootModule())
-        
-        self.moduleModel.endResetModel()
-        self._setTreeState(state)
-
-        # Refresh attributes panel if needed
-        module = self.currentModule()
-        if module:
-            mainWindow.attributesTabWidget.updateTabs(module)
-
     def syncSelectedModules(self):
         """Sync selected modules with the files on disk with confirmation."""
         selectedIndices = self.selectionModel().selectedRows()
@@ -2400,7 +2377,7 @@ class RigBuilderWindow(QFrame):
         self.docBrowser.setEnabled(False)
 
         self.moduleBrowser = ModuleBrowser()
-        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self.treeWidget.syncModule)
+        self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self._onModuleFileChanged)
         
         self.workspaceWidget.updateRequested.connect(self.moduleBrowser.refreshModules)
 
@@ -2691,6 +2668,14 @@ class RigBuilderWindow(QFrame):
             "selectedModule":m
         }
 
+    def _onModuleFileChanged(self, path):
+        if not os.path.isfile(path):
+            return
+            
+        relpath = os.path.splitext(relativePath(path, settings.modulesPath))[0]
+        uid = UidManager.getUidFromFile(path)
+        logger.warning(f"Module is updated on disk: {relpath} ({uid[:8]})")
+
     def _onAttributeChanged(self, module: Module, attr: Attribute):
         if module == self.treeWidget.currentModule():
             self.attributesTabWidget.updateTabs(module)
@@ -2808,7 +2793,7 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
 
         menu.addSeparator()
-        menu.addAction("Sync with file", self.treeWidget.syncSelectedModules)
+        menu.addAction("Sync with file", self.treeWidget.syncSelectedModules, "Ctrl+R")
         menu.addAction("Embed", self.treeWidget.embedModule)
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
