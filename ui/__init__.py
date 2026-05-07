@@ -663,8 +663,10 @@ class ModuleModel(QAbstractItemModel):
                 refModule = self.moduleTracker.getModule(module.uid())
                 if refModule and module.isSyncRequired(refModule):
                     name += "*"
+                else:
+                    name += " " # space placeholder
 
-                return icon + name + " "
+                return icon + name
 
             elif column == 1:
                 ref = module.referenceFile()
