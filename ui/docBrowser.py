@@ -33,7 +33,7 @@ class DocGeneratorWorker(QThread):
                 else:
                     combinedText = f"Children Modules Documentation:\n{self.childrenDocs}"
                 
-                summary = await ai.run("summarizer", combinedText)
+                summary = await ai.run("doc_generator", combinedText)
             
             return summary
 

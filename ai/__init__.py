@@ -3,6 +3,8 @@ from . import code_description
 from . import diff_description
 from . import diff_summary
 from . import summarizer
+from . import doc_generator
+
 
 async def run(command: str, inputText: str) -> Union[str, dict]:
     """
@@ -20,6 +22,8 @@ async def run(command: str, inputText: str) -> Union[str, dict]:
         "diff_description": diff_description.run,
         "diff_summary": diff_summary.run,
         "summarizer": summarizer.run,
+        "doc_generator": doc_generator.run,
+
     }
     
     if command not in commands:
