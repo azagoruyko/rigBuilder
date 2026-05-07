@@ -12,6 +12,12 @@ from ..settings import settings, RIG_BUILDER_PATH
 from pygments.formatters import HtmlFormatter
 from ..logger import logger
 
+STARTUP_MESSAGE = """
+I'm your **Rig Builder** assistant. I'm not very smart, but I'll do my best to help you. 
+A number of tools available for me, so don't hesitate to ask me to do something.
+I hope I don't break anything. Let's try!
+"""
+
 class AIChatWorker(QThread):
     chunkReceived = Signal(str)
     finished = Signal(dict)
@@ -130,24 +136,19 @@ class AIChatDialog(QDialog):
         self._highlighterCss = formatter.get_style_defs('.codehilite')
         self._highlighterCss += "\n.codehilite { background-color: transparent !important; }"
 
-
     def saveChat(self):
         path = os.path.join(settings.workspacePath, "chat.txt")
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(self.messages, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"Failed to save chat: {e}")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.messages, f, indent=2, ensure_ascii=False)
 
     def loadChat(self):
         path = os.path.join(settings.workspacePath, "chat.txt")
         if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    self.messages = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load chat: {e}")
-            
+            with open(path, "r", encoding="utf-8") as f:
+                self.messages = json.load(f)
+        else:
+            self.messages = []
+        
         self.updateHistory()
 
     def sendMessage(self):
@@ -181,7 +182,7 @@ class AIChatDialog(QDialog):
         if QMessageBox.question(self, "AI Chat", "Clear conversation history?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
             self.messages = []
             self.currentResponse = ""
-            self.history.clear()
+            self.updateHistory()
             self.statusLabel.setText("Chat cleared")
             self.statsLabel.clear()
             self.saveChat()
@@ -312,6 +313,9 @@ class AIChatDialog(QDialog):
 
     def updateHistory(self, streaming=False):
         """Update the chat history display."""
+        if not self.messages:
+            self.messages = [{'role': 'assistant', 'content': STARTUP_MESSAGE}]
+
         fullMd = "".join(self._formatMessageToMarkdown(msg) for msg in self.messages)
 
         if streaming:
@@ -391,19 +395,19 @@ class AIChatDialog(QDialog):
 
         def getSelectedCode() -> str:
             """
-            Get the selected lines from the code editor.
+            Get the selected code in the current module.
             Important: The code belongs to a Rig Builder module. Variables starting with '@' (e.g., @nodeName) represent module attributes.
             Use `getModuleAttributes()` to inspect these attributes and understand their run-time values before analyzing the code.
-            Returns the selected lines as a string.
+            Returns the selected code as a string.
             """
             if not self.aiToolsContext["selectedModule"]:
                 return "(Nothing selected)"
                 
             return self.aiToolsContext["selectedCode"]
 
-        def readCode() -> str:
+        def getCode() -> str:
             """
-            Reads the entire code from the code editor.
+            Get all the code of the current module.
             Important: The code belongs to a Rig Builder module. Variables starting with '@' (e.g., @nodeName) represent module attributes.
             Use `getModuleAttributes()` to inspect these attributes and understand their run-time values before analyzing the code.
             Returns the code as a string.
@@ -415,7 +419,7 @@ class AIChatDialog(QDialog):
 
         def replaceSelectedCode(text: str) -> str:
             """
-            Replace the selected code in the editor with the given text.
+            Replace the selected code in the current module with the given text.
             When generating code containing '@' attribute references, you MUST ensure those attributes exist by calling `getModuleAttributes()`.
             Returns 'ok' if successful.
             """
@@ -428,7 +432,7 @@ class AIChatDialog(QDialog):
 
         def replaceCode(newText: str) -> str:
             """
-            Replaces the entire code in the code editor with the given text.
+            Replace the current module's code with the given text.
             When generating code containing '@' attribute references, you MUST ensure those attributes exist by calling `getModuleAttributes()`.
             Returns 'ok' if successful.
             """
@@ -467,6 +471,9 @@ class AIChatDialog(QDialog):
             m = self.aiToolsContext["selectedModule"]
             if not m:
                 return "(No module)"
+
+            if m.findAttribute(name):
+                return f"(Attribute {name} already exists)"
 
             from ..widgets.core import getAttributeFromValue
             from ..utils import smartConversion
@@ -582,9 +589,9 @@ class AIChatDialog(QDialog):
         engine.AITools.getExampleModule = getExampleModule
         engine.AITools.getRigBuilderCore = getRigBuilderCore
         engine.AITools.getSelectedCode = getSelectedCode
-        engine.AITools.readCode = readCode
-        engine.AITools.replaceCode = replaceCode
+        engine.AITools.getCode = getCode
         engine.AITools.replaceSelectedCode = replaceSelectedCode
+        engine.AITools.replaceCode = replaceCode
         engine.AITools.getModuleAttributes = getModuleAttributes
         engine.AITools.addModuleAttribute = addModuleAttribute
         engine.AITools.setAttributeData = setAttributeData
