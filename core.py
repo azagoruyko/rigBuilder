@@ -659,6 +659,9 @@ class Module:
         refPath = self.referenceFile()
         if refPath:
             refModule = Module.loadFromFile(refPath)
+            if refModule._uid != self._uid:
+                refModule.sync()
+
             muted = self._muted
             self.syncWith(refModule)
             self._muted = muted
@@ -732,6 +735,17 @@ class Module:
 
         for c, rc in zip(self._children, refModule._children):
             if c.isSyncRequired(rc) or c._muted != rc._muted: # compare muted state for children only
+                return True
+
+        return False
+
+    def dependsOn(self, uid: str) -> bool:
+        """Check if module depends on another module by uid recursively."""
+        for ch in self._children:
+            if ch._uid == uid:
+                return True
+
+            if ch.dependsOn(uid):
                 return True
 
         return False

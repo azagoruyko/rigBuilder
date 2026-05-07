@@ -535,8 +535,8 @@ class ModuleTracker(QObject):
             return
 
         try:
-            # We use loadFromFile to get the raw content from disk
-            refModule = Module.loadFromFile(path)
+            # Get the module from disk (synced)
+            refModule = Module.loadModule(path)
             self._cache[uid] = refModule
             
             # Start watching the file for changes if not already watched
@@ -553,6 +553,12 @@ class ModuleTracker(QObject):
         if uid and uid in self._cache:
             self.loadModule(uid)
             self.moduleChanged.emit(uid)
+
+        # resync dependent modules in cache
+        for m in self._cache.values():
+            if m.dependsOn(uid):
+                m.sync()
+                self.moduleChanged.emit(m._uid)
 
     def refresh(self):
         """Force-reload all cached reference modules."""
