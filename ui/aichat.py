@@ -356,7 +356,7 @@ class AIChatDialog(QDialog):
                         break
 
             state = f'''
-            Host: {self.aiToolsContext["host"].name}, use appropriate coding standards for this host.
+            Host: {self.aiToolsContext["host"]}, use appropriate coding standards for this host.
             Selected module: {m.name() if m else 'No module'}
             Module documentation:{'\n' + m.doc() if m else 'No documentation'}
             Imports: {'; '.join(imports) if imports else 'No imports'}
