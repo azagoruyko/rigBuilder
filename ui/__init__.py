@@ -1136,9 +1136,6 @@ class ModuleTreeWidget(QTreeView):
         if not selection.isEmpty():
             self.selectionModel().select(selection, QItemSelectionModel.Select | QItemSelectionModel.Rows)
         
-        # Force header to recalculate column widths
-        self.header().doItemsLayout()
-
     def replaceModule(self, index: QModelIndex, newModule: Module):
         """Replace a module instance at the given index, preserving expansion and selection state."""
         if not index.isValid():
