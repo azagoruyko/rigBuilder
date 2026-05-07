@@ -659,9 +659,6 @@ class Module:
         refPath = self.referenceFile()
         if refPath:
             refModule = Module.loadFromFile(refPath)
-            if refModule._uid != self._uid:
-                refModule.sync()
-
             muted = self._muted
             self.syncWith(refModule)
             self._muted = muted
