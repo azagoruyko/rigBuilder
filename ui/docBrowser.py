@@ -44,7 +44,7 @@ class DocGeneratorWorker(QThread):
             logger.error(f"Error generating documentation: {e}")
             self.finished.emit("")
 
-class DocBrowser(QWidget):
+class DocBrowser(QTextBrowser):
     """Markdown browser for module documentation with AI generation."""
     
     moduleRequested = Signal(str)
@@ -52,49 +52,23 @@ class DocBrowser(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        self.setOpenLinks(False)
+        self.anchorClicked.connect(self._onAnchorClicked)
+        self.setPlaceholderText("Double-click to edit. Markdown supported.")
 
-        # Internal Text Browser
-        self.browser = QTextBrowser(self)
-        self.browser.setOpenLinks(False)
-        self.browser.anchorClicked.connect(self._onAnchorClicked)
-        self.browser.setPlaceholderText("Double-click to edit. Markdown supported.")
-        
-        layout.addWidget(self.browser)
-
-        # AI Generation Header (Bottom Right)
-        footerLayout = QHBoxLayout()
-        footerLayout.setContentsMargins(0, 0, 0, 0)
-        footerLayout.addStretch()
-        self.genButton = QPushButton("✨ Generate doc")
-        self.genButton.setToolTip("Generate documentation from module's run code using AI")
-        self.genButton.clicked.connect(self._onGenerateDoc)
-        footerLayout.addWidget(self.genButton)
-        layout.addLayout(footerLayout)
-
-        # Context Menu & Event Overrides for the internal browser
-        self.browser.contextMenuEvent = self.contextMenuEvent
-        self.browser.mouseDoubleClickEvent = self.mouseDoubleClickEvent
-        
         self.module = None
         self._worker = None
-
-        if not engine.IS_OLLAMA_AVAILABLE:
-            self.genButton.hide()
+        self._generating = False
 
     def updateDoc(self, module: Optional[Module] = None):
         if module is not None:
             self.module = module
             
         if not self.module:
-            self.browser.clear()
-            self.genButton.setEnabled(False)
+            self.clear()
             return
 
-        self.browser.setMarkdown(self.module.doc())
-        self.genButton.setEnabled(True)
+        self.setMarkdown(self.module.doc())
 
     def _onAnchorClicked(self, url):
         url = QUrl(url)
@@ -111,7 +85,7 @@ class DocBrowser(QWidget):
             return
 
     def _onGenerateDoc(self):
-        if not self.module:
+        if not self.module or self._generating:
             return
 
         # Prepare children documentation context
@@ -128,8 +102,7 @@ class DocBrowser(QWidget):
             QMessageBox.warning(self, "Rig Builder", "Module has no run code and no children documentation to analyze.")
             return
 
-        self.genButton.setEnabled(False)
-        self.genButton.setText("⌛ Generating...")
+        self._generating = True
         
         # Create worker without parent so it's not destroyed with the widget
         self._worker = DocGeneratorWorker(code, childrenDocsStr)
@@ -144,8 +117,7 @@ class DocBrowser(QWidget):
         self._worker.start()
 
     def _onGenerationFinished(self, module: Module, summary: str):
-        self.genButton.setEnabled(True)
-        self.genButton.setText("✨ Generate doc")
+        self._generating = False
         
         if summary:
             module.setDoc(summary)
@@ -155,8 +127,28 @@ class DocBrowser(QWidget):
         else:
             QMessageBox.warning(self, "Rig Builder", "AI failed to generate documentation.")
 
-    def mouseDoubleClickEvent(self, event):
-        """Edit source text and save it to module."""
+    def contextMenuEvent(self, event):
+        """Show standard context menu extended with doc editing and AI generation actions."""
+        menu = self.createStandardContextMenu()
+        menu.addSeparator()
+
+        editAction = menu.addAction("Edit")
+        editAction.setEnabled(bool(self.module))
+        editAction.triggered.connect(self._onEditDoc)
+
+        if engine.IS_OLLAMA_AVAILABLE:
+            if self._generating:
+                genAction = menu.addAction("⌛ Generating...")
+                genAction.setEnabled(False)
+            else:
+                genAction = menu.addAction("✨ Generate with AI")
+                genAction.setEnabled(bool(self.module))
+                genAction.triggered.connect(self._onGenerateDoc)
+
+        menu.exec_(event.globalPos())
+
+    def _onEditDoc(self):
+        """Open editor dialog to manually edit the module documentation."""
         if not self.module:
             return
 
@@ -176,3 +168,7 @@ class DocBrowser(QWidget):
 
         w.saved.connect(save)
         w.show()
+
+    def mouseDoubleClickEvent(self, event):
+        """Edit source text and save it to module."""
+        self._onEditDoc()
