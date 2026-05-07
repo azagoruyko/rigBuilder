@@ -32,3 +32,7 @@ The script showcases a modular processing workflow and demonstrates various feat
 - Managing list-type attributes dynamically.
 - Triggering child module execution from a parent module.
 ```
+
+## Input
+
+Below is the input for the prompt.

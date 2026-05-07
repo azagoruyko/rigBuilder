@@ -65,3 +65,7 @@ Short high-level synthesis.
 ## Goal
 
 Maximize retained meaning and useful context per token.
+
+## Input
+
+Below is the input for the prompt.

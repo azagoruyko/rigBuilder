@@ -20,3 +20,7 @@ Example of output you should generate. Ignore markdown code block in the output.
 ```markdown
 Refactor ModuleBrowserTree to remove the Doc column and implement rich-text tooltips for documentation.
 ```
+
+## Input
+
+Below is the input for the prompt.

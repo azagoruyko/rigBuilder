@@ -20,3 +20,7 @@ Example of output you should generate. Ignore markdown code block in the output.
 - Implement rich-text tooltips for documentation display, ensuring information is still accessible without occupying screen space.
 - Update `applyMask` to handle the new column structure and correctly fetch documentation for tooltips.
 ```
+
+## Input
+
+Below is the input for the prompt.

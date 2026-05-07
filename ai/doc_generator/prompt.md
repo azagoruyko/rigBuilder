@@ -28,3 +28,7 @@ The module creates bipedal rig, containing arms, legs, spine, and head.
 ## Use cases
 - Create a bipedal rig.
 ```
+
+## Input
+
+Below is the input for the prompt.
