@@ -2935,31 +2935,28 @@ class RigBuilderWindow(QFrame):
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
-    def diffModule(self, *, reference: Optional[str] = None):
+    def diffModule(self):
         module = self.treeWidget.currentModule()
         if not module:
             return
 
-        path = UidManager.resolve(reference) if reference else UidManager.resolve(module.uid())
-        if not path:
-            QMessageBox.warning(self, "Rig Builder", "Can't find reference file")
+        refPath = module.referenceFile()
+        if not refPath:
+            QMessageBox.warning(self, "Rig Builder", "This module has no reference file.")
             return
 
-        path = os.path.normpath(path)
+        if not os.path.exists(refPath):
+            QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(refPath))
+            return
+
         currentXml = module.toXml()
-
-        if not os.path.exists(path):
-            QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(path))
-            return
-
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            originalXml = f.read()
+        originalXml = Module.loadModule(refPath).toXml()
 
         if originalXml == currentXml:
             QMessageBox.information(self, "Rig Builder", "No changes detected.")
             return
 
-        DiffBrowserDialog(originalXml, currentXml, path, "Current", parent=self).exec()
+        DiffBrowserDialog(originalXml, currentXml, refPath, "Current", parent=self).exec()
                     
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
