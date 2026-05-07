@@ -2,10 +2,9 @@ import os
 import sys
 from .. import engine
 
-# Load the system prompt for diff analysis
-promptFile = os.path.join(os.path.dirname(__file__), "prompt.md")
-with open(promptFile, "r", encoding="utf-8") as f:
-    systemPrompt = f.read()
+PROMPT_FILE = os.path.join(os.path.dirname(__file__), "prompt.md")
+with open(PROMPT_FILE, "r", encoding="utf-8") as f:
+    PROMPT_TEMPLATE = f.read()
 
 async def run(inputText: str) -> str:
     """
@@ -15,15 +14,10 @@ async def run(inputText: str) -> str:
     if len(inputText) > limit:
         inputText = inputText[:limit]
 
-    if "{{diff}}" in systemPrompt:
-        formattedPrompt = systemPrompt.replace("{{diff}}", inputText)
-        messages = [
-            {'role': 'user', 'content': formattedPrompt}
-        ]
-    else:
-        messages = [
-            {'role': 'system', 'content': systemPrompt},
+    return await engine.chat(
+        messages=[
+            {'role': 'system', 'content': PROMPT_TEMPLATE.strip()},
             {'role': 'user', 'content': f"Analyze this diff:\n\n{inputText}"}
         ]
+    )
 
-    return await engine.chat(messages)

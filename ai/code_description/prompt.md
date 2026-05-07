@@ -32,8 +32,3 @@ The script showcases a modular processing workflow and demonstrates various feat
 - Managing list-type attributes dynamically.
 - Triggering child module execution from a parent module.
 ```
-
----
-
-**USER INPUT (Code or Summary):**
-{{input}}

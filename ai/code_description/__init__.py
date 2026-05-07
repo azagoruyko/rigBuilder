@@ -4,11 +4,8 @@ from .. import engine
 
 PROMPT_FILE = os.path.join(os.path.dirname(__file__), 'prompt.md')
 
-def loadPrompt():
-    if not os.path.exists(PROMPT_FILE):
-        return "Summarize the following Python code:\n{{input}}"
-    with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
-        return f.read()
+with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
+    PROMPT_TEMPLATE = f.read()
 
 def getChunks(code, maxChars=None):
     """
@@ -89,19 +86,16 @@ def getChunks(code, maxChars=None):
 async def run(inputText) -> str:
     """
     Asynchronous function to summarize the code in two stages.
-    """
-    promptTemplate = loadPrompt()
+    """    
     chunks = getChunks(inputText)
     
     # Stage 1: Summarize Chunks
     chunkSummaries = []
-    systemPrompt = promptTemplate.split("---")[0].strip()
-
     for i, chunk in enumerate(chunks):
         print(f"Summarizing chunk {i+1}/{len(chunks)}...")
         summary = await engine.chat(
             messages=[
-                {'role': 'system', 'content': f"{systemPrompt}\n\nTask: Summarize this portion of the code."},
+                {'role': 'system', 'content': f"{PROMPT_TEMPLATE.strip()}\n\nTask: Summarize this portion of the code."},
                 {'role': 'user', 'content': chunk}
             ]
         )
@@ -117,9 +111,11 @@ async def run(inputText) -> str:
     
     finalSummary = await engine.chat(
         messages=[
-            {'role': 'system', 'content': f"{systemPrompt}\n\nTask: Combine these chunk summaries into one cohesive description."},
+            {'role': 'system', 'content': f"{PROMPT_TEMPLATE.strip()}\n\nTask: Combine these chunk summaries into one cohesive description."},
             {'role': 'user', 'content': combinedSummaries}
         ]
     )
+
+
     
     return finalSummary
