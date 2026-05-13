@@ -26,7 +26,7 @@ class Settings:
         self.workspacePath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, "default")
         self.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")
         self.historyPath = os.path.join(self.workspacePath, "history")
-        self.autoSaveInterval = 5
+        self.autoSaveInterval = 15 # minutes
 
     def toDict(self) -> dict:
         """Return a dictionary of current attributes (for saving global base)."""
