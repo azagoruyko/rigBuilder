@@ -401,7 +401,7 @@ class AIChatDialog(QDialog):
             Returns the selected code as a string.
             """
             if not self.aiToolsContext["selectedModule"]:
-                return "(Nothing selected)"
+                return "Nothing selected"
                 
             return self.aiToolsContext["selectedCode"]
 
@@ -413,7 +413,7 @@ class AIChatDialog(QDialog):
             Returns the code as a string.
             """
             if not self.aiToolsContext["selectedModule"]:
-                return "(Code is not available)"
+                return "Code is not available"
 
             return self.aiToolsContext["code"]
 
@@ -425,7 +425,7 @@ class AIChatDialog(QDialog):
             """
             m = self.aiToolsContext["selectedModule"]
             if not m:
-                return "(No module selected)"
+                return "No module selected"
 
             self.replaceSelectedCodeRequested.emit(m, text)
             return "ok"
@@ -438,7 +438,7 @@ class AIChatDialog(QDialog):
             """
             m = self.aiToolsContext["selectedModule"]
             if not m:
-                return "(No module selected)"
+                return "No module selected"
 
             self.replaceCodeRequested.emit(m, newText)
             return "ok"
@@ -451,14 +451,14 @@ class AIChatDialog(QDialog):
             """
             m = self.aiToolsContext["selectedModule"]
             if not m:
-                return "(No attributes)"
+                return "No attributes"
             
             attrs = []
             for a in m.attributes():
                 if a.name():
                     attrs.append(f"name: {a.name()} template: {a.template()} value: {a.get()}")
             
-            return '\n'.join(attrs) if attrs else "(No attributes)"
+            return '\n'.join(attrs) if attrs else "No attributes"
 
         def addModuleAttribute(name: str, jsonValue: str) -> str:
             """
@@ -470,10 +470,10 @@ class AIChatDialog(QDialog):
             """
             m = self.aiToolsContext["selectedModule"]
             if not m:
-                return "(No module)"
+                return "No module"
 
             if m.findAttribute(name):
-                return f"(Attribute {name} already exists)"
+                return f"Attribute {name} already exists"
 
             from ..widgets.core import getAttributeFromValue
             from ..utils import smartConversion
@@ -495,11 +495,11 @@ class AIChatDialog(QDialog):
             """
             m = self.aiToolsContext.get("selectedModule")
             if not m:
-                return "(No module selected)"
+                return "No module selected"
 
             attr = m.findAttribute(name)
             if not attr:
-                return f"(Attribute '{name}' not found)"
+                return f"Attribute '{name}' not found"
 
             if isinstance(data, str):
                 try:
@@ -526,7 +526,7 @@ class AIChatDialog(QDialog):
             """
             m = self.aiToolsContext.get("selectedModule")
             if not m:
-                return "(No module selected)"
+                return "No module selected"
 
             attr = m.findAttribute(name)
             if not attr:
@@ -552,7 +552,7 @@ class AIChatDialog(QDialog):
             """
             from ..moduleIndexer import ModuleIndexer
             import asyncio
-            
+
             indexer = ModuleIndexer(os.path.join(settings.workspacePath, "moduleIndex.json"))
             indexer.refresh()
             
@@ -560,12 +560,11 @@ class AIChatDialog(QDialog):
                 results = asyncio.run(indexer.search(query, k=10))
 
                 if not results:
-                    return "No results found."
+                    return "No results found"
                 
-                output = []
-                for path, score in results:
-                    output.append(f"{path} (score: {score:.2f})")
+                output = [f"{path} (score: {score:.2f})" for path, score in results if score > 0.5]
                 return "\n".join(output)
+
             except Exception as e:
                 return f"Error during semantic search: {e}"
 
@@ -576,12 +575,15 @@ class AIChatDialog(QDialog):
             """
             if not os.path.exists(path):
                 return f"File not found: {path}"
+
             if os.path.isdir(path):
                 entries = os.listdir(path)
                 return "\n".join(os.path.join(path, e) for e in entries)
+
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     return f.read()
+
             except Exception as e:
                 return f"Error reading file: {e}"
 
