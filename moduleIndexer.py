@@ -64,12 +64,13 @@ class ModuleIndexer:
             print(f"Error extracting text from {filePath}: {e}")
             return ""
 
-    async def indexModules(self, folder: str, force: bool = False):
+    async def indexModules(self, folder: str):
         """
         Walks through the modules directory and generates embeddings for new/changed files.
         """
         self.refresh() # Ensure we have the latest cache before indexing
         changed = False
+        force = False
         
         # Initial model assignment
         currentModel = settings.ollamaEmbeddingModel
@@ -98,26 +99,31 @@ class ModuleIndexer:
         moduleFiles = core.Module.listModules(folder)
 
         for f in moduleFiles:
-            absPath = os.path.abspath(f).lower()
-            currentMtime = os.path.getmtime(absPath)
+            currentMtime = os.path.getmtime(f)
             
-            cachedData = self.cache["modules"].get(absPath)
+            cachedData = self.cache["modules"].get(f)
             
             # Index if forced, or mtime changed, or never indexed
             if force or not cachedData or cachedData.get("mtime") != currentMtime:
                 print(f"Indexing: {os.path.basename(f)}...")
-                text = self._extractIndexableText(absPath)
+                text = self._extractIndexableText(f)
                 if not text:
                     continue
                     
                 embedding = await engine.embed(text)
                 if embedding:
-                    self.cache["modules"][absPath] = {
+                    self.cache["modules"][f] = {
                         "mtime": currentMtime,
                         "embedding": embedding,
                         "name": os.path.splitext(os.path.basename(f))[0]
                     }
                     changed = True
+
+        # remove older files from cache
+        for f in list(self.cache["modules"].keys()):
+            if f not in moduleFiles:
+                del self.cache["modules"][f]
+                changed = True
         
         if changed:
             self._saveCache()
