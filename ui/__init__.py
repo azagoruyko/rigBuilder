@@ -956,23 +956,6 @@ class ModuleModel(QAbstractItemModel):
                 return childIdx
         return QModelIndex()
 
-    def removeModule(self, index: QModelIndex):
-        module = self.getModule(index)
-        if not module:
-            return False
-        
-        try:
-            parentModule = module.parent() or self._rootModule
-            parentIndex = index.parent()
-            row = parentModule.children().index(module)
-        except (ValueError, AttributeError):
-            return False
-            
-        self.beginRemoveRows(parentIndex, row, row)
-        parentModule.removeChild(module)
-        self.endRemoveRows()
-        return True
-
     def mimeTypes(self) -> List[str]:
         return ["text/uri-list", "application/x-rigbuilder-module-internal"]
 
@@ -1532,10 +1515,15 @@ class ModuleTreeWidget(QTreeView):
         if self.moduleModel.undoStack:
             self.moduleModel.undoStack.push(RemoveModulesCommand(self.moduleModel, selectedIndices))
         else:
-            # Fallback if no undo stack is present
-            sortedIndices = sorted(selectedIndices, key=lambda x: x.row(), reverse=True)
-            for idx in sortedIndices:
-                self.moduleModel.removeModule(idx)
+            # Fallback manual removal logic
+            for idx in sorted(selectedIndices, key=lambda x: x.row(), reverse=True):
+                module = self.moduleModel.getModule(idx)
+                if module:
+                    parent = module.parent() or self.moduleModel.rootModule()
+                    row = parent.children().index(module)
+                    self.moduleModel.beginRemoveRows(idx.parent(), row, row)
+                    parent.removeChild(module)
+                    self.moduleModel.endRemoveRows()
 
     def addModule(self, module: "Module") -> "Module":
         """Adds top level module."""
@@ -3077,7 +3065,16 @@ class RigBuilderWindow(QFrame):
                     
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            self.treeWidget.clear()
+            model = self.treeWidget.moduleModel
+            rootIndices = [model.index(i, 0) for i in range(model.rowCount())]
+            
+            if not rootIndices:
+                return
+
+            if model.undoStack:
+                model.undoStack.push(RemoveModulesCommand(model, rootIndices))
+            else:
+                self.treeWidget.clear()
 
     def _onModuleAdditionRequested(self, module: Module):
         """Handle module addition from external browsers."""
