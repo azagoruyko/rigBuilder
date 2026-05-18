@@ -446,10 +446,7 @@ class AttributesTabWidget(QTabWidget):
         scrollArea.setWidget(self._attributesWidget)
         self.setCurrentIndex(idx)
 
-    def updateTabs(self, module: Optional[Module] = None):
-        if module is not None:
-            self.module = module
-
+    def updateTabs(self):
         oldIndex = self.currentIndex()
         oldCount = self.count()
 
@@ -1377,11 +1374,6 @@ class ModuleTreeWidget(QTreeView):
         
         self._setTreeState(state)
 
-        # Refresh attributes panel if needed
-        module = self.currentModule()
-        if module:
-            mainWindow.attributesTabWidget.updateTabs(module)
-
     def syncSelectedModules(self):
         """Sync selected modules with the files on disk with confirmation."""
         selectedIndices = self.selectionModel().selectedRows()
@@ -1400,11 +1392,6 @@ class ModuleTreeWidget(QTreeView):
                 module.sync()
         self.moduleModel.endResetModel()
         self._setTreeState(state)
-
-        # Refresh attributes panel if needed
-        module = self.currentModule()
-        if module:
-            mainWindow.attributesTabWidget.updateTabs(module)
 
     def muteModule(self):
         selectedIndices = self.selectionModel().selectedRows()
@@ -2023,8 +2010,6 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
 
         self.editorWidget.textChanged.connect(self._onCodeChanged)
 
-        self.updateState()
-
     def _onCodeChanged(self):
         if not self.module or self._skipSaving:
             return
@@ -2032,10 +2017,6 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.module.setRunCode(self.editorWidget.toPlainText())
 
     def updateState(self):
-        if not self.module:
-            self.editorWidget.clear()
-            return
-
         self.editorWidget.ignoreStates = True
         self._skipSaving = True
         self.editorWidget.setText(self.module.runCode())
@@ -2606,7 +2587,6 @@ class RigBuilderWindow(QFrame):
         idx = self.treeWidget.moduleModel.indexForModule(module)
         if idx.isValid():
             self.treeWidget.replaceModule(idx, newModule)
-            self.attributesTabWidget.updateTabs(newModule)
 
     def _onReplExecute(self, code: str):
         """Execute general code from REPL on host."""
@@ -2650,7 +2630,6 @@ class RigBuilderWindow(QFrame):
         idx = self.treeWidget.moduleModel.indexForModule(module)
         if idx.isValid():
             self.treeWidget.replaceModule(idx, newModule)
-            self.attributesTabWidget.updateTabs(newModule)
 
     def _onExposeAsAttribute(self):
         module = self.treeWidget.currentModule()
@@ -2684,8 +2663,8 @@ class RigBuilderWindow(QFrame):
         attr = getAttributeFromValue(name, v, category)
 
         module.addAttribute(attr)
+        self.attributesTabWidget.updateTabs()
 
-        self.attributesTabWidget.updateTabs(module)
         self.codeEditorWidget.editorWidget.textCursor().insertText(f"@{name}")
         logger.info(f"Attribute '{name}' exposed.")
 
@@ -2789,7 +2768,7 @@ class RigBuilderWindow(QFrame):
 
     def _onAttributeChanged(self, module: Module, attr: Attribute):
         if module == self.treeWidget.currentModule():
-            self.attributesTabWidget.updateTabs(module)
+            self.attributesTabWidget.updateTabs()
 
     def _onReplaceCodeRequested(self, module: Module, code: str):
         if module != self.treeWidget.currentModule():
@@ -3172,7 +3151,6 @@ class RigBuilderWindow(QFrame):
             idx = self.treeWidget.moduleModel.indexForModule(currentModule)
             if idx.isValid():
                 self.treeWidget.replaceModule(idx, newModule)
-                self.attributesTabWidget.updateTabs(newModule)
             else:            
                 QMessageBox.warning(self, "Rig Builder", "Could not find module in tree")
         
