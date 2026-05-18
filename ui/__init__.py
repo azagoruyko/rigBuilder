@@ -2436,6 +2436,7 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget = CodeEditorWidget()
         self.codeEditorWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.codeEditorWidget.editorWidget.setPlaceholderText("Your module code...")
+        self.codeEditorWidget.setEnabled(False)
 
         for label, func, hotkey in [
             ("Execute", self._onExecuteCode, "Ctrl+Enter"),
@@ -2454,6 +2455,7 @@ class RigBuilderWindow(QFrame):
         self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
         self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
         self.attributesTabWidget.attributesChanged.connect(self.codeEditorWidget.updateState)
+        self.attributesTabWidget.setEnabled(False)
 
         self.runBtn = QPushButton("🚀 Run")
         self.runBtn.setToolTip("Execute selected module inside the current host.")
@@ -2513,26 +2515,19 @@ class RigBuilderWindow(QFrame):
         centerSplitter.addWidget(codeWithBtnWidget)
         centerSplitter.setSizes([500, 300])
 
-        rightSplitter = WideSplitter(Qt.Vertical)
-        rightSplitter.addWidget(self.docBrowser)
-        rightSplitter.addWidget(self.apiBrowser)
-        rightSplitter.setSizes([500, 300])
+        self.rightTabWidget = QTabWidget()
+        self.rightTabWidget.addTab(self.docBrowser, "Doc")
+        self.rightTabWidget.addTab(self.apiBrowser, "API")
+        self.rightTabWidget.addTab(self.moduleHistoryBrowser, "History")
 
-        self.centerRightSplitter = WideSplitter(Qt.Horizontal)
-        self.centerRightSplitter.addWidget(centerSplitter)
-        self.centerRightSplitter.addWidget(rightSplitter)
-        self.centerRightSplitter.setSizes([500, 200])
-        self.centerRightSplitter.hide()
-
-        self.toggleWidget = QWidget()
-        self.toggleWidget.setLayout(QVBoxLayout())
-        self.toggleWidget.layout().setContentsMargins(0, 0, 0, 0)
-        self.toggleWidget.layout().addWidget(self.centerRightSplitter)
-        self.toggleWidget.layout().addWidget(self.moduleHistoryBrowser)
+        centerRightSplitter = WideSplitter(Qt.Horizontal)
+        centerRightSplitter.addWidget(centerSplitter)
+        centerRightSplitter.addWidget(self.rightTabWidget)
+        centerRightSplitter.setSizes([500, 200])
 
         mainSplitter = WideSplitter(Qt.Horizontal)
         mainSplitter.addWidget(leftSplitter)
-        mainSplitter.addWidget(self.toggleWidget)
+        mainSplitter.addWidget(centerRightSplitter)
         mainSplitter.setSizes([200, 500])
 
         layoutSplitter = WideSplitter(Qt.Vertical)
@@ -2558,14 +2553,13 @@ class RigBuilderWindow(QFrame):
         self.moduleBrowser.refreshModules()
 
         self._splitters = {
-            "version": 1,
+            "version": 3,
             "widgets": [
                 layoutSplitter,
                 mainSplitter,
                 leftSplitter,
-                rightSplitter,
                 centerSplitter,
-                self.centerRightSplitter,
+                centerRightSplitter,
             ]
         }
         
@@ -3077,17 +3071,19 @@ class RigBuilderWindow(QFrame):
         module = self.treeWidget.currentModule()
         en = module is not None
         
-        self.runBtn.setEnabled(en)
-        self.centerRightSplitter.setVisible(en)
-        self.moduleHistoryBrowser.setVisible(not en)
-        
+        self.runBtn.setEnabled(en) 
         self.docBrowser.setEnabled(en)
-        self.docBrowser.updateDoc(module)
+        self.attributesTabWidget.setEnabled(en)
+        self.codeEditorWidget.setEnabled(en)
+
+        self.moduleHistoryBrowser.filterEdit.setText(module.uid() if module else "")
 
         if module:
-            self.attributesTabWidget.updateTabs(module)
+            self.docBrowser.updateDoc(module)
+            self.attributesTabWidget.module = module
+            self.attributesTabWidget.updateTabs()
             self.codeEditorWidget.module = module
-            self.codeEditorWidget.updateState()            
+            self.codeEditorWidget.updateState()
 
     def showLog(self):
         self.logWidget.ensureCursorVisible()
@@ -3168,7 +3164,7 @@ class RigBuilderWindow(QFrame):
             return
             
         self.moduleHistoryBrowser.filterEdit.setText(module.uid())
-        self.treeWidget.clearSelection()
+        self.rightTabWidget.setCurrentIndex(2)
 
     def _onAboutToChangeWorkspace(self):
         """Handle about to change workspace event."""
