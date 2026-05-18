@@ -15,10 +15,6 @@ RootDirectory = os.path.dirname(__file__)
 
 FloatType = 6  # QMetaType.Double
 
-def _moveItemSortKey(direction, root, x):
-    """Sort key for moveItem: order by index, direction controls sign."""
-    return -direction * (x.parent() or root).indexOfChild(x)
-
 class EditJsonTextDialog(QDialog):
     saved = Signal(object)
 
@@ -524,8 +520,11 @@ class JsonWidget(QTreeWidget):
         dlg.exec()
 
     def moveItem(self, direction):
+        def _moveItemSortKey(root, x):
+            return -direction * (x.parent() or root).indexOfChild(x)
+        
         selectedItems = self.selectedItems()
-        sortedItems = sorted(selectedItems, key=partial(_moveItemSortKey, direction, self.invisibleRootItem()))
+        sortedItems = sorted(selectedItems, key=partial(_moveItemSortKey, self.invisibleRootItem()))
 
         # undo
         _items = [((item.parent() or self.invisibleRootItem()).indexOfChild(item), item) for item in sortedItems] # save indices
@@ -709,13 +708,9 @@ class JsonWidget(QTreeWidget):
         newItems = self.fromJsonList(dataList)
         for item in newItems:
             self.expandItem(item, True)
-        
-        # undo
-        def f():
-            for item in newItems:
-                self.invisibleRootItem().removeChild(item)
-        self._undoSystem.push("Load", f)
-        
+
+        self._undoSystem.flush()
+   
         self.dataLoaded.emit()
 
     def itemToJson(self, item):
