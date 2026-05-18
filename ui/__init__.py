@@ -1254,7 +1254,7 @@ class ModuleTreeWidget(QTreeView):
         self.scrollTo(newIdx)
 
     def importModule(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import", settings.modulesPath, "Module files (*.rb *.xml);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import", settings.modulesPath, "Module files (*.rb *.xml);;All files (*)")
         if not filePath:
             return
 
@@ -1263,10 +1263,10 @@ class ModuleTreeWidget(QTreeView):
             self.moduleModel.addModuleAt(m)
         except ET.ParseError:
             logger.error(f"'{filePath}': invalid module")
-            self.window().showLog()
+            mainWindow.showLog()
 
     def importScript(self):
-        filePath, _ = QFileDialog.getOpenFileName(self.window(), "Import script", settings.modulesPath, "Python (*.py);;All files (*)")
+        filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import script", settings.modulesPath, "Python (*.py);;All files (*)")
         if not filePath:
             return
 
@@ -1299,7 +1299,7 @@ class ModuleTreeWidget(QTreeView):
             if not outputPath:
                 initialPath = os.path.join(settings.modulesPath, module.name())
                 title = "Save as " + module.name() if forceDialog else "Save " + module.name()
-                outputPath, _ = QFileDialog.getSaveFileName(self.window(), title, initialPath, "Module files (*.rb *.xml)")
+                outputPath, _ = QFileDialog.getSaveFileName(mainWindow, title, initialPath, "Module files (*.rb *.xml)")
 
             if outputPath:
                 saveData.append((module, outputPath, idx))
@@ -1308,7 +1308,7 @@ class ModuleTreeWidget(QTreeView):
             return
 
         # 2. Confirmation / Commit message
-        historyWidget = self.window().moduleHistoryBrowser
+        historyWidget = mainWindow.moduleHistoryBrowser
         historyEnabled = historyWidget.isHistoryTrackingEnabled()
         commitMessage = ""
 
@@ -1324,7 +1324,7 @@ class ModuleTreeWidget(QTreeView):
             if not accepted:
                 return
         else:
-            if QMessageBox.question(self.window(), "Rig Builder", desc, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            if QMessageBox.question(mainWindow, "Rig Builder", desc, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
         # 3. Perform the actual save
@@ -1336,16 +1336,16 @@ class ModuleTreeWidget(QTreeView):
             try:
                 module.saveToFile(outputPath, newUid=generateNewUids)
             except Exception as e:
-                QMessageBox.critical(self.window(), "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
+                QMessageBox.critical(mainWindow, "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
             else:
                 if historyEnabled:
                     if not moduleHistoryBrowser.recordModuleSave(module, commitMessage):
-                        QMessageBox.critical(self.window(), "Rig Builder", "Can't save history for '{}'".format(module.name()))
+                        QMessageBox.critical(mainWindow, "Rig Builder", "Can't save history for '{}'".format(module.name()))
                 
                 self.moduleModel.dataChanged.emit(idx, idx) # refresh display
-                self.window().attributesTabWidget.updateWidgetStyles()
+                mainWindow.attributesTabWidget.updateWidgetStyles()
 
-        self.window().moduleHistoryBrowser.syncModuleHistory()
+        mainWindow.moduleHistoryBrowser.syncModuleHistory()
 
     def embedModule(self):
         modules = self.selectedModules()
@@ -1354,7 +1354,7 @@ class ModuleTreeWidget(QTreeView):
 
         msg = "\n".join([m.name() for m in modules])
 
-        if QMessageBox.question(self.window(), "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(mainWindow, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         if self.moduleModel.undoStack:
@@ -1389,7 +1389,7 @@ class ModuleTreeWidget(QTreeView):
             return
 
         msg = "Sync selected modules with the files on disk?\n\nYou may lose unsaved changes for those modules.\n\nContinue?"
-        if QMessageBox.question(self.window(), "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if QMessageBox.question(mainWindow, "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
         state = self._getTreeState()
@@ -1509,7 +1509,7 @@ class ModuleTreeWidget(QTreeView):
         if askConfirmation:
             modules = self.selectedModules()
             msg = "\n".join([m.name() for m in modules])
-            if QMessageBox.question(self.window(), "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            if QMessageBox.question(mainWindow, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
         if self.moduleModel.undoStack:
