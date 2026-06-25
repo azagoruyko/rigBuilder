@@ -386,8 +386,14 @@ class ModuleHistoryBrowser(QWidget):
         return (accepted, lineEdit.text().strip() if accepted else "")
 
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.syncModuleHistory()
+
     def syncModuleHistory(self):
-        """Sync the module history widget with the latest history."""
+        """Sync the module history widget with the latest history if visible."""
+        if not self.isVisible():
+            return
         filterText = self.filterEdit.text().strip()
         html = buildHistoryHtml(filterText)
         self.textBrowser.clear()
