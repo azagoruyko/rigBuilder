@@ -146,6 +146,8 @@ class RigBuilderAPI:
         existing_module.syncWith(new_module)
         model.endResetModel()
         
+        cls.mainWindow.treeWidget.selectModule(existing_module)
+        
         return {"message": f"Successfully updated module from XML: {module_path}"}
 
 class ZmqServer(QObject):
