@@ -2492,6 +2492,7 @@ class RigBuilderWindow(QFrame):
         treeWithBtnWidget = QWidget()        
         treeWithBtnWidget.setLayout(QVBoxLayout())
         treeWithBtnWidget.layout().setContentsMargins(0, 0, 0, 0)
+        treeWithBtnWidget.layout().addWidget(self.vscodeBtn)
         treeWithBtnWidget.layout().addWidget(self.treeWidget)
         treeWithBtnWidget.layout().addWidget(self.runBtn)
 
@@ -2500,15 +2501,9 @@ class RigBuilderWindow(QFrame):
         leftSplitter.addWidget(self.moduleBrowser)
         leftSplitter.setSizes([500,300])
 
-        codeWithBtnWidget = QWidget()
-        codeWithBtnWidget.setLayout(QVBoxLayout())
-        codeWithBtnWidget.layout().setContentsMargins(0, 0, 0, 0)
-        codeWithBtnWidget.layout().addWidget(self.codeEditorWidget)
-        codeWithBtnWidget.layout().addWidget(self.vscodeBtn)
-
         centerSplitter = WideSplitter(Qt.Vertical)
         centerSplitter.addWidget(self.attributesTabWidget)
-        centerSplitter.addWidget(codeWithBtnWidget)
+        centerSplitter.addWidget(self.codeEditorWidget)
         centerSplitter.setSizes([500, 300])
 
         self.rightTabWidget = QTabWidget()
