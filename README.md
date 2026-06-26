@@ -36,6 +36,7 @@ At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 - **📜 Git-Backed Module History** — Built-in version control for every module change. Track every save, view granular diffs, and restore previous versions in seconds.
 - **🔄 Native Auto-Sync** — Real-time synchronization between the application and your files on disk, ensuring your UI always reflects the latest changes.
 - **📝 Responsive Markdown Docs** — Author and view module documentation in native Markdown for a modern documentation experience.
+- **🔌 Model Context Protocol (MCP)** — Built-in MCP server exposing workspace modules, allowing external AI agents (or vscode-like editors) to query, inspect, and modify your modules.
 
 ---
 
