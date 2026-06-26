@@ -55,10 +55,6 @@ class AIChatWorker(QThread):
 
 class AIChatDialog(QDialog):
     beforeSendMessage = Signal()
-    attributeAdded = Signal(object, object) # module, attribute
-    attributeDataChanged = Signal(object, object) # module, attribute
-    replaceCodeRequested = Signal(object, str) # module, code
-    replaceSelectedCodeRequested = Signal(object, str) # module, code
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -351,7 +347,7 @@ class AIChatDialog(QDialog):
             m = self.aiToolsContext["selectedModule"]
             imports = []
             if m:
-                for l in m.runCode().splitlines():
+                for l in self.aiToolsContext["code"].splitlines():
                     if not l.strip():
                         continue
                     if l.startswith("import") or l.startswith("from"):
@@ -368,48 +364,10 @@ class AIChatDialog(QDialog):
             '''
             return state
 
-        def getExampleModule() -> str:
+        def getCurrentModuleCode() -> str:
             """
-            Get a demonstration module of Rig Builder modules API in XML.
-            This is extremely useful when you need to understand how Rig Builder modules are structured,
-            what attributes they use, and how they define context and logic. 
-            Use this as a reference or template when generating new Rig Builder modules or fixing existing ones.
-            """
-            exampleModulePath = os.path.join(RIG_BUILDER_PATH, "modules", "example.rb")
-            import xml.dom.minidom
-            with open(exampleModulePath, "r", encoding="utf-8") as f:
-                dom = xml.dom.minidom.parseString(f.read())
-                return dom.toprettyxml(indent="  ")
-
-        def getRigBuilderCore() -> str:
-            """
-            Get Rig Builder python core module for all the logic of the program.
-            This tool provides the source code of `core.py`, which contains the foundational logic,
-            classes, and methods for Rig Builder. 
-            Use this when you need deep understanding of how Rig Builder operates under the hood,
-            or when you need to know exactly how core APIs are implemented.
-            """
-            coreModulePath = os.path.join(RIG_BUILDER_PATH, "core.py")
-            with open(coreModulePath, "r", encoding="utf-8") as f:
-                return f.read()
-
-        def getSelectedCode() -> str:
-            """
-            Get the selected code in the current module.
-            Important: The code belongs to a Rig Builder module. Variables starting with '@' (e.g., @nodeName) represent module attributes.
-            Use `getModuleAttributes()` to inspect these attributes and understand their run-time values before analyzing the code.
-            Returns the selected code as a string.
-            """
-            if not self.aiToolsContext["selectedModule"]:
-                return "Nothing selected"
-                
-            return self.aiToolsContext["selectedCode"]
-
-        def getCode() -> str:
-            """
-            Get all the code of the current module.
-            Important: The code belongs to a Rig Builder module. Variables starting with '@' (e.g., @nodeName) represent module attributes.
-            Use `getModuleAttributes()` to inspect these attributes and understand their run-time values before analyzing the code.
+            Get currently selected module code.
+            Variables starting with '@' (e.g., @nodeName) represent module attributes.
             Returns the code as a string.
             """
             if not self.aiToolsContext["selectedModule"]:
@@ -417,138 +375,12 @@ class AIChatDialog(QDialog):
 
             return self.aiToolsContext["code"]
 
-        def replaceSelectedCode(text: str) -> str:
-            """
-            Replace the selected code in the current module with the given text.
-            When generating code containing '@' attribute references, you MUST ensure those attributes exist by calling `getModuleAttributes()`.
-            Returns 'ok' if successful.
-            """
-            m = self.aiToolsContext["selectedModule"]
-            if not m:
-                return "No module selected"
-
-            self.replaceSelectedCodeRequested.emit(m, text)
-            return "ok"
-
-        def replaceCode(newText: str) -> str:
-            """
-            Replace the current module's code with the given text.
-            When generating code containing '@' attribute references, you MUST ensure those attributes exist by calling `getModuleAttributes()`.
-            Returns 'ok' if successful.
-            """
-            m = self.aiToolsContext["selectedModule"]
-            if not m:
-                return "No module selected"
-
-            self.replaceCodeRequested.emit(m, newText)
-            return "ok"
-
-        def getModuleAttributes() -> str:
-            """
-            Get the attributes of the currently selected module.
-            Use this when you need to understand the attributes of the currently selected module.
-            Returns the attributes as a string.
-            """
-            m = self.aiToolsContext["selectedModule"]
-            if not m:
-                return "No attributes"
-            
-            attrs = []
-            for a in m.attributes():
-                if a.name():
-                    attrs.append(f"name: {a.name()} template: {a.template()} value: {a.get()}")
-            
-            return '\n'.join(attrs) if attrs else "No attributes"
-
-        def addModuleAttribute(name: str, jsonValue: str) -> str:
-            """
-            Add an attribute to the current module based on its JSON-compatible value.
-            It supports: dict, list, str, int, float, bool.
-            IMPORTANT: Only add important attributes to control the code behavior!
-            The widget template is inferred automatically from the value type.
-            Returns 'ok' if successful.
-            """
-            m = self.aiToolsContext["selectedModule"]
-            if not m:
-                return "No module"
-
-            if m.findAttribute(name):
-                return f"Attribute {name} already exists"
-
-            from ..core.widgets import getAttributeFromValue
-            from ..core.utils import smartConversion
-            jsonValue = smartConversion(jsonValue)
-
-            a = getAttributeFromValue(name, jsonValue)
-            m.addAttribute(a)
-            self.attributeAdded.emit(m, a)
-            return "ok"
-
-        def setAttributeData(name: str, data: dict) -> str:
-            """
-            Set the full data dictionary for an attribute by name.
-            Make sure 'default' key points to another key in the dict! It is not the value!
-            Use `getAttributeTemplateDefaults` to get the default data structure for a template.
-            Use this to update widget properties like items in a comboBox, range in a slider, color, label, etc.
-            The 'data' argument must be a dictionary matching the widget's template structure.
-            Returns 'ok' if successful, or an error message if the attribute is not found.
-            """
-            m = self.aiToolsContext.get("selectedModule")
-            if not m:
-                return "No module selected"
-
-            attr = m.findAttribute(name)
-            if not attr:
-                return f"Attribute '{name}' not found"
-
-            if isinstance(data, str):
-                try:
-                    data = json.loads(data)
-                except:
-                    pass
-
-            from ..core.widgets import DEFAULT_WIDGETS_DATA
-            from ..core.utils import copyJson
-
-            templateData = copyJson(DEFAULT_WIDGETS_DATA.get(attr.template()))
-            templateData.update(data)
-
-            attr.setData(templateData)
-            self.attributeDataChanged.emit(m, attr)
-            return "ok"
-
-        def getAttributeData(name: str) -> str:
-            """
-            Get the full data dictionary of an attribute by name.
-            Important: The 'default' key points to another key in the dict! It is not the value!
-            This is useful to inspect all properties of a widget (e.g., current items, min/max values, current value).
-            Returns the data as a JSON-formatted string, or an error message.
-            """
-            m = self.aiToolsContext.get("selectedModule")
-            if not m:
-                return "No module selected"
-
-            attr = m.findAttribute(name)
-            if not attr:
-                return f"(Attribute '{name}' not found)"
-
-            return json.dumps(attr.data(), indent=2, ensure_ascii=False)
-
-        def getAttributeTemplateDefaults() -> str:
-            """
-            Get the default data structure for available attribute templates.
-            Use this to understand what keys and values are required when using 'setAttributeData'.
-            Returns a JSON formatted string with all default attribute templates.
-            """
-            from ..core.widgets import DEFAULT_WIDGETS_DATA
-            return json.dumps(DEFAULT_WIDGETS_DATA, indent=2, ensure_ascii=False)
-
         def queryModules(query: str) -> str:
             """
             Search for modules in the current workspace by name, description, or functionality.
             This uses a semantic vector search, so you can describe what the module does in natural language.
+            Use this to find existing modules or to understand what is available.
             Returns a list of matching module paths and their relevance scores.
-            Use this to find existing modules before creating new ones or to understand what is available.
             """
             from ..moduleIndexer import ModuleIndexer
             import asyncio
@@ -586,18 +418,9 @@ class AIChatDialog(QDialog):
 
             except Exception as e:
                 return f"Error reading file: {e}"
-
+                
         engine.AITools.getCurrentState = getCurrentState
-        engine.AITools.getExampleModule = getExampleModule
-        engine.AITools.getRigBuilderCore = getRigBuilderCore
-        engine.AITools.getSelectedCode = getSelectedCode
-        engine.AITools.getCode = getCode
-        engine.AITools.replaceSelectedCode = replaceSelectedCode
-        engine.AITools.replaceCode = replaceCode
-        engine.AITools.getModuleAttributes = getModuleAttributes
-        engine.AITools.addModuleAttribute = addModuleAttribute
-        engine.AITools.setAttributeData = setAttributeData
-        engine.AITools.getAttributeData = getAttributeData
-        engine.AITools.getAttributeTemplateDefaults = getAttributeTemplateDefaults
         engine.AITools.queryModules = queryModules
         engine.AITools.readFile = readFile
+        engine.AITools.getCurrentModuleCode = getCurrentModuleCode
+

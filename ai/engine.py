@@ -26,8 +26,13 @@ def isOllamaAvailable() -> bool:
 # Global status for later usage
 IS_OLLAMA_AVAILABLE = isOllamaAvailable()
 
+with open(os.path.join(RootDirectory, '..', 'docs', 'tech.md'), 'r', encoding='utf-8') as f:
+    TECH_DOCS = f.read()
+
 with open(os.path.join(RootDirectory, 'chat_prompt.md'), 'r', encoding='utf-8') as f:
     CHAT_PROMPT = f.read()
+
+SYSTEM_PROMPT = CHAT_PROMPT + "\n\n" + TECH_DOCS
 
 _contextLimitCache = {}
 
@@ -67,7 +72,7 @@ def getChatMessages(messages: list) -> list:
     systemMessages = [
         {
             'role': 'system',
-            'content': CHAT_PROMPT
+            'content': SYSTEM_PROMPT
         },
         {
             'role': 'system',
