@@ -16,9 +16,9 @@ from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from .. import __version__
 from ..core import workspace
 from ..ai.engine import IS_OLLAMA_AVAILABLE
-from ..client.connectionManager import connectionManager
-from ..client.hostExecutor import hostExecutor
+from .hostExecutor import hostExecutor
 from ..core import *
+from ..core.connectionManager import connectionManager
 from ..core.uidManager import UidManager
 from ..core.logger import logger, logHandler, setupStreamRedirection, setupExcepthook
 from .qt import *
@@ -2384,7 +2384,7 @@ class RigBuilderWindow(QFrame):
         self.hostCombo.setPlaceholderText("No host")
         self.hostCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.hostCombo.currentIndexChanged.connect(self._onHostComboChanged)
-        connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
+        hostExecutor.hostDiscovered.connect(self._refreshHostCombo)
 
         self.hostManageBtn = QPushButton("⚙️")
         self.hostManageBtn.setToolTip("Manage hosts")
@@ -2564,7 +2564,8 @@ class RigBuilderWindow(QFrame):
         }
         
         self.loadAppSettings()        
-        connectionManager.discoveryServer.hostDiscovered.connect(self._refreshHostCombo)
+        hostExecutor.hostDiscovered.connect(self._refreshHostCombo)
+        self._refreshHostCombo()
 
     def _onTreeContextMenu(self, pos):
         self.menu().exec(self.treeWidget.mapToGlobal(pos))
@@ -2710,8 +2711,7 @@ class RigBuilderWindow(QFrame):
             return
 
         try:
-            conn = connectionManager.connect(name, parent=self)
-            conn.onConnectionLost.connect(self._onHostConnectionLost)
+            conn = connectionManager.connect(name)
             
         except Exception as e:
             self.hostCombo.setStyleSheet("color: #ff6b6b;")
@@ -3355,6 +3355,10 @@ setupExcepthook()
 mainWindow = RigBuilderWindow()
 logHandler.setTarget(mainWindow.logWidget)
 
+logTimer = QTimer()
+logTimer.timeout.connect(logHandler.flush)
+logTimer.start(100)
+
 hostExecutor.onConnectionError.connect(mainWindow.onConnectionErrorCallback)
 hostExecutor.onPrint.connect(mainWindow.onPrintCallback)
 hostExecutor.onError.connect(mainWindow.onErrorCallback)
@@ -3362,3 +3366,4 @@ hostExecutor.onRunCallback.connect(mainWindow.onRunCallback)
 hostExecutor.beginProgress.connect(mainWindow.progressBarWidget.beginProgress)
 hostExecutor.stepProgress.connect(mainWindow.progressBarWidget.stepProgress)
 hostExecutor.endProgress.connect(mainWindow.progressBarWidget.endProgress)
+hostExecutor.onConnectionLost.connect(mainWindow._onHostConnectionLost)

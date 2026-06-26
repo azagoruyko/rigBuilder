@@ -7,10 +7,18 @@ RIG_BUILDER_PATH = os.path.normpath(os.path.dirname(os.path.dirname(__file__)))
 RIG_BUILDER_USER_PATH = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
 
 SETTINGS_PATH = os.path.join(RIG_BUILDER_USER_PATH, "settings.json")
+HOSTS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "hosts.json")
 RIG_BUILDER_WORKSPACES_PATH = os.path.join(RIG_BUILDER_USER_PATH, "workspaces")
 
+DEFAULT_DISCOVERY_PORT = 51605
 MODULE_EXT = ".rb" # default extension for new/saved modules
 MODULE_EXTS = (MODULE_EXT, ".xml")  # accepted extensions (xml for backward compat)
+
+HEARTBEAT_INTERVAL_SEC = 2.0
+REGISTRATION_INTERVAL_SEC = 5.0
+
+MODULE_EXECUTION_TIMEOUT = 86400 # 24 hours
+CODE_EXECUTION_TIMEOUT = 60 # 60 seconds
 
 logger = logging.getLogger('rigBuilder')
 

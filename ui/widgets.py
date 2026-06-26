@@ -9,8 +9,8 @@ from ..core import APIRegistry
 from ..core.utils import *
 from ..ui.utils import *
 from .jsonWidget import JsonWidget
-from ..client.hostExecutor import hostExecutor
-from ..client.connectionManager import connectionManager
+from .hostExecutor import hostExecutor
+from ..core.connectionManager import connectionManager
 from ..ui.editor import CodeEditorWithNumbersWidget
 
 RootPath = os.path.dirname(__file__) # Rig Builder root folder

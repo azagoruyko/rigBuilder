@@ -10,6 +10,7 @@ from typing import Callable
 import zmq
 
 from rigBuilder.host.runner import runModule, executeModuleCode, executeCode
+from rigBuilder.core.settings import HEARTBEAT_INTERVAL_SEC, REGISTRATION_INTERVAL_SEC, MODULE_EXECUTION_TIMEOUT, CODE_EXECUTION_TIMEOUT
 
 AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"]) # names MUST match the host files in this folder!
 
@@ -21,12 +22,6 @@ if RIG_BUILDER_PATH not in sys.path:
 from rigBuilder.host.servers.{host} import {HostClass}
 rigBuilderServer = {HostClass}({discoveryPort})
 rigBuilderServer.start()"""
-
-MODULE_EXECUTION_TIMEOUT = 86400 # 24 hours
-CODE_EXECUTION_TIMEOUT = 60 # 60 seconds
-HEARTBEAT_INTERVAL_SEC = 2.0
-REGISTRATION_INTERVAL_SEC = 5.0  # how often to re-announce to the discovery server
-
 
 class HostServer:
     """Base ZeroMQ server. Listens for commands on a PULL socket and

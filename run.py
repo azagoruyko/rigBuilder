@@ -16,6 +16,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     from rigBuilder.ui import app, mainWindow
+    from rigBuilder.core.connectionManager import connectionManager
+    from rigBuilder.host.servers.standalone import StandaloneServer
+    
+    standaloneServer = StandaloneServer(connectionManager.discoveryPort)
+    standaloneServer.start()
 
     mainWindow.show()
     sys.exit(app.exec())

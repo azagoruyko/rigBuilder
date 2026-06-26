@@ -1,4 +1,4 @@
-"""Rig Builder client: connects to a host server and streams events via Qt signals."""
+"""Rig Builder client: connects to a host server and streams events via signals."""
 import json
 import queue
 import uuid
@@ -7,7 +7,7 @@ import time
 import zmq
 import traceback
 
-from ..ui.qt import QObject, Signal, QApplication, QThread
+from .signal import Signal
 
 DEFAULT_RUN_TIMEOUT = 86400.0  # 24 hours
 
@@ -15,7 +15,7 @@ DEFAULT_RUN_TIMEOUT = 86400.0  # 24 hours
 # Use a wider window to reduce false disconnects during heavy host workloads.
 SUB_STALE_TIMEOUT_SEC = 10.0
 
-class HostClient(QObject):
+class HostClient:
     """ZeroMQ client that connects to a single host server.
 
     Uses two sockets:
@@ -26,18 +26,19 @@ class HostClient(QObject):
     The SUB listener puts the reply into it when {"event": "reply", "id": runId} arrives.
     """
 
-    onAnyEvent = Signal(dict)
-    onRunCallback = Signal(str)
-    onPrint = Signal(str)
-    onError = Signal(str, str)
-    onConnectionLost = Signal(str)
+    def __init__(self, address: str, cmd_port: int, event_port: int):
+        self.onAnyEvent = Signal()
+        self.onRunCallback = Signal()
+        self.onPrint = Signal()
+        self.onError = Signal()
+        self.onConnectionLost = Signal()
 
-    beginProgress = Signal(str, int)
-    stepProgress = Signal(int, str)
-    endProgress = Signal()
+        self.beginProgress = Signal()
+        self.stepProgress = Signal()
+        self.endProgress = Signal()
+        
+        self.idleCallback = None
 
-    def __init__(self, address: str, cmd_port: int, event_port: int, parent=None):
-        super().__init__(parent)
         self._ctx = zmq.Context.instance()
 
         self._push = self._ctx.socket(zmq.PUSH)
@@ -145,21 +146,18 @@ class HostClient(QObject):
                     return {"ok": False, "error": "socket error during send"}
 
             # --- 2. Wait for the asynchronous reply ---
-            app = QApplication.instance()
-            isGuiThread = app and app.thread() == QThread.currentThread()
-
-            if isGuiThread:
+            if self.idleCallback:
                 # GUI thread: poll the queue so we can process UI events (prevents freezing)
                 deadline = time.time() + timeout_seconds
                 while time.time() < deadline:
                     try:
                         reply = reply_queue.get_nowait()
-                        app.processEvents()
+                        self.idleCallback()
                         return reply
                     except queue.Empty:
                         if not self._running:
                             return {"ok": False, "error": "connection stopping"}
-                        app.processEvents()
+                        self.idleCallback()
                         time.sleep(0.05)
             else:
                 # Background thread: efficiently block until the reply arrives
@@ -179,7 +177,7 @@ class HostClient(QObject):
                 self._pendingReplies.pop(runId, None)
 
     def _listen(self):
-        """Persistent daemon thread that forwards all PUB events as Qt signals."""
+        """Persistent daemon thread that forwards all PUB events as signals."""
         try:
             while self._running:
                 try:
@@ -209,7 +207,7 @@ class HostClient(QObject):
                 pass
 
     def _dispatchSignal(self, ev: dict):
-        """Emit the appropriate Qt signal for the incoming event."""
+        """Emit the appropriate signal for the incoming event."""
         event = ev.get("event")
         self.onAnyEvent.emit(ev)
 

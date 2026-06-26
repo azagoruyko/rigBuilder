@@ -12,7 +12,7 @@ from ..core.settings import (
 from ..core import workspace
 from ..core.workspace import Workspace
 from ..core.utils import replaceSpecialChars
-from ..client.connectionManager import connectionManager
+from ..core.connectionManager import connectionManager
 
 _workspaceCache: dict[str, Workspace] = {}
 

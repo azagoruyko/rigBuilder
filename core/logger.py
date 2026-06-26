@@ -21,19 +21,8 @@ class LogHandler(logging.Handler):
             self._target.write(msg)
         self._buffer = []
 
-        # Setup periodic flush timer to avoid UI hangs during massive prints
-        try:
-            from rigBuilder.ui.qt import QTimer
-            self._timer = QTimer()
-            self._timer.destroyed.connect(self._onTimerDestroyed)
-            self._timer.timeout.connect(self.flush)
-            self._timer.start(100) # 100ms interval
-        except (ImportError, RuntimeError):
-            pass # Fallback to immediate printing if Qt is not available
-        
-    def _onTimerDestroyed(self):
-        """Callback for when the underlying C++ QTimer object is deleted."""
-        self._timer = None
+        # The target (e.g. UI) is now responsible for calling flush() periodically
+        # to ensure thread safety and avoid UI hangs.
 
     def format(self, record: logging.LogRecord) -> str:
         """Hide level name for INFO messages."""
@@ -60,10 +49,8 @@ class LogHandler(logging.Handler):
             self._buffer.append(msg)
 
     def close(self):
-        """Clean up the handler by flushing pending messages and stopping the timer."""
+        """Clean up the handler by flushing pending messages."""
         self.flush()
-        if self._timer:
-            self._timer.stop()
         super().close()
 
 class LoggerStream:

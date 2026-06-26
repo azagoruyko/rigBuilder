@@ -1,30 +1,19 @@
 import json
-import os
 import logging
 import threading
 import time
 import zmq
-from typing import Optional
-
-from ..core import settings
-from ..core.settings import RIG_BUILDER_USER_PATH
-from . import HostClient
-from ..core.utils import loadJson, saveJson
-from ..host.servers.standalone import StandaloneServer
-from ..host.servers import REGISTRATION_INTERVAL_SEC
-from ..ui.qt import QObject, Signal
-
-HOSTS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "hosts.json")
-DEFAULT_DISCOVERY_PORT = 51605
+from .signal import Signal
+from rigBuilder.core.settings import REGISTRATION_INTERVAL_SEC
 
 logger = logging.getLogger('rigBuilder')
 
-class DiscoveryServer(QObject):
+class DiscoveryServer:
     """Listens for registration messages from host servers on a fixed port."""
-    hostDiscovered = Signal()
 
-    def __init__(self, port: int, parent=None):
-        super().__init__(parent)
+    def __init__(self, port: int):
+        self.hostDiscovered = Signal()
+
         self._port = port
         self._running = False
         self._thread = None
@@ -128,90 +117,3 @@ class DiscoveryServer(QObject):
                 logger.info(f"Host disconnected (no registration for {elapsed:.1f}s): {entry['name']}")
             self.hostDiscovered.emit()  # Notify UI to refresh
 
-class ConnectionManager(QObject):
-    """Manages the list of active discovered hosts and the current connection."""
-
-    connectionChanged = Signal(object)  # emits HostClient on connect, None on disconnect
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._active = None
-        self._activeName = ""
-        self._activeHost = ""
-        
-        # Load discovery port from hosts.json if it exists
-        data = loadJson(HOSTS_FILE) if os.path.exists(HOSTS_FILE) else {}
-        self.discoveryPort = data.get("discoveryPort", DEFAULT_DISCOVERY_PORT)
-        
-        self.discoveryServer = DiscoveryServer(self.discoveryPort)
-        self.discoveryServer.start()
-
-    def setDiscoveryPort(self, port: int):
-        self.discoveryPort = port
-        saveJson(HOSTS_FILE, {"discoveryPort": port})
-        
-        # Restart discovery server
-        self.discoveryServer.stop()
-        self.discoveryServer = DiscoveryServer(port)
-        self.discoveryServer.start()
-
-    def servers(self) -> dict:
-        """Return all currently discovered hosts."""
-        return {entry["name"]: entry for entry in self.discoveryServer.discoveredHosts().values()}
-
-    def findServer(self, name: str) -> Optional[dict]:
-        """Return a server entry dict by name, or None if not found."""
-        for entry in self.discoveryServer.discoveredHosts().values():
-            if entry["name"] == name:
-                return entry
-        return None
-
-    def connect(self, name: str, parent=None) -> HostClient:
-        """Connect to the named server. Raises if the server is not reachable."""
-        self.disconnect()
-
-        entry = self.findServer(name)
-        if entry is None:
-            raise ValueError(f"Server {name!r} not found or not active")
-
-        conn = HostClient("localhost", entry["cmdPort"], entry["eventPort"], parent)
-        reply = conn.ping()
-        if not reply.get("ok"):
-            err = reply.get("error")
-            conn.stop()
-            raise ConnectionError(f"Could not connect to {name!r}: {err}")
-
-        self._active = conn
-        self._activeName = name
-        self._activeHost = entry.get("host", "")
-        self.connectionChanged.emit(conn)
-        return conn
-
-    def disconnect(self):
-        """Disconnect the active server."""
-        conn = self._active
-        self._active = None
-        self._activeName = ""
-        self._activeHost = ""
-        if conn:
-            conn.stop()
-            self.connectionChanged.emit(None)
-
-    def activeConnection(self) -> Optional[HostClient]:
-        return self._active
-
-    def activeServerName(self) -> str:
-        return self._activeName
-
-    def activeHost(self) -> str:
-        return self._activeHost
-        
-    def isActive(self) -> bool:
-        """Return True if there is an active host connection."""
-        return self._active is not None
-
-connectionManager = ConnectionManager()
-
-# Default standalone server handling
-standaloneServer = StandaloneServer(connectionManager.discoveryPort)
-standaloneServer.start()

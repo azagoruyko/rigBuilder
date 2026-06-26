@@ -1,6 +1,6 @@
-from ..client.connectionManager import connectionManager
+from ..core.connectionManager import connectionManager
 from typing import Optional
-from ..ui.qt import QObject, Signal, QApplication, Qt
+from .qt import QObject, Signal, QApplication, Qt
 from ..core import Module
 import functools
 
@@ -20,7 +20,9 @@ def executionGate(func):
     return wrapper
 
 class HostExecutor(QObject):
+    hostDiscovered = Signal()
     onConnectionError = Signal(str)
+    onConnectionLost = Signal(str)
     onPrint = Signal(str)
     onError = Signal(str, str)
     onRunCallback = Signal(str)
@@ -33,15 +35,16 @@ class HostExecutor(QObject):
         self._conn = None
         self._isRunning = False
         connectionManager.connectionChanged.connect(self._onConnectionChanged)
+        connectionManager.discoveryServer.hostDiscovered.connect(self.hostDiscovered.emit)
 
     def _onConnectionChanged(self, conn):
         if self._conn:
-            self._conn.onPrint.disconnect(self.onPrint)
-            self._conn.onError.disconnect(self.onError)
-            self._conn.onRunCallback.disconnect(self.onRunCallback)
-            self._conn.beginProgress.disconnect(self.beginProgress)
-            self._conn.stepProgress.disconnect(self.stepProgress)
-            self._conn.endProgress.disconnect(self.endProgress)
+            self._conn.onPrint.disconnect(self.onPrint.emit)
+            self._conn.onError.disconnect(self.onError.emit)
+            self._conn.onRunCallback.disconnect(self.onRunCallback.emit)
+            self._conn.beginProgress.disconnect(self.beginProgress.emit)
+            self._conn.stepProgress.disconnect(self.stepProgress.emit)
+            self._conn.endProgress.disconnect(self.endProgress.emit)
             self._conn.onConnectionLost.disconnect(self._onConnectionLost)
             if self._isRunning:
                 QApplication.restoreOverrideCursor()
@@ -50,18 +53,20 @@ class HostExecutor(QObject):
         self._conn = conn
 
         if conn:
-            conn.onPrint.connect(self.onPrint)
-            conn.onError.connect(self.onError)
-            conn.onRunCallback.connect(self.onRunCallback)
-            conn.beginProgress.connect(self.beginProgress)
-            conn.stepProgress.connect(self.stepProgress)
-            conn.endProgress.connect(self.endProgress)
+            conn.idleCallback = QApplication.processEvents
+            conn.onPrint.connect(self.onPrint.emit)
+            conn.onError.connect(self.onError.emit)
+            conn.onRunCallback.connect(self.onRunCallback.emit)
+            conn.beginProgress.connect(self.beginProgress.emit)
+            conn.stepProgress.connect(self.stepProgress.emit)
+            conn.endProgress.connect(self.endProgress.emit)
             conn.onConnectionLost.connect(self._onConnectionLost)
 
     def _onConnectionLost(self, reason: str):
         if self._isRunning:
             QApplication.restoreOverrideCursor()
             self._isRunning = False
+        self.onConnectionLost.emit(reason)
 
     @executionGate
     def executeCode(self, code: str) -> dict:
