@@ -431,7 +431,7 @@ class Module:
         self._uid = "" # unique ids are assigned while saving
         self.attr = AttrsWrapper(self) # attributes accessor
 
-    def copy(self) -> Module:
+    def copy(self, *, children: bool = True) -> Module:
         """Create a deep copy of the module."""
         module = Module()
         module._name = self._name
@@ -442,8 +442,9 @@ class Module:
         for a in self._attributes:
             module.addAttribute(a.copy())            
 
-        for ch in self._children:
-            module.addChild(ch.copy())
+        if children:
+            for ch in self._children:
+                module.addChild(ch.copy())
 
         module._parent = None
 
