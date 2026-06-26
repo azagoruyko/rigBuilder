@@ -17,3 +17,4 @@ pytest-cov>=4.0.0
 # AI and JSON processing
 ollama
 json-repair
+fastmcp>=0.2.0

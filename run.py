@@ -22,5 +22,9 @@ if __name__ == "__main__":
     standaloneServer = StandaloneServer(connectionManager.discoveryPort)
     standaloneServer.start()
 
+    from rigBuilder.mcp.zmq_server import ZmqServer
+    zmqServer = ZmqServer(port=5555, parent=app)
+    zmqServer.setMainWindow(mainWindow)
+
     mainWindow.show()
     sys.exit(app.exec())
