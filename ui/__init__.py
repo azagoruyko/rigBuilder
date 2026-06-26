@@ -14,20 +14,20 @@ from functools import partial
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 
 from .. import __version__
-from .. import workspace
+from ..core import workspace
 from ..ai.engine import IS_OLLAMA_AVAILABLE
 from ..client.connectionManager import connectionManager
 from ..client.hostExecutor import hostExecutor
 from ..core import *
-from ..uidManager import UidManager
-from ..logger import logger, logHandler
-from ..qt import *
-from ..server.hosts import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
-from ..settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
-from ..utils import *
-from ..widgets.core import getAttributeFromValue, DEFAULT_WIDGETS_DATA
-from ..widgets.ui import TemplateWidgets, EditTextDialog, EditJsonDialog
-from ..workspace import Workspace
+from ..core.uidManager import UidManager
+from ..core.logger import logger, logHandler, setupStreamRedirection, setupExcepthook
+from .qt import *
+from ..host.servers import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
+from ..core.settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..core.utils import *
+from ..core.widgets import getAttributeFromValue, DEFAULT_WIDGETS_DATA
+from .widgets import TemplateWidgets, EditTextDialog, EditJsonDialog
+from ..core.workspace import Workspace
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowser
 from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
@@ -2282,7 +2282,7 @@ class HostManagerDialog(QDialog):
 
         self.hostCombo = QComboBox()
         for host in AVAILABLE_HOSTS:
-            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{host}.png")
+            iconPath = os.path.join(RIG_BUILDER_PATH, "ui", "images", f"{host}.png")
             if os.path.exists(iconPath):
                 self.hostCombo.addItem(QIcon(iconPath), host.capitalize())
             else:
@@ -2675,7 +2675,7 @@ class RigBuilderWindow(QFrame):
         
         for name, entry in entries:
             # Use icon for discovered hosts
-            iconPath = os.path.join(RIG_BUILDER_PATH, "images", f"{entry['host']}.png")
+            iconPath = os.path.join(RIG_BUILDER_PATH, "ui", "images", f"{entry['host']}.png")
             if os.path.exists(iconPath):
                 self.hostCombo.addItem(QIcon(iconPath), name, userData=name)
             else:
@@ -3324,10 +3324,34 @@ def cleanupVscode():
         if f.endswith(".py") or any(f.endswith(ext) for ext in MODULE_EXTS): # remove module files
             os.remove(os.path.join(vscodeFolder, f))
 
+def updatePalette(app: QApplication):
+    # Set global link color
+    palette = app.palette()
+    palette.setColor(QPalette.Link, QColor("#55aaee"))
+    palette.setColor(QPalette.LinkVisited, QColor("#55aaee"))
+    app.setPalette(palette)
+
+def applyStylesheet(widget):
+    """Load and apply stylesheet."""
+    stylesheetPath = os.path.join(RIG_BUILDER_PATH, "ui", "stylesheet.css")
+    with open(stylesheetPath, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    rootPath = os.path.join(RIG_BUILDER_PATH, "ui").replace("\\", "/")
+    content = content.replace("{ROOT}", rootPath)
+    widget.setStyleSheet(content)
+
+# initialize
+
+app = QApplication([])
+applyStylesheet(app)
+updatePalette(app)
+
 cleanupVscode()
 
+setupStreamRedirection()
+setupExcepthook()
 
-# global references
 mainWindow = RigBuilderWindow()
 logHandler.setTarget(mainWindow.logWidget)
 

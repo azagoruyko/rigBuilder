@@ -3,15 +3,15 @@ import os
 from functools import partial
 from typing import List, Optional, Union
 
-from ..qt import *
-from ..settings import (
+from .qt import *
+from ..core.settings import (
     settings, # global settings
     Settings,
     RIG_BUILDER_WORKSPACES_PATH
 )
-from .. import workspace
-from ..workspace import Workspace
-from ..utils import replaceSpecialChars
+from ..core import workspace
+from ..core.workspace import Workspace
+from ..core.utils import replaceSpecialChars
 from ..client.connectionManager import connectionManager
 
 _workspaceCache: dict[str, Workspace] = {}

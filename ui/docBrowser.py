@@ -2,11 +2,11 @@ from typing import Optional
 from functools import partial
 import asyncio
 
-from ..qt import *
+from .qt import *
 from .. import ai
 from ..ai import engine
 from ..core import Module
-from ..logger import logger
+from ..core.logger import logger
 
 activeWorkers = []
 
@@ -155,7 +155,7 @@ class DocBrowser(QTextBrowser):
         if not self.module or self._generating:
             return
 
-        from ..widgets.ui import EditTextDialog
+        from .widgets import EditTextDialog
 
         def save(text):
             self.module.setDoc(text)

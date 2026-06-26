@@ -1,11 +1,11 @@
 from __future__ import annotations
-from ..qt import *
+from .qt import *
 from functools import partial
 import json
 import re
 import os
 
-from ..utils import clamp, findUniqueName, SimpleUndo, loadJson, saveJson
+from ..core.utils import clamp, findUniqueName, SimpleUndo, loadJson, saveJson
 from ..ui.utils import getActions, centerWindow, setActionsLocalShortcut, SearchReplaceDialog, JsonColors
 
 import logging

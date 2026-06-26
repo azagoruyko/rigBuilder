@@ -11,9 +11,9 @@ from rigBuilder.core import (
     ModuleNotFoundError, CopyJsonError, APIError,
     printError, printWarning, exitModule,
     APIRegistry)
-from rigBuilder.uidManager import UidManager
-from rigBuilder.settings import settings, RIG_BUILDER_USER_PATH
-from rigBuilder.utils import copyJson, relativePath
+from rigBuilder.core.uidManager import UidManager
+from rigBuilder.core.settings import settings, RIG_BUILDER_USER_PATH
+from rigBuilder.core.utils import copyJson, relativePath
 
 
 # ============================================================================
@@ -278,7 +278,7 @@ class TestAttribute:
 
     def testAttributeSetTemplate(self, simpleAttribute):
         """Test changing template clears data and correctly triggers sync requirement."""
-        from rigBuilder.widgets.core import DEFAULT_WIDGETS_DATA
+        from rigBuilder.core.widgets import DEFAULT_WIDGETS_DATA
         ref = simpleAttribute.copy()
         
         # Template change detected

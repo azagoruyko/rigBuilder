@@ -4,7 +4,7 @@ import pytest
 import tempfile
 import os
 
-from rigBuilder.utils import (
+from rigBuilder.core.utils import (
     clamp,
     replaceSpecialChars,
     findUniqueName,

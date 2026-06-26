@@ -10,15 +10,15 @@ from typing import Optional, List, Tuple
 import markdown
 import asyncio
 
-from ..qt import *
+from .qt import *
 from ..core import Module
-from ..uidManager import UidManager
-from ..settings import settings, MODULE_EXT, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
-from ..logger import logger
+from ..core.uidManager import UidManager
+from ..core.settings import settings, MODULE_EXT, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..core.logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
-from ..utils import clamp, getRelativeTimeString
-from ..moduleIndexer import ModuleIndexer
+from ..core.utils import clamp, getRelativeTimeString
+from ..core.moduleIndexer import ModuleIndexer
 from ..ai.engine import IS_OLLAMA_AVAILABLE
 
 OLD_MODULE_THRESHOLD_DAYS = 7

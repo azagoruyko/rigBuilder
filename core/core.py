@@ -7,7 +7,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
 from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson
-from .widgets import core as widgets_core
+from . import widgets
 from .uidManager import UidManager
 
 if TYPE_CHECKING:
@@ -103,11 +103,11 @@ def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit
 
     if attr._template == "compound":
         templates = attr._data["templates"]
-        widgets = attr._data["widgets"]
+        widgetsData = attr._data["widgets"]
         for i, _ in enumerate(templates):
             if templates[i] == "lineEdit":
                 templates[i] = "lineEditAndButton"
-                widgets[i]["buttonEnabled"] = False
+                widgetsData[i]["buttonEnabled"] = False
 
 
 class Attribute:
@@ -126,7 +126,7 @@ class Attribute:
         self._expression = expression # python code
 
         self._module = None
-        self._data = copyJson(widgets_core.DEFAULT_WIDGETS_DATA.get(template, {}))
+        self._data = copyJson(widgets.DEFAULT_WIDGETS_DATA.get(template, {}))
 
     def copy(self) -> Attribute:
         """Create a deep copy of the attribute."""
@@ -166,7 +166,7 @@ class Attribute:
         """Set attribute widget template type."""
         if template != self._template:
             self._template = template
-            self._data = copyJson(widgets_core.DEFAULT_WIDGETS_DATA.get(template, {}))
+            self._data = copyJson(widgets.DEFAULT_WIDGETS_DATA.get(template, {}))
     
     def connect(self) -> str:
         """Get attribute connection path."""
@@ -957,17 +957,17 @@ APIRegistry.register("loadJson", loadJson)
 APIRegistry.register("exit", exitModule)
 APIRegistry.register("error", printError)
 APIRegistry.register("warning", printWarning)
-APIRegistry.register("listLerp", widgets_core.listLerp)
+APIRegistry.register("listLerp", widgets.listLerp)
 APIRegistry.register("clamp", clamp)
 APIRegistry.register("smartConversion", smartConversion)
 APIRegistry.register("fromSmartConversion", fromSmartConversion)
 
 # widgets functions
 
-APIRegistry.register("curve_evaluate", widgets_core.curve_evaluate) # data based
-APIRegistry.register("curve_evaluateFromX", widgets_core.curve_evaluateFromX)
-APIRegistry.register("comboBox_items", widgets_core.comboBox_items)
-APIRegistry.register("comboBox_setItems", widgets_core.comboBox_setItems)
+APIRegistry.register("curve_evaluate", widgets.curve_evaluate) # data based
+APIRegistry.register("curve_evaluateFromX", widgets.curve_evaluateFromX)
+APIRegistry.register("comboBox_items", widgets.comboBox_items)
+APIRegistry.register("comboBox_setItems", widgets.comboBox_setItems)
 
 # UI functions
 

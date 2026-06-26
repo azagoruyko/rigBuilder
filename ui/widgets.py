@@ -1,12 +1,12 @@
 """Template widgets for Rig Builder."""
 from __future__ import annotations
-from ..qt import *
+from .qt import *
 from functools import partial
 
 import os
-from .core import *
+from ..core.widgets import *
 from ..core import APIRegistry
-from ..utils import *
+from ..core.utils import *
 from ..ui.utils import *
 from .jsonWidget import JsonWidget
 from ..client.hostExecutor import hostExecutor
@@ -692,12 +692,12 @@ class ListBoxTemplateWidget(TemplateWidget):
                 if allItems or self.listWidget.item(i).isSelected()]
 
         host = connectionManager.activeHost()
-        selectCmd = 'from rigBuilder.server.hosts.{} import select;select([{}])'.format(host, ",".join(items))
+        selectCmd = 'from rigBuilder.host.servers.{} import select;select([{}])'.format(host, ",".join(items))
         hostExecutor.executeCode(selectCmd)
 
     def getSelectedFromHost(self, add=False):
         host = connectionManager.activeHost()
-        selectCmd = 'from rigBuilder.server.hosts.{} import getSelected;sel=getSelected()'.format(host)
+        selectCmd = 'from rigBuilder.host.servers.{} import getSelected;sel=getSelected()'.format(host)
         ctx = hostExecutor.executeCode(selectCmd)
         nodes = ctx.get("sel", [])
 

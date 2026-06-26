@@ -2,13 +2,13 @@
 
 Run once inside Houdini (e.g. from a startup script or shelf tool):
 
-    from rigBuilder.server.hosts.houdini import HoudiniServer
+    from rigBuilder.host.servers.houdini import HoudiniServer
     HoudiniServer(51605).start()
 """
 
 import hou
 
-from rigBuilder.server.hosts import HostServer
+from rigBuilder.host.servers import HostServer
 
 
 class HoudiniServer(HostServer):

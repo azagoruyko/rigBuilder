@@ -9,7 +9,7 @@ from typing import Callable
 
 import zmq
 
-from rigBuilder.server.runner import runModule, executeModuleCode, executeCode
+from rigBuilder.host.runner import runModule, executeModuleCode, executeCode
 
 AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"]) # names MUST match the host files in this folder!
 
@@ -18,7 +18,7 @@ RIG_BUILDER_PATH = r"{RIG_BUILDER_PATH}"
 if RIG_BUILDER_PATH not in sys.path:
     sys.path.append(RIG_BUILDER_PATH)
 
-from rigBuilder.server.hosts.{host} import {HostClass}
+from rigBuilder.host.servers.{host} import {HostClass}
 rigBuilderServer = {HostClass}({discoveryPort})
 rigBuilderServer.start()"""
 
@@ -86,7 +86,7 @@ class HostServer:
         threading.Thread(target=self._heartbeatLoop, daemon=True, name="rigbuilder-heartbeat").start()
         threading.Thread(target=self._registerWithDiscovery, daemon=True, name="rigbuilder-registration").start()
 
-        print(f"[rigBuilder.server] listening — PULL:{self._pullPort}  PUB:{self._pubPort}")
+        print(f"[rigBuilder.host] listening — PULL:{self._pullPort}  PUB:{self._pubPort}")
 
     def stop(self):
         """Stop the server and release ZeroMQ resources."""
@@ -131,7 +131,7 @@ class HostServer:
                 self._pub.send_string(json.dumps(event))
             except zmq.ZMQError as e:
                 # Context destroyed — stop the loop; remaining items stay in queue.
-                print(f"[rigBuilder.server] _pubLoop ZMQError: {e}")
+                print(f"[rigBuilder.host] _pubLoop ZMQError: {e}")
                 break
             finally:
                 self._pubQueue.task_done()
@@ -193,7 +193,7 @@ class HostServer:
             try:
                 self.emit({"event": "heartbeat"})
             except zmq.ZMQError as e:
-                print(f"[rigBuilder.server] _heartbeatLoop ZMQError: {e}")
+                print(f"[rigBuilder.host] _heartbeatLoop ZMQError: {e}")
                 break
 
     def _registerWithDiscovery(self):
@@ -225,7 +225,7 @@ class HostServer:
                 except zmq.Again:
                     pass  # HWM reached — discovery server not consuming; skip this tick
                 except zmq.ZMQError as e:
-                    print(f"[rigBuilder.server] registration ZMQError: {e}")
+                    print(f"[rigBuilder.host] registration ZMQError: {e}")
                     break
                 time.sleep(REGISTRATION_INTERVAL_SEC)
         finally:
@@ -303,7 +303,7 @@ class HostServer:
     def switchWorkspace(self, msg: dict) -> dict:
         """Switch workspace on the server side."""
         def task():
-            from rigBuilder.workspace import Workspace
+            from rigBuilder.core.workspace import Workspace
             name = msg.get("name", "default")
             if Workspace.exists(name):
                 Workspace.load(name).activate()

@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Any
 
 from . import core
-from .ai import engine
+from ..ai import engine
 from .settings import settings
 from .utils import loadJson, saveJson
 

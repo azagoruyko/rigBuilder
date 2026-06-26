@@ -4,13 +4,13 @@ import json
 import copy
 
 import markdown
-from ..qt import *
+from .qt import *
 
 from ..ai import engine
-from ..settings import settings, RIG_BUILDER_PATH
+from ..core.settings import settings, RIG_BUILDER_PATH
 
 from pygments.formatters import HtmlFormatter
-from ..logger import logger
+from ..core.logger import logger
 
 STARTUP_MESSAGE = """
 I'm your **Rig Builder** assistant. I'm not very smart, but I'll do my best to help you. 
@@ -475,8 +475,8 @@ class AIChatDialog(QDialog):
             if m.findAttribute(name):
                 return f"Attribute {name} already exists"
 
-            from ..widgets.core import getAttributeFromValue
-            from ..utils import smartConversion
+            from ..core.widgets import getAttributeFromValue
+            from ..core.utils import smartConversion
             jsonValue = smartConversion(jsonValue)
 
             a = getAttributeFromValue(name, jsonValue)
@@ -507,8 +507,8 @@ class AIChatDialog(QDialog):
                 except:
                     pass
 
-            from ..widgets.core import DEFAULT_WIDGETS_DATA
-            from ..utils import copyJson
+            from ..core.widgets import DEFAULT_WIDGETS_DATA
+            from ..core.utils import copyJson
 
             templateData = copyJson(DEFAULT_WIDGETS_DATA.get(attr.template()))
             templateData.update(data)
@@ -540,7 +540,7 @@ class AIChatDialog(QDialog):
             Use this to understand what keys and values are required when using 'setAttributeData'.
             Returns a JSON formatted string with all default attribute templates.
             """
-            from ..widgets.core import DEFAULT_WIDGETS_DATA
+            from ..core.widgets import DEFAULT_WIDGETS_DATA
             return json.dumps(DEFAULT_WIDGETS_DATA, indent=2, ensure_ascii=False)
 
         def queryModules(query: str) -> str:

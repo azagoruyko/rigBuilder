@@ -23,7 +23,7 @@ class LogHandler(logging.Handler):
 
         # Setup periodic flush timer to avoid UI hangs during massive prints
         try:
-            from rigBuilder.qt import QTimer
+            from rigBuilder.ui.qt import QTimer
             self._timer = QTimer()
             self._timer.destroyed.connect(self._onTimerDestroyed)
             self._timer.timeout.connect(self.flush)

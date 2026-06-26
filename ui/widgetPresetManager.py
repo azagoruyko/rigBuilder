@@ -1,12 +1,12 @@
 import os
 import json
 import logging
-from ..qt import *
-from .. import settings
+from .qt import *
+from ..core.settings import RIG_BUILDER_USER_PATH
 from .utils import centerWindow
-from ..utils import loadJson, saveJson
+from ..core.utils import loadJson, saveJson
 
-PRESETS_FILE = os.path.join(settings.RIG_BUILDER_USER_PATH, "presets.json")
+PRESETS_FILE = os.path.join(RIG_BUILDER_USER_PATH, "presets.json")
 logger = logging.getLogger('rigBuilder')
 
 class WidgetPresetManager:
@@ -61,7 +61,7 @@ class PresetEditorDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        from ..widgets.ui import EditJsonDialog # avoid circular import if EditJsonDialog is in .widgets.ui
+        from .widgets import EditJsonDialog # avoid circular import if EditJsonDialog is in .widgets.ui
 
         self.setWindowTitle("Manage Presets")
         self.resize(600, 500)
@@ -129,7 +129,7 @@ class PresetEditorDialog(QDialog):
             self._refreshList()
 
     def _editData(self):
-        from ..widgets.ui import EditJsonDialog # avoid circular import
+        from .widgets import EditJsonDialog # avoid circular import
         item = self.listWidget.currentItem()
         if not item:
             return

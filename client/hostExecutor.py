@@ -1,6 +1,6 @@
 from ..client.connectionManager import connectionManager
 from typing import Optional
-from ..qt import QObject, Signal, QApplication, Qt
+from ..ui.qt import QObject, Signal, QApplication, Qt
 from ..core import Module
 import functools
 

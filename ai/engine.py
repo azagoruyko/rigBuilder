@@ -5,7 +5,7 @@ import os
 import ollama
 from json_repair import repair_json
 
-from ..settings import settings
+from ..core.settings import settings
 
 RootDirectory = os.path.dirname(__file__)
 DEFAULT_CONTEXT_LIMIT = 8192

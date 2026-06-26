@@ -1,7 +1,7 @@
 import math
 import os
 from typing import Any, Optional, Tuple, TYPE_CHECKING
-from ..utils import *
+from .utils import *
 
 DEFAULT_WIDGETS_DATA = {
     "button": {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"},

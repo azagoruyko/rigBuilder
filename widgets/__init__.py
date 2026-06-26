@@ -1,1 +1,0 @@
-# widgets package for RigBuilder

@@ -2,13 +2,13 @@
 
 Run once inside Blender (e.g. from a startup script):
 
-    from rigBuilder.server.hosts.blender import BlenderServer
+    from rigBuilder.host.servers.blender import BlenderServer
     BlenderServer(51605).start()
 """
 
 import bpy
 
-from rigBuilder.server.hosts import HostServer
+from rigBuilder.host.servers import HostServer
 
 
 class BlenderServer(HostServer):

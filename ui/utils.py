@@ -3,7 +3,7 @@ import sys
 import re
 from contextlib import contextmanager
 
-from ..qt import *
+from .qt import *
 
 def getFontWidth(fontMetrics, text: str) -> int:
     """Get text width using appropriate method for Qt version."""

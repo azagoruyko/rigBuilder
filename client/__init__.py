@@ -7,7 +7,7 @@ import time
 import zmq
 import traceback
 
-from ..qt import QObject, Signal, QApplication, QThread
+from ..ui.qt import QObject, Signal, QApplication, QThread
 
 DEFAULT_RUN_TIMEOUT = 86400.0  # 24 hours
 

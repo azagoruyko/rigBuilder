@@ -1,8 +1,8 @@
 import re
 from functools import partial
-from ..qt import *
+from .qt import *
 
-from ..utils import clamp, findBracketSpans
+from ..core.utils import clamp, findBracketSpans
 from .utils import getActions, setActionsLocalShortcut, wordAtCursor, fontSize, setFontSize, getFontWidth
 
 class PythonHighlighter(QSyntaxHighlighter):

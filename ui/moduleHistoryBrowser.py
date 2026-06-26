@@ -7,11 +7,11 @@ import subprocess
 from typing import Any, List, Optional, Tuple
 from xml.sax.saxutils import escape
 
-from ..qt import *
+from .qt import *
 from ..core import Module
-from ..uidManager import UidManager
-from ..settings import settings
-from ..gitrepo import GitRepo
+from ..core.uidManager import UidManager
+from ..core.settings import settings
+from ..core.gitrepo import GitRepo
 from .utils import centerWindow
 from .diffBrowser import DiffBrowserDialog
 from .. import ai

@@ -2,7 +2,7 @@
 
 Run inside Unreal (e.g. from Python Script Editor):
 
-    from rigBuilder.server.hosts.unreal import UnrealServer
+    from rigBuilder.host.servers.unreal import UnrealServer
     UnrealServer(51605).start()
 """
 
@@ -11,7 +11,7 @@ import traceback
 
 import unreal
 
-from rigBuilder.server.hosts import HostServer
+from rigBuilder.host.servers import HostServer
 
 
 class UnrealServer(HostServer):
@@ -29,9 +29,9 @@ class UnrealServer(HostServer):
             try:
                 # Register a persistent Slate tick that checks our internal queue
                 self._tick_handle = unreal.register_slate_post_tick_callback(self._on_tick)
-                print(f"[rigBuilder.server] Unreal persistent tick registered")
+                print(f"[rigBuilder.host] Unreal persistent tick registered")
             except Exception as e:
-                print(f"[rigBuilder.server] Failed to register Unreal tick: {e}")
+                print(f"[rigBuilder.host] Failed to register Unreal tick: {e}")
 
     def stop(self):
         """Stop server and unregister tick."""

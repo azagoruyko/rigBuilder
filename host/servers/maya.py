@@ -2,14 +2,14 @@
 
 Run once inside Maya (e.g. from userSetup.py or Script Editor):
 
-    from rigBuilder.server.hosts.maya import MayaServer
+    from rigBuilder.host.servers.maya import MayaServer
     MayaServer(51605).start()
 """
 
 import maya.utils
 import maya.cmds as cmds
 
-from rigBuilder.server.hosts import HostServer
+from rigBuilder.host.servers import HostServer
 
 
 class MayaServer(HostServer):

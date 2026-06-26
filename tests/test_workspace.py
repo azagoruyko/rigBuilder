@@ -3,9 +3,9 @@ import json
 import shutil
 import pytest
 
-from rigBuilder.workspace import WorkspaceFile, Workspace, flattenModules
+from rigBuilder.core.workspace import WorkspaceFile, Workspace, flattenModules
 from rigBuilder.core import Module, Attribute
-from rigBuilder.settings import RIG_BUILDER_WORKSPACES_PATH
+from rigBuilder.core.settings import RIG_BUILDER_WORKSPACES_PATH
 
 
 # ============================================================================
@@ -171,7 +171,7 @@ class TestWorkspaceInit:
 
     def testDefaultWorkspaceUsesBuiltinModulesPath(self):
         """The 'default' workspace points modulesPath at the project modules dir."""
-        from rigBuilder.settings import RIG_BUILDER_PATH
+        from rigBuilder.core.settings import RIG_BUILDER_PATH
         ws = Workspace("default")
         assert ws.settings.modulesPath == os.path.join(RIG_BUILDER_PATH, "modules")
 
@@ -307,7 +307,7 @@ class TestWorkspaceActivate:
 
     def testActivatePopulatesGlobalSettings(self, workspaceName):
         """activate() pushes workspace settings into the global settings singleton."""
-        from rigBuilder.settings import settings
+        from rigBuilder.core.settings import settings
 
         ws = Workspace(workspaceName)
         ws.settings.vscode = "vscode-insiders"
@@ -327,7 +327,7 @@ class TestWorkspaceActivate:
 
     def testSwitchingWorkspacesOverridesSettings(self, tmp_path):
         """Activating a second workspace fully replaces the first workspace's settings."""
-        from rigBuilder.settings import settings
+        from rigBuilder.core.settings import settings
 
         name1 = "_pytest_switch_ws1_" + tmp_path.name
         name2 = "_pytest_switch_ws2_" + tmp_path.name
@@ -453,7 +453,7 @@ class TestSettings:
 
     def testToDictContainsExpectedKeys(self):
         """toDict() includes all public fields."""
-        from rigBuilder.settings import Settings
+        from rigBuilder.core.settings import Settings
         d = Settings().toDict()
         for key in ("vscode", "modulesPath", "historyPath", "workspacePath",
                     "trackHistory", "autoSaveInterval"):
@@ -461,14 +461,14 @@ class TestSettings:
 
     def testToDictExcludesPrivateFields(self):
         """toDict() excludes keys starting with underscore."""
-        from rigBuilder.settings import Settings
+        from rigBuilder.core.settings import Settings
         s = Settings()
         s._internal = "secret"
         assert "_internal" not in s.toDict()
 
     def testFromDictUpdatesKnownFields(self):
         """fromDict() updates attributes that already exist on the object."""
-        from rigBuilder.settings import Settings
+        from rigBuilder.core.settings import Settings
         s = Settings()
         s.fromDict({"vscode": "code-insiders", "autoSaveInterval": 30})
         assert s.vscode == "code-insiders"
@@ -476,14 +476,14 @@ class TestSettings:
 
     def testFromDictIgnoresUnknownFields(self):
         """fromDict() silently ignores keys the object doesn't have."""
-        from rigBuilder.settings import Settings
+        from rigBuilder.core.settings import Settings
         s = Settings()
         s.fromDict({"nonExistentKey": "value"})
         assert not hasattr(s, "nonExistentKey")
 
     def testSaveAndLoadRoundTrip(self, tmp_path):
         """Settings saved to disk and reloaded produce equivalent state."""
-        from rigBuilder.settings import Settings
+        from rigBuilder.core.settings import Settings
         s = Settings()
         s.vscode = "nvim"
         s.autoSaveInterval = 99
@@ -497,5 +497,5 @@ class TestSettings:
 
     def testLoadMissingFileDoesNotRaise(self, tmp_path):
         """load() on a nonexistent file logs an error but does not raise."""
-        from rigBuilder.settings import Settings
+        from rigBuilder.core.settings import Settings
         Settings().load(str(tmp_path / "missing.json"))

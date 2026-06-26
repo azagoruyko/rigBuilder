@@ -3,7 +3,7 @@ import json
 import logging
 from .utils import loadJson, saveJson
 
-RIG_BUILDER_PATH = os.path.normpath(os.path.dirname(__file__))
+RIG_BUILDER_PATH = os.path.normpath(os.path.dirname(os.path.dirname(__file__)))
 RIG_BUILDER_USER_PATH = os.path.normpath(os.path.join(os.path.expanduser("~"), "rigBuilder"))
 
 SETTINGS_PATH = os.path.join(RIG_BUILDER_USER_PATH, "settings.json")

@@ -6,7 +6,7 @@ import inspect
 from typing import Any
 
 from ..core import APIRegistry
-from ..qt import *
+from .qt import *
 
 def getObjectInfo(name: str, obj: Any) -> tuple[str, str, str, str]:
     """Helper to extract type, header, and docstring for an object."""

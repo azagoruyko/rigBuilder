@@ -3,7 +3,7 @@ import time
 import fnmatch
 from typing import List, Optional, Callable
 
-from ..qt import *
+from .qt import *
 
 trackFileChangesThreads = {} # by file path
 

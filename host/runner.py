@@ -4,7 +4,7 @@ import io
 import traceback
 
 from ..core import Module, APIRegistry
-from ..utils import captureOutput, jsonifyContext, getErrorStack, executeWithResult
+from ..core.utils import captureOutput, jsonifyContext, getErrorStack, executeWithResult
 
 # Persistent execution contexts for interactive (line-by-line) code execution.
 # Keyed by a client-supplied contextKey so variables accumulate across calls.
