@@ -23,7 +23,7 @@ if __name__ == "__main__":
     standaloneServer.start()
 
     from rigBuilder.mcp.zmq_server import ZmqServer
-    zmqServer = ZmqServer(port=5555, parent=app)
+    zmqServer = ZmqServer(parent=app)
     zmqServer.setMainWindow(mainWindow)
 
     mainWindow.show()
