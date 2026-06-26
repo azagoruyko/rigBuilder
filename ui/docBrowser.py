@@ -103,6 +103,7 @@ class DocBrowser(QTextBrowser):
             return
 
         self._generating = True
+        self.setMarkdown("Generating...")
         
         # Create worker without parent so it's not destroyed with the widget
         self._worker = DocGeneratorWorker(code, childrenDocsStr)
@@ -126,6 +127,8 @@ class DocBrowser(QTextBrowser):
                 self.updateDoc()
         else:
             QMessageBox.warning(self, "Rig Builder", "AI failed to generate documentation.")
+            if module == self.module:
+                self.updateDoc()
 
     def contextMenuEvent(self, event):
         """Show standard context menu extended with doc editing and AI generation actions."""
@@ -133,7 +136,7 @@ class DocBrowser(QTextBrowser):
         menu.addSeparator()
 
         editAction = menu.addAction("Edit")
-        editAction.setEnabled(bool(self.module))
+        editAction.setEnabled(bool(self.module) and not self._generating)
         editAction.triggered.connect(self._onEditDoc)
 
         if engine.IS_OLLAMA_AVAILABLE:
@@ -149,7 +152,7 @@ class DocBrowser(QTextBrowser):
 
     def _onEditDoc(self):
         """Open editor dialog to manually edit the module documentation."""
-        if not self.module:
+        if not self.module or self._generating:
             return
 
         from ..widgets.ui import EditTextDialog
