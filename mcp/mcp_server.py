@@ -11,6 +11,24 @@ from zmq_client import ZmqClient
 mcp = FastMCP("RigBuilder AI")
 client = ZmqClient()
 
+@mcp.resource("reference://development-specifications-and-schemas")
+def read_system_specifications_and_rules() -> str:
+    """CRITICAL REFERENCE: Contains the complete system architecture, module XML format specifications, 
+    JSON schemas for all widget templates (e.g. lineEditAndButton, vector, checkBox), relative path syntax, 
+    and API references. 
+    
+    MUST READ this resource whenever creating, modifying, or debugging Rig Builder modules, 
+    attributes, connections, or scripts to ensure correctness.
+    """
+    mcp_dir = os.path.dirname(os.path.abspath(__file__))
+    workspace_dir = os.path.dirname(mcp_dir)
+    tech_md_path = os.path.join(workspace_dir, "docs", "tech.md")
+    try:
+        with open(tech_md_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"Error reading technical documentation: {e}"
+
 @mcp.tool()
 def get_module_xml(module_path: str = "") -> str:
     """Returns the full XML representation of a specific module (including its runCode, children, and doc).
