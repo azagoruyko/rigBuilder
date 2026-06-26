@@ -79,6 +79,7 @@ def query_module(query: str, k: int = 5) -> str:
     """
     res = client.send_request("query_module", query=query, k=k)
     results = res.get("results", [])
+    results = [r for r in results if r['score'] > 0.5]
     if not results:
         return "No modules found matching the query."
         
