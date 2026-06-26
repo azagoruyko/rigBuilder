@@ -2,7 +2,7 @@ import zmq
 import json
 from PySide6.QtCore import QObject, QTimer, QPersistentModelIndex
 
-ZMQ_PORT = 5555
+ZMQ_PORT = 51607
 
 class RigBuilderAPI:
     """API for RigBuilder"""

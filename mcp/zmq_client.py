@@ -1,7 +1,7 @@
 import zmq
 import json
 
-ZMQ_PORT = 5555
+ZMQ_PORT = 51607
 
 class ZmqClient:
     """ZMQ Client for RigBuilder MCP"""
