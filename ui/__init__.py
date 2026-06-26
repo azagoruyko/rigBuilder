@@ -2821,99 +2821,32 @@ class RigBuilderWindow(QFrame):
         self.treeWidget.selectModule(module)
 
     def editInVSCode(self):
-        module = self.treeWidget.currentModule()
-        if not module:
-            return         
-
         if not shutil.which(settings.vscode):
             msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command in the Workspace Manager.".format(settings.vscode)
             QMessageBox.warning(self,"Editor Error", msg)
             return
    
-        def getFunctionDefinition(f: Callable[..., object], *, name: Optional[str] = None) -> str: # f(a,b,c=1) => 'def f(a,b,c=1):pass'
-            signature = inspect.signature(f)
-            args = []
-            for p in signature.parameters.values():
-                if p.default == p.empty:
-                    args.append(p.name)
-                else:
-                    args.append("{}={}".format(p.name, p.default))
-            return "def {}({}):pass".format(name or f.__name__, ", ".join(args))
+        # Auto-configure MCP servers in VSCode workspace
+        #target_dir = os.path.join(RIG_BUILDER_USER_PATH, "vscode")
+        #os.makedirs(target_dir, exist_ok=True)
 
-        def getVariableValue(v: object) -> Optional[object]:
-            try:
-                jv = copyJson(v) # check if v is JSON serializable
-            except:
-                return None
-
-            if isinstance(jv, str):
-                return '\'' + jv.replace("\n", "\\n") + '\''
-            return jv
-
-        def onRunCodeFileChanged(filePath: str, modulePath: str):
-            # Try to find the "live" module in the tree (it might have been replaced)
-            root = self.treeWidget.moduleModel.rootModule()
-            targetModule = root.findModuleByPath(modulePath)
-
-            if not targetModule:
-                logger.error("Could not find module for path: {}".format(modulePath))
-                return
-
-            with open(filePath, "r") as f:
-                lines = f.read().splitlines()
-
-            code = "\n".join(lines[1:]) # skip first line: import header file
-            code = replaceAttrPrefixInverse(code)
-            targetModule.setRunCode(code)
+        mcp_config = {
+            "mcpServers": {
+                "rigBuilder": {
+                    "command": os.path.join(RIG_BUILDER_PATH, "venv", "Scripts", "python.exe"),
+                    "args": [os.path.join(RIG_BUILDER_PATH, "mcp", "mcp_server.py")]
+                }
+            }
+        }
             
-            # Refresh UI if this module is currently selected
-            if self.treeWidget.currentModule() == targetModule:
-                self.codeEditorWidget.updateState()
+        config_str = json.dumps(mcp_config, indent=4)
+        QApplication.clipboard().setText(config_str)
 
-        def startTrackedFileThread(filePath: str, callback: Callable[..., None]):
-            if filePath in trackFileChangesThreads:
-                old_th = trackFileChangesThreads[filePath]
-                old_th.stop()
-                old_th.wait(1000)
-
-            th = TrackFileChangesThread(filePath)
-            th.fileChanged.connect(callback)
-            th.start()
-            trackFileChangesThreads[filePath] = th
-
-        setupVscode()
-
-        # generate header file
-        fileName = module.path().lstrip("/").replace("/", "__")
-        headerFile = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}_header.py".format(fileName))
-        runCodeFilePath = os.path.join(RIG_BUILDER_USER_PATH, "vscode", "{}.py".format(fileName))
-
-        headerCode = []
-
-        # expose API
-        env = module.context()
-
-        for k, v in env.items():
-            if callable(v):
-                headerCode.append(getFunctionDefinition(v, name=k))
-            else:
-                headerCode.append("{} = {}".format(k, getVariableValue(v)))
-
-        with open(headerFile, "w") as f:
-            f.write("\n".join(headerCode))
-
-        with open(runCodeFilePath, "w") as f:
-            headerModule = os.path.splitext(os.path.basename(headerFile))[0]
-            code = replaceAttrPrefix(module.runCode())
-            importLine = "from .{} import * # must be the first line".format(headerModule)
-            f.write("\n".join([importLine, code]))
-
-        # Use partial to bind modulePath, filePath will come from the signal
-        callback = partial(onRunCodeFileChanged, modulePath=module.path())
-        startTrackedFileThread(runCodeFilePath, callback)
+        msg = "The Rig Builder MCP configuration has been copied to your clipboard.\n\nPlease manually install it for your editor!\n\nHappy coding!"
+        QMessageBox.information(self, "Edit in VSCode", msg)
 
         try:
-            subprocess.Popen([settings.vscode, RIG_BUILDER_USER_PATH+"/vscode", "-g", runCodeFilePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.Popen([settings.vscode, settings.workspacePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
 
@@ -3196,38 +3129,6 @@ class RigBuilderWindow(QFrame):
         # Call parent close event
         super().closeEvent(event)
 
-def setupVscode():  # path to .vscode folder
-    settings = {
-        "python.autoComplete.extraPaths": [],
-    }
-
-    folder = os.path.join(RIG_BUILDER_USER_PATH, "vscode", ".vscode")
-    os.makedirs(folder, exist_ok=True)
-    settingsFile = os.path.join(folder, "settings.json")
-
-    if os.path.exists(settingsFile):
-        try:
-            settings.update(loadJson(settingsFile))
-        except Exception as e:
-            logger.error(f"Failed to load VSCode settings from {settingsFile}: {e}")
-
-    context = hostExecutor.executeCode("import sys;hostSysPath=sys.path")
-    settings["python.autoComplete.extraPaths"] = context.get("hostSysPath", [])
-
-    try:
-        saveJson(settingsFile, settings)
-    except Exception as e:
-        logger.error(f"Failed to save VSCode settings to {settingsFile}: {e}")
-
-def cleanupVscode():
-    vscodeFolder = RIG_BUILDER_USER_PATH+"/vscode"
-    if not os.path.exists(vscodeFolder):
-        return
-    
-    for f in os.listdir(vscodeFolder):
-        if f.endswith(".py") or any(f.endswith(ext) for ext in MODULE_EXTS): # remove module files
-            os.remove(os.path.join(vscodeFolder, f))
-
 def updatePalette(app: QApplication):
     # Set global link color
     palette = app.palette()
@@ -3250,8 +3151,6 @@ def applyStylesheet(widget):
 app = QApplication([])
 applyStylesheet(app)
 updatePalette(app)
-
-cleanupVscode()
 
 setupStreamRedirection()
 setupExcepthook()
