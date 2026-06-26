@@ -155,6 +155,7 @@ class ZmqServer(QObject):
         super().__init__(parent)
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
+        self.socket.setsockopt(zmq.LINGER, 0)
         try:
             self.socket.bind(f"tcp://127.0.0.1:{ZMQ_PORT}")
         except zmq.ZMQError as e:
@@ -166,6 +167,14 @@ class ZmqServer(QObject):
         self.timer.start(100) # Poll every 100ms
         
         self.mainWindow = None
+
+    def close(self):
+        if hasattr(self, 'timer') and self.timer.isActive():
+            self.timer.stop()
+        if hasattr(self, 'socket') and self.socket:
+            self.socket.close()
+        if hasattr(self, 'context') and self.context:
+            self.context.term()
 
     def setMainWindow(self, mainWindow):
         self.mainWindow = mainWindow
