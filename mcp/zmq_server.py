@@ -139,13 +139,10 @@ class RigBuilderAPI:
             raise Exception(f"Module not found: {module_path}")
             
         from rigBuilder.core import Module
+        from rigBuilder.ui import SyncModuleWithCommand
         new_module = Module.fromXml(xml_str)
-        
-        # We wrap this in begin/end reset model because syncWith can add/remove children
-        model.beginResetModel()
-        existing_module.syncWith(new_module)
-        model.endResetModel()
-        
+
+        model.undoStack.push(SyncModuleWithCommand(model, existing_module, new_module))
         cls.mainWindow.treeWidget.selectModule(existing_module)
         
         return {"message": f"Successfully updated module from XML: {module_path}"}

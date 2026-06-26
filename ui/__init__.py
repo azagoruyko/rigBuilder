@@ -724,6 +724,57 @@ class MoveModulesCommand(QUndoCommand):
                 oldParent = self.model.getModule(QModelIndex(oldParentIdx)) or self.model.rootModule()
                 oldParent.insertChild(oldRow, m)
                 self.model.endMoveRows()
+                
+class SyncModulesCommand(QUndoCommand):
+    def __init__(self, model: 'ModuleModel', modules: List[Module]):
+        super().__init__("Sync Module(s)")
+        self.model = model
+        self.modules = modules
+        
+        # Save old state to be able to fully restore
+        self.oldStates = [m.toXml(keepConnections=True) for m in modules]
+
+    def redo(self):
+        self.model.beginResetModel()
+        for m in self.modules:
+            m.sync()
+        self.model.endResetModel()
+
+    def undo(self):
+        self.model.beginResetModel()
+        for m, oldState in zip(self.modules, self.oldStates):
+            # Deserialize old state
+            oldModule = Module.fromXml(oldState)
+            
+            # Restore state using syncWith
+            m.syncWith(oldModule)
+        self.model.endResetModel()
+
+class SyncModuleWithCommand(QUndoCommand):
+    def __init__(self, model: 'ModuleModel', module: Module, referenceModule: Module):
+        super().__init__(f"Sync '{module.name()}'")
+        self.model = model
+        self.module = module
+        self.referenceModule = referenceModule
+        
+        # Save old state to be able to fully restore
+        self.oldState = module.toXml(keepConnections=True)
+
+    def redo(self):
+        self.model.beginResetModel()
+        self.module.syncWith(self.referenceModule)
+        self.model.endResetModel()
+
+    def undo(self):
+        self.model.beginResetModel()
+        
+        # Deserialize old state
+        oldModule = Module.fromXml(self.oldState)
+        
+        # Restore state using syncWith
+        self.module.syncWith(oldModule)
+        self.model.endResetModel()
+
 
 class ModuleModel(QAbstractItemModel):
     """
@@ -1368,9 +1419,12 @@ class ModuleTreeWidget(QTreeView):
         state = self._getTreeState()
         self.moduleModel.refreshReferences()
         
-        self.moduleModel.beginResetModel()
-        self.moduleModel.rootModule().sync()
-        self.moduleModel.endResetModel()
+        if self.moduleModel.undoStack:
+            self.moduleModel.undoStack.push(SyncModulesCommand(self.moduleModel, [self.moduleModel.rootModule()]))
+        else:
+            self.moduleModel.beginResetModel()
+            self.moduleModel.rootModule().sync()
+            self.moduleModel.endResetModel()
         
         self._setTreeState(state)
 
@@ -1385,12 +1439,21 @@ class ModuleTreeWidget(QTreeView):
             return
 
         state = self._getTreeState()
-        self.moduleModel.beginResetModel()
+        
+        modules = []
         for idx in selectedIndices:
             module = self.moduleModel.getModule(idx)
             if module:
-                module.sync()
-        self.moduleModel.endResetModel()
+                modules.append(module)
+                
+        if modules:
+            if self.moduleModel.undoStack:
+                self.moduleModel.undoStack.push(SyncModulesCommand(self.moduleModel, modules))
+            else:
+                self.moduleModel.beginResetModel()
+                for module in modules:
+                    module.sync()
+                self.moduleModel.endResetModel()
         self._setTreeState(state)
 
     def muteModule(self):
