@@ -9,16 +9,6 @@ class RigBuilderAPI:
     mainWindow = None
 
     @classmethod
-    def get_module_xml(cls, req):
-        """Get XML representation of a module"""
-        rootModule = cls.mainWindow.treeWidget.moduleModel.rootModule()
-        module_path = req.get("module_path", "")
-        module = rootModule.findModuleByPath(module_path) if module_path else rootModule
-        if not module:
-            raise Exception(f"Module not found: {module_path}")
-        return {"xml": module.toXml()}
-
-    @classmethod
     def get_selected_modules(cls, req):
         """Get currently selected modules"""
         modules = cls.mainWindow.treeWidget.selectedModules()
@@ -59,17 +49,6 @@ class RigBuilderAPI:
                 for p, s in results
             ]
         }
-
-    @classmethod
-    def list_workspace_modules(cls, req):
-        """List all modules in the workspace"""
-        from rigBuilder.core.settings import settings
-        from rigBuilder.core.core import Module
-        import os
-        
-        modules = Module.listModules(settings.modulesPath)
-        rel_paths = [os.path.relpath(m, settings.modulesPath).replace('\\', '/') for m in modules]
-        return {"modules": rel_paths}
 
     @classmethod
     def add_module(cls, req):
@@ -127,8 +106,18 @@ class RigBuilderAPI:
         return {"message": f"Removed module {module_path}"}
 
     @classmethod
+    def get_module_xml(cls, req):
+        """Get XML representation of a module in the tree"""
+        rootModule = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module_path = req.get("module_path", "")
+        module = rootModule.findModuleByPath(module_path) if module_path else rootModule
+        if not module:
+            raise Exception(f"Module not found: {module_path}")
+        return {"xml": module.toXml()}
+
+    @classmethod
     def set_module_xml(cls, req):
-        """Set module XML from string"""
+        """Set a module in the tree from XML."""
         model = cls.mainWindow.treeWidget.moduleModel
         rootModule = model.rootModule()
         module_path = req.get("module_path", "")
@@ -146,6 +135,46 @@ class RigBuilderAPI:
         cls.mainWindow.treeWidget.selectModule(existing_module)
         
         return {"message": f"Successfully updated module from XML: {module_path}"}
+
+    @classmethod
+    def read_log(cls, req):
+        """Get the contents of the log widget"""
+        return {"log": cls.mainWindow.logWidget.toPlainText()}
+
+    @classmethod
+    def get_available_hosts(cls, req):
+        """Get the list of available discovered hosts"""
+        from rigBuilder.core.connectionManager import connectionManager
+        return {"hosts": list(connectionManager.servers().keys())}
+
+    @classmethod
+    def switch_host(cls, req):
+        """Switch the current host via the UI"""
+        host_name = req.get("host_name", "")
+        idx = cls.mainWindow.hostCombo.findText(host_name)
+        if idx >= 0:
+            cls.mainWindow.hostCombo.setCurrentIndex(idx)
+            return {"message": f"Switched to host: {host_name}"}
+        raise Exception(f"Host not found: {host_name}")
+
+    @classmethod
+    def execute_module(cls, req):
+        """Execute a module by its path"""
+        module_path = req.get("module_path", "")
+        model = cls.mainWindow.treeWidget.moduleModel
+        rootModule = model.rootModule()
+        module = rootModule.findModuleByPath(module_path)
+        if not module:
+            raise Exception(f"Module not found: {module_path}")
+            
+        cls.mainWindow.treeWidget.selectModule(module)
+        cls.mainWindow.runModule()
+        return {"message": f"Executed module {module_path}"}
+
+    @classmethod
+    def read_module_api(cls, req):
+        """Read the registered API from the main window's API browser"""
+        return {"text": cls.mainWindow.apiBrowser.getPlainText()}
 
 class ZmqServer(QObject):
     def __init__(self, parent=None):

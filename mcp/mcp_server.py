@@ -3,40 +3,27 @@ import sys
 import os
 from fastmcp import FastMCP
 
-# Add the directory containing server.py to sys.path so zmq_client can be imported
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+MCP_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(MCP_DIRECTORY)
 from zmq_client import ZmqClient
 
 # Initialize MCP Server
 mcp = FastMCP("RigBuilder AI")
 client = ZmqClient()
 
-@mcp.resource("reference://development-specifications-and-schemas")
-def read_system_specifications_and_rules() -> str:
-    """CRITICAL REFERENCE: Contains the complete system architecture, module XML format specifications, 
+@mcp.resource("docs://rig-builder-reference")
+def read_rig_builder_reference() -> str:
+    """CRITICAL REFERENCE: Contains the complete Rig Builder architecture, module XML format specifications, 
     JSON schemas for all widget templates (e.g. lineEditAndButton, vector, checkBox), relative path syntax, 
     and API references. 
     
     MUST READ this resource whenever creating, modifying, or debugging Rig Builder modules, 
     attributes, connections, or scripts to ensure correctness.
     """
-    mcp_dir = os.path.dirname(os.path.abspath(__file__))
-    workspace_dir = os.path.dirname(mcp_dir)
-    tech_md_path = os.path.join(workspace_dir, "docs", "tech.md")
-    try:
-        with open(tech_md_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        return f"Error reading technical documentation: {e}"
-
-@mcp.tool()
-def get_module_xml(module_path: str = "") -> str:
-    """Returns the full XML representation of a specific module (including its runCode, children, and doc).
-    Args:
-        module_path: The full path to the module (e.g. 'ROOT/spine_01'). Leave empty for ROOT.
-    """
-    res = client.send_request("get_module_xml", module_path=module_path)
-    return res.get("xml", "")
+    
+    tech_md_path = os.path.join(os.path.dirname(MCP_DIRECTORY), "docs", "tech.md")
+    with open(tech_md_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 @mcp.tool()
 def get_selected_modules() -> str:
@@ -89,21 +76,6 @@ def query_module(query: str, k: int = 5) -> str:
     return out
 
 @mcp.tool()
-def list_workspace_modules() -> str:
-    """Lists all available modules saved in the current workspace on disk.
-    Returns a list of relative file paths.
-    """
-    res = client.send_request("list_workspace_modules")
-    modules = res.get("modules", [])
-    if not modules:
-        return "No modules found in the current workspace."
-        
-    out = "Available Workspace Modules:\n"
-    for m in modules:
-        out += f"- {m}\n"
-    return out
-
-@mcp.tool()
 def add_module(parent_path: str, name: str, template_path: str = "") -> str:
     """Adds a new module to the current tree in Rig Builder.
     Args:
@@ -124,6 +96,15 @@ def remove_module(module_path: str) -> str:
     return res.get("message", "Success")
 
 @mcp.tool()
+def get_module_xml(module_path: str = "") -> str:
+    """Returns the full XML representation of a specific module (including its runCode, children, and doc).
+    Args:
+        module_path: The full path to the module (e.g. 'ROOT/spine_01'). Leave empty for ROOT.
+    """
+    res = client.send_request("get_module_xml", module_path=module_path)
+    return res.get("xml", "")
+
+@mcp.tool()
 def set_module_xml(module_path: str, xml_str: str) -> str:
     """Replaces or updates a module using its full XML representation.
     This synchronizes the module structure, attributes, and Python runCode.
@@ -133,6 +114,53 @@ def set_module_xml(module_path: str, xml_str: str) -> str:
     """
     res = client.send_request("set_module_xml", module_path=module_path, xml=xml_str)
     return res.get("message", "Success")
+
+@mcp.tool()
+def read_log() -> str:
+    """Read the contents of the log widget from the main window."""
+    res = client.send_request("read_log")
+    return res.get("log", "")
+
+@mcp.tool()
+def get_available_hosts() -> str:
+    """Returns a list of available discovered hosts."""
+    res = client.send_request("get_available_hosts")
+    hosts = res.get("hosts", [])
+    if not hosts:
+        return "No hosts available."
+    return "Available hosts:\n" + "\n".join(f"- {h}" for h in hosts)
+
+@mcp.tool()
+def switch_host(host_name: str) -> str:
+    """Switches the current active host in the UI.
+    Args:
+        host_name: The name of the host to switch to.
+    """
+    res = client.send_request("switch_host", host_name=host_name)
+    return res.get("message", "Success")
+
+@mcp.tool()
+def execute_module(module_path: str) -> str:
+    """Executes a module by its full path in the active tree.
+    Args:
+        module_path: The full path to the module (e.g. 'ROOT/spine_01').
+    """
+    res = client.send_request("execute_module", module_path=module_path)
+    return res.get("message", "Success")
+
+@mcp.tool()
+def read_module_api() -> str:
+    """Reads the API functions and objects available to modules at runtime (from APIRegistry)."""
+    res = client.send_request("read_module_api")
+    api = res.get("api", {})
+    if not api:
+        return "No API registered."
+    
+    out = "Module API:\n"
+    for name, doc in api.items():
+        doc_indented = doc.replace("\n", "\n    ")
+        out += f"\n- {name}:\n    {doc_indented}"
+    return out
 
 if __name__ == "__main__":
     mcp.run()
