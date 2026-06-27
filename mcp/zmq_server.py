@@ -155,7 +155,7 @@ class RigBuilderAPI:
         if idx >= 0:
             cls.mainWindow.hostCombo.setCurrentIndex(idx)
             return {"message": f"Switched to host: {host_name}"}
-        raise Exception(f"Host not found: {host_name}")
+        return {"message": f"Host not found: {host_name}"}
 
     @classmethod
     def execute_module(cls, req):
@@ -174,7 +174,7 @@ class RigBuilderAPI:
     @classmethod
     def read_module_api(cls, req):
         """Read the registered API from the main window's API browser"""
-        return {"text": cls.mainWindow.apiBrowser.getPlainText()}
+        return {"api": cls.mainWindow.apiBrowser.browser.toPlainText()}
 
 class ZmqServer(QObject):
     def __init__(self, parent=None):

@@ -152,15 +152,8 @@ def execute_module(module_path: str) -> str:
 def read_module_api() -> str:
     """Reads the API functions and objects available to modules at runtime (from APIRegistry)."""
     res = client.send_request("read_module_api")
-    api = res.get("api", {})
-    if not api:
-        return "No API registered."
-    
-    out = "Module API:\n"
-    for name, doc in api.items():
-        doc_indented = doc.replace("\n", "\n    ")
-        out += f"\n- {name}:\n    {doc_indented}"
-    return out
+    return res.get("api", "No API registered.")
+
 
 if __name__ == "__main__":
     mcp.run()
