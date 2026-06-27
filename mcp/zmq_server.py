@@ -129,7 +129,11 @@ class RigBuilderAPI:
             
         from rigBuilder.core import Module
         from rigBuilder.ui import SyncModuleWithCommand
-        new_module = Module.fromXml(xml_str)
+
+        try:
+            new_module = Module.fromXml(xml_str)
+        except Exception as e:
+            return {"message": f"Error: {str(e)}"}
 
         model.undoStack.push(SyncModuleWithCommand(model, existing_module, new_module))
         cls.mainWindow.treeWidget.selectModule(existing_module)
