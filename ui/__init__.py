@@ -2892,7 +2892,7 @@ class RigBuilderWindow(QFrame):
         mcp_config = {
             "mcpServers": {
                 "rigBuilder": {
-                    "command": os.path.join(RIG_BUILDER_PATH, "venv", "Scripts", "python.exe"),
+                    "command": os.path.join(RIG_BUILDER_PATH, ".venv", "Scripts", "python.exe"),
                     "args": [os.path.join(RIG_BUILDER_PATH, "mcp", "mcp_server.py")]
                 }
             }
