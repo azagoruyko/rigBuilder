@@ -2889,10 +2889,6 @@ class RigBuilderWindow(QFrame):
             QMessageBox.warning(self,"Editor Error", msg)
             return
    
-        # Auto-configure MCP servers in VSCode workspace
-        #target_dir = os.path.join(RIG_BUILDER_USER_PATH, "vscode")
-        #os.makedirs(target_dir, exist_ok=True)
-
         mcp_config = {
             "mcpServers": {
                 "rigBuilder": {
