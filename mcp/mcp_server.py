@@ -8,7 +8,7 @@ sys.path.append(MCP_DIRECTORY)
 from zmq_client import ZmqClient
 
 # Initialize MCP Server
-mcp = FastMCP("RigBuilder AI")
+mcp = FastMCP("RigBuilder AI", instructions="CRITICAL: You MUST read the 'docs://rig-builder-reference' resource before interacting with this server.")
 client = ZmqClient()
 
 @mcp.resource("docs://rig-builder-reference")
@@ -98,6 +98,10 @@ def remove_module(module_path: str) -> str:
 @mcp.tool()
 def get_module_xml(module_path: str = "") -> str:
     """Returns the full XML representation of a specific module (including its runCode, children, and doc).
+    
+    CRITICAL INSTRUCTION FOR AI: Before reading or making any changes, you MUST 
+    read the 'docs://rig-builder-reference' resource to understand the XML structure.
+    
     Args:
         module_path: The full path to the module (e.g. 'ROOT/spine_01'). Leave empty for ROOT.
     """
@@ -108,6 +112,10 @@ def get_module_xml(module_path: str = "") -> str:
 def set_module_xml(module_path: str, xml_str: str) -> str:
     """Replaces or updates a module using its full XML representation.
     This synchronizes the module structure, attributes, and Python runCode.
+    
+    CRITICAL INSTRUCTION FOR AI: Before setting any XML, you MUST read the 
+    'docs://rig-builder-reference' resource to ensure you are using the correct schema and syntax.
+    
     Args:
         module_path: The full path to the module being updated.
         xml_str: The complete XML string of the updated module.
