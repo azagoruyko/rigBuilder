@@ -782,7 +782,7 @@ class Module:
     def listModules(path: str) -> List[str]:
         """List all module files in directory recursively."""
         files = []
-        for f in sorted(glob.iglob(path+"/*")):
+        for f in sorted(glob.iglob(os.path.join(path, "*"))):
             if os.path.isdir(f):
                 files += Module.listModules(f)
             else:
