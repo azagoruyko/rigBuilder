@@ -546,6 +546,9 @@ class ModuleTracker(QObject):
 
     def _onFileChanged(self, path: str):
         """Handle file change event from QFileSystemWatcher."""
+        if not os.path.exists(path):
+            return
+            
         uid = UidManager.getUidFromFile(path)
         if uid and uid in self._cache:
             self.loadModule(uid)
