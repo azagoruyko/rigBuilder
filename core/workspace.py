@@ -1,6 +1,7 @@
 from __future__ import annotations
 import html
 import os
+import shutil
 import xml.etree.ElementTree as ET
 from typing import List, Protocol, Optional, Union, TYPE_CHECKING
 
@@ -100,9 +101,6 @@ class Workspace:
         self.settings.historyPath = os.path.join(self.folderPath(), "history")
         self.settings.modulesPath = os.path.join(self.folderPath(), "modules")
 
-        if self.name == "default":
-            self.settings.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")        
-
     def folderPath(self) -> str:
         """Return workspace folder path."""
         return os.path.join(RIG_BUILDER_WORKSPACES_PATH, self.name)
@@ -177,6 +175,7 @@ if Workspace.exists("default"):
     defaultWorkspace = Workspace.load("default")
 else:
     defaultWorkspace = Workspace()
+    shutil.copytree(os.path.join(RIG_BUILDER_PATH, "modules"), os.path.join(defaultWorkspace.folderPath(), "modules"))
     defaultWorkspace.save()
 
 defaultWorkspace.activate()
