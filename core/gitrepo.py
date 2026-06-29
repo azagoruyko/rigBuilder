@@ -47,6 +47,26 @@ class GitRepo:
         """Return True if git executable is found on PATH."""
         return shutil.which("git") is not None
 
+    @staticmethod
+    def clone(url: str, dest: str) -> Tuple[str, str]:
+        """Clone url into dest directory. Return (err, out)."""
+        kwargs = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "shell": False,
+        }
+        if _startupinfo is not None:
+            kwargs["startupinfo"] = _startupinfo
+
+        result = subprocess.run(["git", "clone", url, dest], **kwargs)
+        out = (result.stdout or "").strip()
+        err = (result.stderr or "").strip() if result.returncode != 0 else ""
+        return err, out
+
     def init(self) -> bool:
         """Ensure repo exists (run git init if needed). Return False if user/email not set in config."""
         # Ensure working directory exists before running any git commands
