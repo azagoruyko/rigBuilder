@@ -1,13 +1,12 @@
 import os
 import json
-import hashlib
 import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Any
 
 from . import core
 from ..ai import engine
 from .settings import settings
-from .utils import loadJson, saveJson
+from .utils import loadJson, saveJson, fileHash
 
 class ModuleIndexer:
     """
@@ -64,6 +63,7 @@ class ModuleIndexer:
             print(f"Error extracting text from {filePath}: {e}")
             return ""
 
+
     async def indexModules(self, folder: str):
         """
         Walks through the modules directory and generates embeddings for new/changed files.
@@ -99,7 +99,7 @@ class ModuleIndexer:
         moduleFiles = core.Module.listModules(folder)
 
         for f in moduleFiles:
-            currentMtime = os.path.getmtime(f)
+            currentHash = fileHash(f)
 
             try:
                 relpath = os.path.relpath(f, settings.workspacePath)
@@ -108,8 +108,8 @@ class ModuleIndexer:
             
             cachedData = self.cache["modules"].get(relpath)
             
-            # Index if forced, or mtime changed, or never indexed
-            if force or not cachedData or cachedData.get("mtime") != currentMtime:
+            # Index if forced, or hash changed, or never indexed
+            if force or not cachedData or cachedData.get("hash") != currentHash:
                 text = self._extractIndexableText(f)
                 if not text:
                     continue
@@ -119,7 +119,7 @@ class ModuleIndexer:
 
                 if embedding:
                     self.cache["modules"][relpath] = {
-                        "mtime": currentMtime,
+                        "hash": currentHash,
                         "embedding": embedding,
                         "name": os.path.splitext(os.path.basename(f))[0]
                     }

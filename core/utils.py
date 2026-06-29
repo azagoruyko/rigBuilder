@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import json
+import hashlib
 import io
 import ast
 import stat
@@ -294,6 +295,13 @@ def saveJson(path: str, data: dict):
     """Write a dictionary to a JSON file (UTF-8)."""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+def fileHash(path: str) -> str:
+    """Compute blake2b hash of file content (fastest built-in hasher)."""
+    h = hashlib.blake2b(digest_size=16)
+    with open(path, "rb") as f:
+        h.update(f.read())
+    return h.hexdigest()
 
 def executeWithResult(code: str, globalsDict: dict, localsDict: dict = None) -> Any:
     """Execute Python code and return the value of the last expression if it's an ast.Expr."""
