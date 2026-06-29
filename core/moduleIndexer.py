@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Any
 
 from . import core
+from .uidManager import UidManager
 from ..ai import engine
 from .settings import settings
 from .utils import loadJson, saveJson, fileHash
@@ -100,13 +101,11 @@ class ModuleIndexer:
 
         for f in moduleFiles:
             currentHash = fileHash(f)
+            uid = UidManager.getUidFromFile(f)
+            if not uid:
+                continue
 
-            try:
-                relpath = os.path.relpath(f, settings.workspacePath)
-            except ValueError:
-                relpath = f
-            
-            cachedData = self.cache["modules"].get(relpath)
+            cachedData = self.cache["modules"].get(uid)
             
             # Index if forced, or hash changed, or never indexed
             if force or not cachedData or cachedData.get("hash") != currentHash:
@@ -118,7 +117,7 @@ class ModuleIndexer:
                 embedding = await engine.embed(text)
 
                 if embedding:
-                    self.cache["modules"][relpath] = {
+                    self.cache["modules"][uid] = {
                         "hash": currentHash,
                         "embedding": embedding,
                         "name": os.path.splitext(os.path.basename(f))[0]
@@ -126,10 +125,9 @@ class ModuleIndexer:
                     changed = True
 
         # remove older files from cache
-        for relpath in list(self.cache["modules"].keys()):
-            f = os.path.join(settings.workspacePath, relpath)
-            if not os.path.exists(f):
-                del self.cache["modules"][relpath]
+        for uid in list(self.cache["modules"].keys()):            
+            if uid not in UidManager.uids():
+                del self.cache["modules"][uid]
                 changed = True
         
         if changed:
@@ -146,14 +144,20 @@ class ModuleIndexer:
             return []
 
         results = []
-        for path, data in self.cache["modules"].items():
+        for uid, data in self.cache["modules"].items():
             embedding = data.get("embedding")
             if embedding is None:
                 continue
             
             score = engine.cosineSimilarity(queryEmbedding, embedding)
-            results.append((path, score))
+            results.append((uid, score))
+
+        # get module files for results
+        files = []
+        for uid, score in results:
+            path = UidManager.get(uid)
+            files.append((path, score))
 
         # Sort by score descending and return top_k
-        results.sort(key=lambda x: x[1], reverse=True)
-        return results[:k]
+        files.sort(key=lambda x: x[1], reverse=True)
+        return files[:k]
