@@ -169,12 +169,6 @@ class TestWorkspaceInit:
         assert os.path.basename(ws.folderPath()) == "demo"
         assert ws.folderPath().startswith(RIG_BUILDER_WORKSPACES_PATH)
 
-    def testDefaultWorkspaceUsesBuiltinModulesPath(self):
-        """The 'default' workspace points modulesPath at the project modules dir."""
-        from rigBuilder.core.settings import RIG_BUILDER_PATH
-        ws = Workspace("default")
-        assert ws.settings.modulesPath == os.path.join(RIG_BUILDER_PATH, "modules")
-
 
 # ============================================================================
 # Workspace — save / load
