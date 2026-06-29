@@ -159,6 +159,20 @@ class WorkspaceManagerDialog(QDialog):
         modulesPathLayout.addWidget(self.modulesPathBrowseBtn)
         self.settingsLayout.addRow("Modules Path:", modulesPathLayout)
 
+        self.scriptsPathEdit = QLineEdit()
+        self.scriptsPathEdit.setPlaceholderText("Path to scripts folder...")
+        self.scriptsPathEdit.editingFinished.connect(partial(self._onLineEditChanged, "scriptsPath", self.scriptsPathEdit))
+
+        scriptsPathLayout = QHBoxLayout()
+        scriptsPathLayout.addWidget(self.scriptsPathEdit)
+
+        self.scriptsPathBrowseBtn = QPushButton("...")
+        self.scriptsPathBrowseBtn.setAutoDefault(False)
+        self.scriptsPathBrowseBtn.clicked.connect(self._onBrowseScriptsPath)
+
+        scriptsPathLayout.addWidget(self.scriptsPathBrowseBtn)
+        self.settingsLayout.addRow("Scripts Path:", scriptsPathLayout)
+
         self.vscodeEdit = QLineEdit()
         self.vscodeEdit.editingFinished.connect(partial(self._onLineEditChanged, "vscode", self.vscodeEdit))
         self.settingsLayout.addRow("VSCode Command:", self.vscodeEdit)
@@ -212,6 +226,7 @@ class WorkspaceManagerDialog(QDialog):
 
         self._blockSettingsSignals = True
         self.modulesPathEdit.setText(ws.settings.modulesPath)
+        self.scriptsPathEdit.setText(ws.settings.scriptsPath)
         self.vscodeEdit.setText(ws.settings.vscode)
         self.trackHistoryCheck.setChecked(ws.settings.trackHistory)
         self.aiLanguageEdit.setText(ws.settings.aiLanguage)
@@ -245,6 +260,10 @@ class WorkspaceManagerDialog(QDialog):
             value = os.path.join(ws.folderPath(), "modules")
             edit.setText(value)
 
+        if key == "scriptsPath" and (not value or not os.path.exists(value)):
+            value = os.path.join(ws.folderPath(), "scripts")
+            edit.setText(value)
+
         self._onSettingChanged(key, value)
 
     def _onComboChanged(self, key, combo, _idx):
@@ -254,12 +273,23 @@ class WorkspaceManagerDialog(QDialog):
         ws = self.selectedWorkspace()
         if not ws:
             return
-            
+
         startDir = self.modulesPathEdit.text() or ws.folderPath()
         path = QFileDialog.getExistingDirectory(self, "Select Modules Directory", startDir)
         if path:
             self.modulesPathEdit.setText(path)
             self._onSettingChanged("modulesPath", path)
+
+    def _onBrowseScriptsPath(self):
+        ws = self.selectedWorkspace()
+        if not ws:
+            return
+
+        startDir = self.scriptsPathEdit.text() or ws.folderPath()
+        path = QFileDialog.getExistingDirectory(self, "Select Scripts Directory", startDir)
+        if path:
+            self.scriptsPathEdit.setText(path)
+            self._onSettingChanged("scriptsPath", path)
 
     def refresh(self):
         self.listWidget.clear()

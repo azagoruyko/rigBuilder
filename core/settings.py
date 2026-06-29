@@ -34,6 +34,7 @@ class Settings:
         self.workspacePath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, "default")
         self.modulesPath = os.path.join(RIG_BUILDER_PATH, "modules")
         self.historyPath = os.path.join(self.workspacePath, "history")
+        self.scriptsPath = os.path.join(self.workspacePath, "scripts")
         self.autoSaveInterval = 15 # minutes
 
     def toDict(self) -> dict:

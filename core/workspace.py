@@ -1,6 +1,7 @@
 from __future__ import annotations
 import html
 import os
+import sys
 import shutil
 import xml.etree.ElementTree as ET
 from typing import List, Protocol, Optional, Union, TYPE_CHECKING
@@ -100,6 +101,7 @@ class Workspace:
         self.settings.workspacePath = self.folderPath()
         self.settings.historyPath = os.path.join(self.folderPath(), "history")
         self.settings.modulesPath = os.path.join(self.folderPath(), "modules")
+        self.settings.scriptsPath = os.path.join(self.folderPath(), "scripts")
 
     def folderPath(self) -> str:
         """Return workspace folder path."""
@@ -107,7 +109,7 @@ class Workspace:
 
     def save(self) -> None:
         """Save workspace state."""
-        for f in [self.folderPath(), self.settings.modulesPath, self.settings.historyPath]:
+        for f in [self.folderPath(), self.settings.modulesPath, self.settings.historyPath, self.settings.scriptsPath]:
             os.makedirs(f, exist_ok=True)
 
         self.file.save(os.path.join(self.folderPath(), "workspace.rbws"))
@@ -125,20 +127,27 @@ class Workspace:
         # fallback paths
         ws.settings.workspacePath = ws.folderPath()
         ws.settings.historyPath = os.path.join(ws.folderPath(), "history")
-        
+
         if not os.path.exists(ws.settings.modulesPath):
             ws.settings.modulesPath = os.path.join(ws.folderPath(), "modules")
-        
+
+        if not os.path.exists(ws.settings.scriptsPath):
+            ws.settings.scriptsPath = os.path.join(ws.folderPath(), "scripts")
+
         return ws
 
     def activate(self):
-        """Core activation: populate runtime Settings from this workspace."""        
-        # Ensure directories and repos exist
-        for p in [self.settings.historyPath, self.settings.modulesPath]:
-            os.makedirs(p, exist_ok=True)        
-        
+        """Core activation: populate runtime Settings from this workspace."""
+        # Ensure directories exist
+        for p in [self.settings.historyPath, self.settings.modulesPath, self.settings.scriptsPath]:
+            os.makedirs(p, exist_ok=True)
+
         # Update global settings from workspace settings
         settings.fromDict(self.settings.toDict())
+
+        # Add scriptsPath to sys.path so user scripts can be imported during execution
+        if settings.scriptsPath not in sys.path:
+            sys.path.insert(0, settings.scriptsPath)
 
         # Refresh UID Manager
         UidManager.sync()

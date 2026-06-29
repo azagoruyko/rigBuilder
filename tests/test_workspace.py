@@ -311,13 +311,14 @@ class TestWorkspaceActivate:
         assert settings.vscode == "vscode-insiders"
 
     def testActivateCreatesRequiredDirs(self, workspaceName):
-        """activate() ensures historyPath and modulesPath directories exist."""
+        """activate() ensures historyPath, modulesPath, and scriptsPath directories exist."""
         ws = Workspace(workspaceName)
         ws.save()
         ws.activate()
 
         assert os.path.isdir(ws.settings.historyPath)
         assert os.path.isdir(ws.settings.modulesPath)
+        assert os.path.isdir(ws.settings.scriptsPath)
 
     def testSwitchingWorkspacesOverridesSettings(self, tmp_path):
         """Activating a second workspace fully replaces the first workspace's settings."""
@@ -388,6 +389,24 @@ class TestWorkspaceLoadFallbacks:
         loaded = Workspace.load(workspaceName)
         assert loaded.settings.historyPath == os.path.join(ws.folderPath(), "history")
 
+    def testScriptsPathFallbackWhenMissing(self, workspaceName):
+        """
+        If the saved scriptsPath no longer exists on disk, load() replaces it
+        with <workspaceFolder>/scripts.
+        """
+        ws = Workspace(workspaceName)
+        ws.save()
+
+        settingsPath = os.path.join(ws.folderPath(), "settings.json")
+        with open(settingsPath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["scriptsPath"] = os.path.join(ws.folderPath(), "nonexistent_scripts")
+        with open(settingsPath, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        loaded = Workspace.load(workspaceName)
+        assert loaded.settings.scriptsPath == os.path.join(loaded.folderPath(), "scripts")
+
 
 # ============================================================================
 # Workspace — multiple modules
@@ -449,7 +468,7 @@ class TestSettings:
         """toDict() includes all public fields."""
         from rigBuilder.core.settings import Settings
         d = Settings().toDict()
-        for key in ("vscode", "modulesPath", "historyPath", "workspacePath",
+        for key in ("vscode", "modulesPath", "historyPath", "scriptsPath", "workspacePath",
                     "trackHistory", "autoSaveInterval"):
             assert key in d
 
