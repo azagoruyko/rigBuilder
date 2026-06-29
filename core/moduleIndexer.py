@@ -100,19 +100,25 @@ class ModuleIndexer:
 
         for f in moduleFiles:
             currentMtime = os.path.getmtime(f)
+
+            try:
+                relpath = os.path.relpath(f, settings.workspacePath)
+            except ValueError:
+                relpath = f
             
-            cachedData = self.cache["modules"].get(f)
+            cachedData = self.cache["modules"].get(relpath)
             
             # Index if forced, or mtime changed, or never indexed
             if force or not cachedData or cachedData.get("mtime") != currentMtime:
-                print(f"Indexing: {os.path.basename(f)}...")
                 text = self._extractIndexableText(f)
                 if not text:
                     continue
-                    
+
+                print(f"Indexing: {os.path.basename(f)}...")
                 embedding = await engine.embed(text)
+
                 if embedding:
-                    self.cache["modules"][f] = {
+                    self.cache["modules"][relpath] = {
                         "mtime": currentMtime,
                         "embedding": embedding,
                         "name": os.path.splitext(os.path.basename(f))[0]
@@ -120,9 +126,10 @@ class ModuleIndexer:
                     changed = True
 
         # remove older files from cache
-        for f in list(self.cache["modules"].keys()):
-            if f not in moduleFiles:
-                del self.cache["modules"][f]
+        for relpath in list(self.cache["modules"].keys()):
+            f = os.path.join(settings.workspacePath, relpath)
+            if not os.path.exists(f):
+                del self.cache["modules"][relpath]
                 changed = True
         
         if changed:
