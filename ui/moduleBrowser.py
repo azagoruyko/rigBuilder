@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 import subprocess
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Tuple
@@ -11,29 +10,26 @@ import markdown
 import asyncio
 
 from .qt import *
-from ..core import Module
 from ..core.uidManager import UidManager
 from ..core.settings import settings, MODULE_EXT, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..core.logger import logger
 from .fileTracker import DirectoryWatcher
 from .utils import fontSize, setFontSize
-from ..core.utils import clamp, getRelativeTimeString
+from ..core.utils import clamp
 from ..core.moduleIndexer import ModuleIndexer
-from ..ai.engine import IS_OLLAMA_AVAILABLE
 
-OLD_MODULE_THRESHOLD_DAYS = 7
 _docCache: dict[str, Tuple[float, str]] = {} # path: (mtime, content)
 
 # Column indices
 COL_NAME = 0
-COL_MTIME = 1
-COL_SCORE = 2
+COL_SCORE = 1
 
 # Data roles
-MTIME_ROLE = Qt.UserRole        # raw mtime float on COL_MTIME
-FILEPATH_ROLE = Qt.UserRole + 1 # absolute file path on COL_NAME
-IS_DIR_ROLE = Qt.UserRole + 2   # bool: True for folder rows
-_HIDDEN_ROLE = Qt.UserRole + 3  # bool: True = hidden by filter
+FILEPATH_ROLE = Qt.UserRole     # absolute file path on COL_NAME
+IS_DIR_ROLE = Qt.UserRole + 1   # bool: True for folder rows
+_HIDDEN_ROLE = Qt.UserRole + 2  # bool: True = hidden by filter
+SCORE_ROLE = Qt.UserRole + 3    # float score, stored on COL_NAME for sorting
+UID_ROLE = Qt.UserRole + 4      # module UID string, stored on COL_NAME
 
 
 def getDocFromFile(path: str) -> str:
@@ -68,20 +64,20 @@ class ModuleBrowserModel(QStandardItemModel):
     """Standard item model for the module browser.
 
     Columns:
-        0 – Module name   (FILEPATH_ROLE = abs path, IS_DIR_ROLE = bool)
-        1 – Mod. time     (MTIME_ROLE = raw float)
-        2 – Score         (float as str, for semantic ranking)
+        0 – Module name   (FILEPATH_ROLE = abs path, IS_DIR_ROLE = bool,
+                           UID_ROLE = uid string, SCORE_ROLE = float)
+        1 – Score         (float as str, for semantic ranking; always hidden)
     """
 
     def __init__(self, parent=None):
-        super().__init__(0, 3, parent)
+        super().__init__(0, 2, parent)
 
     # ------------------------------------------------------------------
     # Build helpers
     # ------------------------------------------------------------------
 
     def _makeFolderRow(self, name: str) -> List[QStandardItem]:
-        """Return [nameItem, mtimeItem, scoreItem] for a folder."""
+        """Return [nameItem, scoreItem] for a folder."""
         nameItem = QStandardItem(name)
         nameItem.setData(True, IS_DIR_ROLE)
         nameItem.setData("", FILEPATH_ROLE)
@@ -91,40 +87,28 @@ class ModuleBrowserModel(QStandardItemModel):
         nameItem.setFont(font)
         nameItem.setForeground(QColor(130, 130, 230))
 
-        mtimeItem = QStandardItem("")
-        mtimeItem.setData(0.0, MTIME_ROLE)
-        mtimeItem.setFlags(Qt.ItemIsEnabled)
-
         scoreItem = QStandardItem("0")
         scoreItem.setFlags(Qt.ItemIsEnabled)
 
-        return [nameItem, mtimeItem, scoreItem]
+        return [nameItem, scoreItem]
 
-    def _makeFileRow(self, name: str, mtime: float, filePath: str) -> List[QStandardItem]:
-        """Return [nameItem, mtimeItem, scoreItem] for a file."""
-        timeLabel = getRelativeTimeString(mtime)
-        isOld = time.time() - mtime > OLD_MODULE_THRESHOLD_DAYS * 24 * 60 * 60
-
+    def _makeFileRow(self, name: str, filePath: str) -> List[QStandardItem]:
+        """Return [nameItem, scoreItem] for a file."""
         nameItem = QStandardItem(name)
         nameItem.setData(False, IS_DIR_ROLE)
         nameItem.setData(filePath, FILEPATH_ROLE)
+        nameItem.setData(UidManager.getUidFromFile(filePath), UID_ROLE)
         nameItem.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
-
-        mtimeItem = QStandardItem(timeLabel)
-        mtimeItem.setData(mtime, MTIME_ROLE)          # numeric sort key
-        mtimeItem.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-        if isOld:
-            mtimeItem.setForeground(QColor("#888888"))
 
         scoreItem = QStandardItem("0.00")
         scoreItem.setFlags(Qt.ItemIsEnabled)
 
-        return [nameItem, mtimeItem, scoreItem]
+        return [nameItem, scoreItem]
 
     def rebuild(self, modulesDirectory: str, modules: List[str]):
         """Clear and repopulate the model from a list of file paths."""
         self.clear()
-        self.setHorizontalHeaderLabels(["Module", "Modified", "Score"])
+        self.setHorizontalHeaderLabels(["Module", "Score"])
 
         # Map folder path -> QStandardItem (name column of the folder row)
         folderItems: dict[str, QStandardItem] = {}
@@ -150,17 +134,19 @@ class ModuleBrowserModel(QStandardItemModel):
                         folderItems[cumPath] = row[COL_NAME]
                     parentItem = folderItems[cumPath]
 
-            mtime = os.path.getmtime(f)
-            row = self._makeFileRow(name, mtime, absF)
+            row = self._makeFileRow(name, absF)
             parentItem.appendRow(row)
 
     def setScore(self, nameItem: QStandardItem, score: float):
-        """Update the score column for a given name-column item."""
+        """Update the score column display and store score on the name item for sorting."""
         row = nameItem.row()
         parent = nameItem.parent() or self.invisibleRootItem()
         scoreItem = parent.child(row, COL_SCORE)
         if scoreItem:
             scoreItem.setData(f"{score:.2f}" if score > 0.1 else "", Qt.DisplayRole)
+        # Store on the name item itself so the proxy can sort by it
+        # even though the score column is hidden
+        nameItem.setData(score, SCORE_ROLE)
 
     def fileItems(self) -> List[QStandardItem]:
         """Return all leaf (file) name-column items in the model."""
@@ -185,24 +171,20 @@ class ModuleBrowserModel(QStandardItemModel):
 # ---------------------------------------------------------------------------
 
 class ModuleBrowserProxy(QSortFilterProxyModel):
-    """Proxy that sorts mtime column by raw float and score column numerically.
+    """Proxy that hides the score column and sorts numerically when needed.
 
-    Filtering is done externally (items are hidden via setVisible on the
-    proxy), so this class only overrides lessThan.
+    Filtering is done externally (items are hidden via _HIDDEN_ROLE on the
+    source model), so filterAcceptsRow delegates to that flag.
     """
 
     def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
-        col = left.column()
-        if col == COL_MTIME:
-            lv = left.data(MTIME_ROLE)
-            rv = right.data(MTIME_ROLE)
-            if lv is not None and rv is not None:
-                return float(lv) < float(rv)
-        if col == COL_SCORE:
-            try:
-                return float(left.data()) < float(right.data())
-            except (TypeError, ValueError):
-                pass
+        """Sort by score descending when non-zero, otherwise alphabetically by name."""
+        if left.column() == COL_NAME:
+            ls = left.data(SCORE_ROLE) or 0.0
+            rs = right.data(SCORE_ROLE) or 0.0
+            if ls != rs:
+                # Higher score = comes first  →  lessThan means "ls > rs"
+                return float(ls) > float(rs)
         return super().lessThan(left, right)
 
     def filterAcceptsRow(self, sourceRow: int, sourceParent: QModelIndex) -> bool:
@@ -216,7 +198,8 @@ class ModuleBrowserProxy(QSortFilterProxyModel):
         return not item.data(_HIDDEN_ROLE)
 
     def filterAcceptsColumn(self, sourceColumn, sourceParent):
-        if not IS_OLLAMA_AVAILABLE and sourceColumn == COL_SCORE:
+        # Score column is always hidden from the view
+        if sourceColumn == COL_SCORE:
             return False
         return True
 # ---------------------------------------------------------------------------
@@ -238,7 +221,7 @@ class ModuleBrowserTree(QTreeView):
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
 
         self.setSortingEnabled(True)
-        self.sortByColumn(COL_MTIME, Qt.DescendingOrder)
+        self.sortByColumn(COL_NAME, Qt.AscendingOrder)
 
         self.setDragEnabled(True)
         self.setAcceptDrops(False)
@@ -372,35 +355,6 @@ class ModuleBrowserTree(QTreeView):
         subprocess.call("explorer \"{}\"".format(settings.modulesPath))
 
     # ------------------------------------------------------------------
-    # Tooltip
-    # ------------------------------------------------------------------
-
-    def viewportEvent(self, event: QEvent) -> bool:
-        if event.type() == QEvent.ToolTip:
-            proxyIdx = self.indexAt(event.pos())
-            if proxyIdx.isValid():
-                srcIdx = self.proxyModel.mapToSource(
-                    self.proxyModel.index(proxyIdx.row(), COL_NAME, proxyIdx.parent()))
-
-                item = self.browserModel.itemFromIndex(srcIdx)
-                if item and not item.data(IS_DIR_ROLE):
-                    fp = item.data(FILEPATH_ROLE)
-                    if fp:
-                        doc = getDocFromFile(fp)
-                        if doc:
-                            tooltip = markdown.markdown(
-                                doc,
-                                extensions=["fenced_code", "tables", "nl2br",
-                                            "sane_lists", "codehilite", "toc", "extra"],
-                                output_format="html5")
-                                
-                            QToolTip.showText(event.globalPos(), tooltip, self)
-                        else:
-                            QToolTip.showText(event.globalPos(), "No documentation", self)
-                        return True
-        return super().viewportEvent(event)
-
-    # ------------------------------------------------------------------
     # Wheel — font zoom
     # ------------------------------------------------------------------
 
@@ -474,6 +428,39 @@ class IndexWorker(QThread):
             logger.error(f"Background Indexing Error: {e}")
             
 
+class DocViewer(QTextBrowser):
+    """Doc viewer with Ctrl+wheel zoom."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setOpenExternalLinks(True)
+        self.setReadOnly(True)
+        self.setMaximumHeight(160)
+        self.setMinimumHeight(60)
+        self.hide()
+
+    def setContent(self, html: str):
+        """Display rendered HTML and show the panel."""
+        self.setHtml(html)
+        self.show()
+
+    def clearContent(self):
+        """Hide the panel."""
+        self.hide()
+
+    def wheelEvent(self, event: QWheelEvent):
+        """Ctrl+wheel zooms the text."""
+        if event.modifiers() & Qt.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.zoomIn(1)
+            elif delta < 0:
+                self.zoomOut(1)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+
 class ModuleBrowser(QWidget):
     """Embeddable module selector with filter, source options, and module tree."""
 
@@ -503,13 +490,12 @@ class ModuleBrowser(QWidget):
 
         self.searchWidget = QLineEdit()
         self.searchWidget.setPlaceholderText("Module name or description...")
-        self.searchWidget.textChanged.connect(self.applyMask)
+        self.searchWidget.textChanged.connect(self._onMaskTextChanged)
         self.searchWidget.returnPressed.connect(self._runSemanticSearch)
 
         self.clearFilterButton = QPushButton("🧹 Clear")
         self.clearFilterButton.clicked.connect(self.searchWidget.clear)
         self.clearFilterButton.hide()
-        self.searchWidget.textChanged.connect(self._onMaskTextChanged)
 
         filterLayout = QHBoxLayout()
         filterLayout.addWidget(QLabel("Search"))
@@ -519,6 +505,10 @@ class ModuleBrowser(QWidget):
 
         self.treeWidget = ModuleBrowserTree()
         layout.addWidget(self.treeWidget)
+
+        self._docViewer = DocViewer()
+        layout.addWidget(self._docViewer)
+
         layout.addWidget(self.pathLabel)
 
         # Setup timers
@@ -533,6 +523,8 @@ class ModuleBrowser(QWidget):
         self.maskTimer = QTimer(self)
         self.maskTimer.setSingleShot(True)
         self.maskTimer.timeout.connect(self._applyMaskInternal)
+
+        self.treeWidget.selectionModel().selectionChanged.connect(self._onSelectionChanged)
 
         self._setupAutoReloadWatcher()
         self.refreshModules()
@@ -603,6 +595,29 @@ class ModuleBrowser(QWidget):
             return
         self.semanticResults = results
         self.applyMask()
+
+    # ------------------------------------------------------------------
+    # Doc panel
+    # ------------------------------------------------------------------
+
+    def _onSelectionChanged(self, *_):
+        """Update the doc panel when the tree selection changes."""
+        if not self.treeWidget.selectionModel().hasSelection():
+            self._docViewer.clearContent()
+            return
+
+        fp = self.treeWidget.currentFilePath()
+        doc = getDocFromFile(fp) if fp else ""
+        if not doc:
+            self._docViewer.clearContent()
+            return
+
+        html = markdown.markdown(
+            doc,
+            extensions=["fenced_code", "tables", "nl2br",
+                        "sane_lists", "codehilite", "toc", "extra"],
+            output_format="html5")
+        self._docViewer.setContent(html)
 
     # ------------------------------------------------------------------
     # Path label
@@ -682,11 +697,8 @@ class ModuleBrowser(QWidget):
         maskText = self.searchWidget.text().strip()
         isSearching = bool(maskText)
 
-        semanticMatches = (
-            {p.lower() for p, s in self.semanticResults if s >= 0.5}
-            if self.semanticResults else None)
         scores = (
-            {p.lower(): s for p, s in self.semanticResults}
+            {os.path.normpath(p).lower(): s for p, s in self.semanticResults if p}
             if self.semanticResults else {})
 
         model = self.treeWidget.browserModel
@@ -721,12 +733,7 @@ class ModuleBrowser(QWidget):
                 if child.data(IS_DIR_ROLE):
                     childScore = updateFolder(child)
                 else:
-                    scoreItem = parentItem.child(r, COL_SCORE)
-                    if scoreItem:
-                        try:
-                            childScore = float(scoreItem.data(Qt.DisplayRole) or 0)
-                        except (ValueError, TypeError):
-                            pass
+                    childScore = child.data(SCORE_ROLE) or 0.0
 
                 maxScore = max(maxScore, childScore)
                 anyVisible = anyVisible or not child.data(_HIDDEN_ROLE)
@@ -752,7 +759,4 @@ class ModuleBrowser(QWidget):
                 if proxyIdx.isValid():
                     self.treeWidget.setExpanded(proxyIdx, True)
 
-        if isSearching and (self.semanticResults or maskText):
-            self.treeWidget.sortByColumn(COL_SCORE, Qt.DescendingOrder)
-        else:
-            self.treeWidget.sortByColumn(COL_MTIME, Qt.DescendingOrder)
+        self.treeWidget.sortByColumn(COL_NAME, Qt.AscendingOrder)
