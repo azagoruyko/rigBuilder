@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import threading
 from functools import partial
 from typing import List, Optional, Union
 
@@ -13,8 +14,12 @@ from ..core import workspace
 from ..core.workspace import Workspace
 from ..core.utils import replaceSpecialChars
 from ..core.connectionManager import connectionManager
+from ..core.gitrepo import GitRepo
 
 _workspaceCache: dict[str, Workspace] = {}
+
+COMMUNITY_REPO = "https://github.com/azagoruyko/rigBuilder-community"
+COMMUNITY_NAME = "community"
 
 def getWorkspace(name: str) -> Workspace:
     """Retrieve workspace from cache or load it."""
@@ -24,6 +29,70 @@ def getWorkspace(name: str) -> Workspace:
     ws = Workspace.load(name)
     _workspaceCache[name] = ws
     return ws
+
+def syncCommunityWorkspace(parent=None) -> bool:
+    """Clone the community workspace repo if it doesn't exist, otherwise pull updates.
+
+    Shows a modal progress dialog while the git operation runs in a background
+    thread so the UI stays responsive.
+
+    Args:
+        parent: Optional QWidget parent for dialogs.
+
+    Returns:
+        True if the operation succeeded, False otherwise.
+    """
+    if not GitRepo.isAvailable():
+        QMessageBox.critical(
+            parent,
+            "Community Workspace",
+            "'git' executable not found. Please install Git and ensure it is on your PATH.",
+        )
+        return False
+
+    destPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, COMMUNITY_NAME)
+    isClone = not GitRepo.exists(destPath)
+    action = "Cloning" if isClone else "Pulling"
+
+    progress = QProgressDialog(f"{action} community workspace...", None, 0, 0, parent)
+    progress.setWindowTitle("Community Workspace")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.setValue(0)
+    progress.show()
+    QApplication.processEvents()
+
+    result = {"err": "", "out": ""}
+
+    def _run():
+        if isClone:
+            result["err"], result["out"] = GitRepo.clone(COMMUNITY_REPO, destPath)
+        else:
+            repo = GitRepo(destPath)
+            result["err"], result["out"] = repo("pull")
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    while thread.is_alive():
+        QApplication.processEvents()
+        thread.join(timeout=0.05)
+
+    progress.close()
+
+    if not result["err"]:
+        QMessageBox.information(
+            parent,
+            "Community Workspace",
+            f"Community workspace {'cloned' if isClone else 'updated'} successfully.",
+        )
+        return True
+    else:
+        QMessageBox.critical(
+            parent,
+            "Community Workspace",
+            f"Git operation failed:\n{result['err']}",
+        )
+        return False
 
 class WorkspaceManagerDialog(QDialog):
     """Dialog for listing, creating, and removing workspaces."""
@@ -51,6 +120,13 @@ class WorkspaceManagerDialog(QDialog):
         self.openBtn.setAutoDefault(False)
         self.openBtn.clicked.connect(self._onOpenFolder)
 
+        self.communityBtn = QPushButton("🌐 Community")
+        self.communityBtn.setAutoDefault(False)
+        self.communityBtn.setToolTip(
+            "Clone or update the rigBuilder-community workspace from GitHub"
+        )
+        self.communityBtn.clicked.connect(self._onCommunity)
+
         btnLayout = QHBoxLayout()
         btnLayout.addWidget(self.newBtn)
         btnLayout.addWidget(self.removeBtn)
@@ -62,6 +138,7 @@ class WorkspaceManagerDialog(QDialog):
         listLayout.addWidget(QLabel("Available Workspaces:"))
         listLayout.addWidget(self.listWidget)
         listLayout.addLayout(btnLayout)
+        listLayout.addWidget(self.communityBtn)
 
         # 2. Right Panel (Settings)
         self.settingsGroup = QGroupBox("Workspace Settings")
@@ -242,6 +319,11 @@ class WorkspaceManagerDialog(QDialog):
         ws = self.selectedWorkspace()
         if ws:
             os.startfile(ws.folderPath())
+
+    def _onCommunity(self):
+        """Clone or pull the community workspace via the top-level helper."""
+        if syncCommunityWorkspace(parent=self):
+            self.refresh()
 
 class WorkspaceWidget(QWidget):
     """UI Widget for workspace selection and management."""
