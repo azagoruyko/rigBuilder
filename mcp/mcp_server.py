@@ -76,14 +76,14 @@ def query_module(query: str, k: int = 5) -> str:
     return out
 
 @mcp.tool()
-def add_module(parent_path: str, name: str, template_path: str = "") -> str:
+def add_module(parent_path: str, name: str, reference_path: str = "") -> str:
     """Adds a new module to the current tree in Rig Builder.
     Args:
         parent_path: The path of the parent module (e.g. 'ROOT/spine'). Leave empty for ROOT.
         name: The name for the new module.
-        template_path: (Optional) The relative path to an existing module file from the workspace (e.g. 'biped/arm.xml'). If empty, creates an empty module.
+        reference_path: (Optional) Path string relative to 'modules/' of an existing module file in the current workspace (e.g. 'biped/arm.xml'). If empty, creates an empty module.
     """
-    res = client.send_request("add_module", parent_path=parent_path, name=name, template_path=template_path)
+    res = client.send_request("add_module", parent_path=parent_path, name=name, reference_path=reference_path)
     return res.get("message", "Success")
 
 @mcp.tool()

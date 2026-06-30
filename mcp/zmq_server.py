@@ -55,7 +55,7 @@ class RigBuilderAPI:
         """Add a new module to the tree"""
         parent_path = req.get("parent_path", "")
         module_name = req.get("name", "new_module")
-        template_path = req.get("template_path", "")
+        reference_path = req.get("reference_path", "")
         
         model = cls.mainWindow.treeWidget.moduleModel
         rootModule = model.rootModule()
@@ -69,8 +69,8 @@ class RigBuilderAPI:
         from rigBuilder.core import Module
         from rigBuilder.ui import AddModuleCommand
         
-        if template_path:
-            new_module = Module.loadModule(template_path)
+        if reference_path:
+            new_module = Module.loadModule(reference_path)
             if module_name and module_name != "new_module":
                 new_module.setName(module_name)
         else:
