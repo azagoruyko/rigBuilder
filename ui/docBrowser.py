@@ -1,14 +1,18 @@
-from typing import Optional
-from functools import partial
 import asyncio
+import markdown
+from typing import Optional
+from pygments.formatters import HtmlFormatter
 
 from .qt import *
 from .. import ai
 from ..ai import engine
-from ..core import Module
 from ..core.logger import logger
 
 activeWorkers = []
+
+# Generate pygments syntax coloring CSS rules once at module level
+_formatter = HtmlFormatter(style='monokai')
+highlighterCss = _formatter.get_style_defs('.codehilite') + "\n.codehilite { background-color: transparent !important; }"
 
 class DocGeneratorWorker(QThread):
     """Background worker to fetch AI-generated documentation."""
@@ -44,31 +48,120 @@ class DocGeneratorWorker(QThread):
             logger.error(f"Error generating documentation: {e}")
             self.finished.emit("")
 
+
 class DocBrowser(QTextBrowser):
-    """Markdown browser for module documentation with AI generation."""
+    """Generic markdown browser for displaying documentation with edit signals."""
     
     moduleRequested = Signal(str)
+    editRequested = Signal()
+    generationRequested = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, editable=True):
         super().__init__(parent)
+        self.editable = editable
+        self._generating = False
+        self.zoomLevel = 0
 
         self.setOpenLinks(False)
+        self.setOpenExternalLinks(True)
         self.anchorClicked.connect(self._onAnchorClicked)
         self.setPlaceholderText("Double-click to edit. Markdown supported.")
 
-        self.module = None
-        self._worker = None
-        self._generating = False
 
-    def updateDoc(self, module: Optional[Module] = None):
-        if module is not None:
-            self.module = module
-            
-        if not self.module:
+    def zoomIn(self, range: int = 1):
+        super().zoomIn(range)
+        self.zoomLevel += range
+
+    def zoomOut(self, range: int = 1):
+        super().zoomOut(range)
+        self.zoomLevel -= range
+
+    def resetZoom(self):
+        if self.zoomLevel > 0:
+            super().zoomOut(self.zoomLevel)
+        elif self.zoomLevel < 0:
+            super().zoomIn(-self.zoomLevel)
+        self.zoomLevel = 0
+
+    def wheelEvent(self, event: QWheelEvent):
+        if event.modifiers() == Qt.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self.zoomIn(1)
+            else:
+                self.zoomOut(1)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.modifiers() == Qt.ControlModifier:
+            key = event.key()
+            if key in (Qt.Key_Plus, Qt.Key_Equal):
+                self.zoomIn(1)
+                event.accept()
+                return
+            elif key == Qt.Key_Minus:
+                self.zoomOut(1)
+                event.accept()
+                return
+            elif key == Qt.Key_0:
+                self.resetZoom()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def setGenerating(self, generating: bool):
+        self._generating = generating
+        if generating:
+            self.setPlaceholderText("⌛ Generating documentation with AI...")
             self.clear()
+        else:
+            self.setPlaceholderText("Double-click to edit. Markdown supported.")
+
+    def setDoc(self, docText: str):
+        """Directly convert markdown doc text to HTML and display it with custom styles."""
+        if not docText:
+            self.setHtml("<p style='color: #8a92a3; font-style: italic;'>No documentation available.</p>")
             return
 
-        self.setMarkdown(self.module.doc())
+        html = markdown.markdown(
+            docText,
+            extensions=["fenced_code", "tables", "nl2br",
+                        "sane_lists", "codehilite", "toc", "extra"],
+            output_format="html5")
+
+        htmlStyled = f"""
+        <style>
+            body {{
+                color: #e8eaed;
+                line-height: 1.4;
+            }}
+            h1, h2, h3, h4 {{
+                color: #6ea7ff;
+                margin-top: 10px;
+                margin-bottom: 5px;
+            }}
+            pre {{
+                background-color: #1a1e24;
+                border: 1px solid #343c49;
+                border-radius: 4px;
+                padding: 8px;
+            }}
+            code {{
+                background-color: #1a1e24;
+                color: #e5c07b;
+                padding: 1px 3px;
+                border-radius: 3px;
+            }}
+            a {{
+                color: #55aaee;
+                text-decoration: none;
+            }}
+            {highlighterCss}
+        </style>
+        {html}
+        """
+        self.setHtml(htmlStyled)
 
     def _onAnchorClicked(self, url):
         url = QUrl(url)
@@ -84,60 +177,18 @@ class DocBrowser(QTextBrowser):
                 self.moduleRequested.emit(spec)
             return
 
-    def _onGenerateDoc(self):
-        if not self.module or self._generating:
-            return
-
-        # Prepare children documentation context
-        childrenDocs = []
-        for ch in self.module.children():
-            doc = ch.doc().strip()
-            if doc:
-                childrenDocs.append(f"### {ch.name()}\n{doc}")
-        
-        childrenDocsStr = "\n\n".join(childrenDocs)
-
-        code = self.module.runCode()
-        if not code and not childrenDocsStr:
-            QMessageBox.warning(self, "Rig Builder", "Module has no run code and no children documentation to analyze.")
-            return
-
-        self._generating = True
-        self.setMarkdown("Generating...")
-        
-        # Create worker without parent so it's not destroyed with the widget
-        self._worker = DocGeneratorWorker(code, childrenDocsStr)
-        
-        # Keep alive in global list
-        activeWorkers.append(self._worker)
-        self._worker.finished.connect(lambda: activeWorkers.remove(self._worker) if self._worker in activeWorkers else None)
-        
-        # Capture current module to ensure generation finishes on the correct one
-        callback = partial(self._onGenerationFinished, self.module)
-        self._worker.finished.connect(callback)
-        self._worker.start()
-
-    def _onGenerationFinished(self, module: Module, summary: str):
-        self._generating = False
-        
-        if summary:
-            module.setDoc(summary)
-            # Only refresh UI if the returned module is still selected
-            if module == self.module:
-                self.updateDoc()
-        else:
-            QMessageBox.warning(self, "Rig Builder", "AI failed to generate documentation.")
-            if module == self.module:
-                self.updateDoc()
-
     def contextMenuEvent(self, event):
         """Show standard context menu extended with doc editing and AI generation actions."""
+        if not self.editable:
+            super().contextMenuEvent(event)
+            return
+
         menu = self.createStandardContextMenu()
         menu.addSeparator()
 
         editAction = menu.addAction("Edit")
-        editAction.setEnabled(bool(self.module) and not self._generating)
-        editAction.triggered.connect(self._onEditDoc)
+        editAction.setEnabled(not self._generating)
+        editAction.triggered.connect(self.editRequested.emit)
 
         if engine.IS_OLLAMA_AVAILABLE:
             if self._generating:
@@ -145,33 +196,13 @@ class DocBrowser(QTextBrowser):
                 genAction.setEnabled(False)
             else:
                 genAction = menu.addAction("✨ Generate with AI")
-                genAction.setEnabled(bool(self.module))
-                genAction.triggered.connect(self._onGenerateDoc)
+                genAction.triggered.connect(self.generationRequested.emit)
 
         menu.exec_(event.globalPos())
 
-    def _onEditDoc(self):
-        """Open editor dialog to manually edit the module documentation."""
-        if not self.module or self._generating:
-            return
-
-        from .widgets import EditTextDialog
-
-        def save(text):
-            self.module.setDoc(text)
-            self.updateDoc()
-
-        w = EditTextDialog(
-            self.module.doc(),
-            title="Edit documentation",
-            placeholder="Enter documentation here...",
-            words=set(),
-            python=False,
-            parent=self)
-
-        w.saved.connect(save)
-        w.show()
-
     def mouseDoubleClickEvent(self, event):
-        """Edit source text and save it to module."""
-        self._onEditDoc()
+        """Emit edit signal if editable."""
+        if not self.editable or self._generating:
+            super().mouseDoubleClickEvent(event)
+            return
+        self.editRequested.emit()

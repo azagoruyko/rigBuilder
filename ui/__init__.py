@@ -31,7 +31,7 @@ from ..core.workspace import Workspace
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowser
 from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
-from .docBrowser import DocBrowser
+from .docBrowser import DocBrowser, DocGeneratorWorker, activeWorkers
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
 from .moduleBrowser import ModuleBrowser
@@ -1131,6 +1131,19 @@ class ModuleTreeWidget(QTreeView):
     def clear(self):
         """Clear the tree by resetting the model."""
         self.moduleModel.clear()
+
+    def paintEvent(self, event: QPaintEvent):
+        super().paintEvent(event)
+        painter = QPainter()
+        if painter.begin(self.viewport()):
+            painter.setPen(QColor("#7a8699"))
+            font = self.font()
+            font.setItalic(True)
+            painter.setFont(font)
+            viewportRect = self.viewport().rect()
+            paddedRect = QRect(viewportRect.x(), viewportRect.y(), viewportRect.width(), viewportRect.height() - 5)
+            painter.drawText(paddedRect, Qt.AlignBottom | Qt.AlignHCenter, "Press TAB to add modules")
+            painter.end()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MiddleButton:
@@ -2429,9 +2442,30 @@ class HostManagerDialog(QDialog):
         self.codeEdit.setPlainText(code)
 
 
+class TabEventFilter(QObject):
+    def __init__(self, mainWindow, parent=None):
+        super().__init__(parent)
+        self.mainWindow = mainWindow
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Tab:
+                activeWin = QApplication.activeWindow()
+                if activeWin and (activeWin == self.mainWindow or self.mainWindow.isAncestorOf(activeWin)):
+                    if not self.mainWindow.moduleBrowser.isVisible():
+                        focused = QApplication.focusWidget()
+                        if not focused or not isinstance(focused, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+                            self.mainWindow.showModulePopup()
+                            return True
+        return super().eventFilter(watched, event)
+
+
 class RigBuilderWindow(QFrame):
     def __init__(self):
         super().__init__()
+
+        self.tabEventFilter = TabEventFilter(self)
+        QApplication.instance().installEventFilter(self.tabEventFilter)
 
         self.logger = logger
         self._refreshingUI = False
@@ -2534,9 +2568,11 @@ class RigBuilderWindow(QFrame):
 
         self.docBrowser = DocBrowser()
         self.docBrowser.moduleRequested.connect(self.addModuleBySpec)
+        self.docBrowser.editRequested.connect(self._onEditDocRequested)
+        self.docBrowser.generationRequested.connect(self._onGenerationDocRequested)
         self.docBrowser.setEnabled(False)
 
-        self.moduleBrowser = ModuleBrowser()
+        self.moduleBrowser = ModuleBrowser(parent=self)
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self._onModuleFileChanged)
         
         self.workspaceWidget.updateRequested.connect(self.moduleBrowser.refreshModules)
@@ -2562,11 +2598,6 @@ class RigBuilderWindow(QFrame):
         treeWithBtnWidget.layout().addWidget(self.treeWidget)
         treeWithBtnWidget.layout().addWidget(self.runBtn)
 
-        leftSplitter = WideSplitter(Qt.Vertical)
-        leftSplitter.addWidget(treeWithBtnWidget)
-        leftSplitter.addWidget(self.moduleBrowser)
-        leftSplitter.setSizes([500,300])
-
         centerSplitter = WideSplitter(Qt.Vertical)
         centerSplitter.addWidget(self.attributesTabWidget)
         centerSplitter.addWidget(self.codeEditorWidget)
@@ -2583,7 +2614,7 @@ class RigBuilderWindow(QFrame):
         centerRightSplitter.setSizes([500, 200])
 
         mainSplitter = WideSplitter(Qt.Horizontal)
-        mainSplitter.addWidget(leftSplitter)
+        mainSplitter.addWidget(treeWithBtnWidget)
         mainSplitter.addWidget(centerRightSplitter)
         mainSplitter.setSizes([200, 500])
 
@@ -2610,11 +2641,10 @@ class RigBuilderWindow(QFrame):
         self.moduleBrowser.refreshModules()
 
         self._splitters = {
-            "version": 3,
+            "version": 4,
             "widgets": [
                 layoutSplitter,
                 mainSplitter,
-                leftSplitter,
                 centerSplitter,
                 centerRightSplitter,
             ]
@@ -2978,7 +3008,7 @@ class RigBuilderWindow(QFrame):
         self.moduleHistoryBrowser.filterEdit.setText(module.uid() if module else "")
 
         if module:
-            self.docBrowser.updateDoc(module)
+            self.docBrowser.setDoc(module.doc())
             self.attributesTabWidget.module = module
             self.attributesTabWidget.updateTabs()
             self.codeEditorWidget.module = module
@@ -3176,6 +3206,96 @@ class RigBuilderWindow(QFrame):
         ws = self.workspaceWidget.currentWorkspace()
         timestamp = time.strftime("%H:%M")
         print(f"Workspace '{ws.name}' autosaved at {timestamp}")
+
+    def showModulePopup(self):
+        """Show the module browser popup at the current cursor position."""
+        # Use last size if user resized it, otherwise default
+        popupSize = self.moduleBrowser.size()
+        w = popupSize.width() if popupSize.width() > 100 else 760
+        h = popupSize.height() if popupSize.height() > 100 else 460
+        self.moduleBrowser.resize(w, h)
+        
+        # Position at the current cursor position (top-left corner of the dialog at mouse pos)
+        cursorPos = QCursor.pos()
+        x = cursorPos.x()
+        y = cursorPos.y()
+        
+        # Ensure it stays on screen
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        x = clamp(x, screen.x(), screen.x() + screen.width() - w)
+        y = clamp(y, screen.y(), screen.y() + screen.height() - h)
+        
+        # Show first, then move to guarantee position is applied correctly by the OS window manager
+        self.moduleBrowser.show()
+        self.moduleBrowser.move(x, y)
+        self.moduleBrowser.raise_()
+        self.moduleBrowser.activateWindow()
+        self.moduleBrowser.searchWidget.setFocus()
+        self.moduleBrowser.searchWidget.selectAll()
+
+    def _onEditDocRequested(self):
+        module = self.treeWidget.currentModule()
+        if not module:
+            return
+
+        def save(text):
+            module.setDoc(text)
+            self.docBrowser.setDoc(text)
+
+        w = EditTextDialog(
+            module.doc(),
+            title="Edit documentation",
+            placeholder="Enter documentation here...",
+            words=set(),
+            python=False,
+            parent=self)
+
+        w.saved.connect(save)
+        w.show()
+
+    def _onGenerationDocRequested(self):
+        module = self.treeWidget.currentModule()
+        if not module:
+            return
+
+        # Prepare children documentation context
+        childrenDocs = []
+        for ch in module.children():
+            doc = ch.doc().strip()
+            if doc:
+                childrenDocs.append(f"### {ch.name()}\n{doc}")
+        
+        childrenDocsStr = "\n\n".join(childrenDocs)
+
+        code = module.runCode()
+        if not code and not childrenDocsStr:
+            QMessageBox.warning(self, "Rig Builder", "Module has no run code and no children documentation to analyze.")
+            return
+
+        self.docBrowser.setGenerating(True)
+        
+        # Create worker without parent so it's not destroyed with the widget
+        worker = DocGeneratorWorker(code, childrenDocsStr)
+        activeWorkers.append(worker)
+        
+        def onFinished(summary: str):
+            if worker in activeWorkers:
+                activeWorkers.remove(worker)
+            self.docBrowser.setGenerating(False)
+            if summary:
+                module.setDoc(summary)
+                # Only refresh UI if this module is still selected
+                current = self.treeWidget.currentModule()
+                if current == module:
+                    self.docBrowser.setDoc(summary)
+            else:
+                QMessageBox.warning(self, "Rig Builder", "AI failed to generate documentation.")
+                current = self.treeWidget.currentModule()
+                if current == module:
+                    self.docBrowser.setDoc(module.doc())
+
+        worker.finished.connect(onFinished)
+        worker.start()
 
     def closeEvent(self, event):
         # Terminate all file tracking threads before closing

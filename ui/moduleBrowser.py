@@ -1,4 +1,4 @@
-"""Module browser widget with filter, source options, and module tree."""
+"""Module browser popup dialog with category sidebar, module card list, and doc preview."""
 
 from __future__ import annotations
 
@@ -9,27 +9,15 @@ from typing import Optional, List, Tuple
 import markdown
 import asyncio
 
+from .docBrowser import DocBrowser
 from .qt import *
 from ..core.uidManager import UidManager
-from ..core.settings import settings, MODULE_EXT, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..core.settings import settings, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..core.logger import logger
 from .fileTracker import DirectoryWatcher
-from .utils import fontSize, setFontSize
-from ..core.utils import clamp
 from ..core.moduleIndexer import ModuleIndexer
 
-_docCache: dict[str, Tuple[float, str]] = {} # path: (mtime, content)
-
-# Column indices
-COL_NAME = 0
-COL_SCORE = 1
-
-# Data roles
-FILEPATH_ROLE = Qt.UserRole     # absolute file path on COL_NAME
-IS_DIR_ROLE = Qt.UserRole + 1   # bool: True for folder rows
-_HIDDEN_ROLE = Qt.UserRole + 2  # bool: True = hidden by filter
-SCORE_ROLE = Qt.UserRole + 3    # float score, stored on COL_NAME for sorting
-UID_ROLE = Qt.UserRole + 4      # module UID string, stored on COL_NAME
+_docCache: dict[str, Tuple[float, str]] = {}  # path: (mtime, content)
 
 
 def getDocFromFile(path: str) -> str:
@@ -38,17 +26,17 @@ def getDocFromFile(path: str) -> str:
         return ""
     mtime = os.path.getmtime(path)
     if path in _docCache:
-        cached_mtime, content = _docCache[path]
-        if cached_mtime == mtime:
+        cachedMtime, content = _docCache[path]
+        if cachedMtime == mtime:
             return content
 
     content = ""
     try:
         tree = ET.parse(path)
         root = tree.getroot()
-        doc_el = root.find("doc")
-        if doc_el is not None:
-            content = doc_el.text or ""
+        docEl = root.find("doc")
+        if docEl is not None:
+            content = docEl.text or ""
     except Exception:
         pass
 
@@ -57,345 +45,12 @@ def getDocFromFile(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Model
-# ---------------------------------------------------------------------------
-
-class ModuleBrowserModel(QStandardItemModel):
-    """Standard item model for the module browser.
-
-    Columns:
-        0 – Module name   (FILEPATH_ROLE = abs path, IS_DIR_ROLE = bool,
-                           UID_ROLE = uid string, SCORE_ROLE = float)
-        1 – Score         (float as str, for semantic ranking; always hidden)
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(0, 2, parent)
-
-    # ------------------------------------------------------------------
-    # Build helpers
-    # ------------------------------------------------------------------
-
-    def _makeFolderRow(self, name: str) -> List[QStandardItem]:
-        """Return [nameItem, scoreItem] for a folder."""
-        nameItem = QStandardItem(name)
-        nameItem.setData(True, IS_DIR_ROLE)
-        nameItem.setData("", FILEPATH_ROLE)
-        nameItem.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-        font = nameItem.font()
-        font.setBold(True)
-        nameItem.setFont(font)
-        nameItem.setForeground(QColor(130, 130, 230))
-
-        scoreItem = QStandardItem("0")
-        scoreItem.setFlags(Qt.ItemIsEnabled)
-
-        return [nameItem, scoreItem]
-
-    def _makeFileRow(self, name: str, filePath: str) -> List[QStandardItem]:
-        """Return [nameItem, scoreItem] for a file."""
-        nameItem = QStandardItem(name)
-        nameItem.setData(False, IS_DIR_ROLE)
-        nameItem.setData(filePath, FILEPATH_ROLE)
-        nameItem.setData(UidManager.getUidFromFile(filePath), UID_ROLE)
-        nameItem.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled)
-
-        scoreItem = QStandardItem("0.00")
-        scoreItem.setFlags(Qt.ItemIsEnabled)
-
-        return [nameItem, scoreItem]
-
-    def rebuild(self, modulesDirectory: str, modules: List[str]):
-        """Clear and repopulate the model from a list of file paths."""
-        self.clear()
-        self.setHorizontalHeaderLabels(["Module", "Score"])
-
-        # Map folder path -> QStandardItem (name column of the folder row)
-        folderItems: dict[str, QStandardItem] = {}
-
-        for f in modules:
-            relativePath = os.path.relpath(f, modulesDirectory)
-            relativeDir = os.path.dirname(relativePath)
-            name = os.path.splitext(os.path.basename(f))[0]
-            absF = os.path.abspath(f).lower()
-
-            # Ensure all ancestor folder items exist
-            parentItem = self.invisibleRootItem()
-            if relativeDir and relativeDir != ".":
-                # Normalize and split by the native separator
-                relativeDir = os.path.normpath(relativeDir)
-                parts = relativeDir.split(os.sep)
-                cumPath = ""
-                for part in parts:
-                    cumPath = os.path.join(cumPath, part) if cumPath else part
-                    if cumPath not in folderItems:
-                        row = self._makeFolderRow(part)
-                        parentItem.appendRow(row)
-                        folderItems[cumPath] = row[COL_NAME]
-                    parentItem = folderItems[cumPath]
-
-            row = self._makeFileRow(name, absF)
-            parentItem.appendRow(row)
-
-    def setScore(self, nameItem: QStandardItem, score: float):
-        """Update the score column display and store score on the name item for sorting."""
-        row = nameItem.row()
-        parent = nameItem.parent() or self.invisibleRootItem()
-        scoreItem = parent.child(row, COL_SCORE)
-        if scoreItem:
-            scoreItem.setData(f"{score:.2f}" if score > 0.1 else "", Qt.DisplayRole)
-        # Store on the name item itself so the proxy can sort by it
-        # even though the score column is hidden
-        nameItem.setData(score, SCORE_ROLE)
-
-    def fileItems(self) -> List[QStandardItem]:
-        """Return all leaf (file) name-column items in the model."""
-        result = []
-
-        def _collect(parentItem: QStandardItem):
-            for r in range(parentItem.rowCount()):
-                child = parentItem.child(r, COL_NAME)
-                if child is None:
-                    continue
-                if child.data(IS_DIR_ROLE):
-                    _collect(child)
-                else:
-                    result.append(child)
-
-        _collect(self.invisibleRootItem())
-        return result
-
-
-# ---------------------------------------------------------------------------
-# Proxy model — sorting + filtering
-# ---------------------------------------------------------------------------
-
-class ModuleBrowserProxy(QSortFilterProxyModel):
-    """Proxy that hides the score column and sorts numerically when needed.
-
-    Filtering is done externally (items are hidden via _HIDDEN_ROLE on the
-    source model), so filterAcceptsRow delegates to that flag.
-    """
-
-    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
-        """Sort by score descending when non-zero, otherwise alphabetically by name."""
-        if left.column() == COL_NAME:
-            ls = left.data(SCORE_ROLE) or 0.0
-            rs = right.data(SCORE_ROLE) or 0.0
-            if ls != rs:
-                # Higher score = comes first  →  lessThan means "ls > rs"
-                return float(ls) > float(rs)
-        return super().lessThan(left, right)
-
-    def filterAcceptsRow(self, sourceRow: int, sourceParent: QModelIndex) -> bool:
-        """Delegate visibility to the IS_HIDDEN flag stored by the browser."""
-        model = self.sourceModel()
-        idx = model.index(sourceRow, COL_NAME, sourceParent)
-        item = model.itemFromIndex(idx)
-        if item is None:
-            return True
-        # _HIDDEN_ROLE is stored as a custom role; default False = visible
-        return not item.data(_HIDDEN_ROLE)
-
-    def filterAcceptsColumn(self, sourceColumn, sourceParent):
-        # Score column is always hidden from the view
-        if sourceColumn == COL_SCORE:
-            return False
-        return True
-# ---------------------------------------------------------------------------
-# View
-# ---------------------------------------------------------------------------
-
-class ModuleBrowserTree(QTreeView):
-    """Tree view for browsing module files on disk."""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.middlePressPos = QPoint()
-
-        self.browserModel = ModuleBrowserModel()
-        self.proxyModel = ModuleBrowserProxy()
-        self.proxyModel.setSourceModel(self.browserModel)
-        self.setModel(self.proxyModel)
-
-        self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-
-        self.setSortingEnabled(True)
-        self.sortByColumn(COL_NAME, Qt.AscendingOrder)
-
-        self.setDragEnabled(True)
-        self.setAcceptDrops(False)
-        self.setDropIndicatorShown(False)
-        self.setDragDropMode(QAbstractItemView.DragOnly)
-        self.setDefaultDropAction(Qt.CopyAction)
-        self.setMinimumHeight(100)
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-
-    # ------------------------------------------------------------------
-    # Drag
-    # ------------------------------------------------------------------
-
-    def selectedModulePaths(self) -> List[str]:
-        """Return a list of file paths for all selected module leaf items."""
-        paths = []
-        for proxyIdx in self.selectionModel().selectedRows(COL_NAME):
-            srcIdx = self.proxyModel.mapToSource(proxyIdx)
-            item = self.browserModel.itemFromIndex(srcIdx)
-            if item and not item.data(IS_DIR_ROLE):
-                fp = item.data(FILEPATH_ROLE)
-                if fp:
-                    paths.append(fp)
-        return paths
-
-    def _startModuleDrag(self):
-        paths = self.selectedModulePaths()
-        if not paths:
-            return
-        mimeData = QMimeData()
-        mimeData.setUrls([QUrl.fromLocalFile(p) for p in paths])
-        drag = QDrag(self)
-        drag.setMimeData(mimeData)
-        drag.exec(Qt.CopyAction)
-
-    def startDrag(self, supportedActions: Qt.DropActions):
-        del supportedActions
-        self._startModuleDrag()
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MiddleButton:
-            self.middlePressPos = event.pos()
-            proxyIdx = self.indexAt(event.pos())
-            if proxyIdx.isValid():
-                if not (event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)):
-                    self.clearSelection()
-                self.selectionModel().select(
-                    proxyIdx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if event.buttons() & Qt.MiddleButton:
-            if (event.pos() - self.middlePressPos).manhattanLength() >= QApplication.startDragDistance():
-                self._startModuleDrag()
-                self.middlePressPos = QPoint()
-                event.accept()
-                return
-        super().mouseMoveEvent(event)
-
-    # ------------------------------------------------------------------
-    # Context menu
-    # ------------------------------------------------------------------
-
-    def contextMenuEvent(self, event: QContextMenuEvent):
-        menu = QMenu(self)
-        
-        selectedPaths = self.selectedModulePaths()
-
-        renameAction = menu.addAction("Rename")
-        renameAction.triggered.connect(self.renameModule)
-        renameAction.setEnabled(len(selectedPaths) == 1)
-        
-        deleteAction = menu.addAction("Delete")
-        deleteAction.triggered.connect(self.deleteModule)
-        deleteAction.setEnabled(len(selectedPaths) > 0)
-        
-        menu.addSeparator()
-
-        browseAction = menu.addAction("Show in Explorer")
-        browseAction.triggered.connect(self.browseModuleDirectory)
-        browseAction.setEnabled(len(selectedPaths) > 0)
-
-        menu.addAction("Open modules folder", self.openModulesFolder)
-        menu.addSeparator()
-        menu.addAction("Refresh", self.parent().refreshModules)
-        menu.popup(event.globalPos())
-
-    def renameModule(self):
-        paths = self.selectedModulePaths()
-        if not paths:
-            return
-            
-        fp = paths[0]
-        oldName = os.path.splitext(os.path.basename(fp))[0]
-        newName, ok = QInputDialog.getText(
-            self, "Rename Module", "New module name:", QLineEdit.Normal, oldName)
-
-        if ok and newName and newName != oldName:
-            newFp = os.path.join(os.path.dirname(fp), newName + MODULE_EXT)
-            try:
-                os.rename(fp, newFp)
-            except Exception as e:
-                QMessageBox.critical(self, "Rename Error", f"Failed to rename:\n{e}")
-
-    def deleteModule(self):
-        paths_to_delete = self.selectedModulePaths()
-        if not paths_to_delete:
-            return
-            
-        msg = f"Are you sure you want to delete {len(paths_to_delete)} module(s)?"
-        if len(paths_to_delete) == 1:
-            msg = f"Are you sure you want to delete the module '{os.path.basename(paths_to_delete[0])}'?"
-            
-        reply = QMessageBox.question(
-            self, "Delete Module", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            
-        if reply == QMessageBox.Yes:
-            for fp in paths_to_delete:
-                try:
-                    os.remove(fp)
-                except Exception as e:
-                    QMessageBox.critical(self, "Delete Error", f"Failed to delete {fp}:\n{e}")
-
-    def browseModuleDirectory(self):
-        for fp in self.selectedModulePaths():
-            subprocess.call("explorer /select,\"{}\"".format(os.path.normpath(fp)))
-
-    def openModulesFolder(self):
-        subprocess.call("explorer \"{}\"".format(settings.modulesPath))
-
-    # ------------------------------------------------------------------
-    # Wheel — font zoom
-    # ------------------------------------------------------------------
-
-    def wheelEvent(self, event: QWheelEvent):
-        if event.modifiers() & Qt.ControlModifier:
-            delta = event.angleDelta().y()
-            if delta == 0:
-                return
-            d = delta / abs(delta)
-            font = self.font()
-            sz = clamp(fontSize(font) + d, 6, 20)
-            setFontSize(font, sz)
-            self.setFont(font)
-            self.setIndentation(sz * 1.5)
-            event.accept()
-        else:
-            super().wheelEvent(event)
-
-    # ------------------------------------------------------------------
-    # Convenience: current file path
-    # ------------------------------------------------------------------
-
-    def currentFilePath(self) -> Optional[str]:
-        """Return the file path of the currently selected leaf item, or None."""
-        proxyIdx = self.currentIndex()
-        if not proxyIdx.isValid():
-            return None
-        srcIdx = self.proxyModel.mapToSource(
-            self.proxyModel.index(proxyIdx.row(), COL_NAME, proxyIdx.parent()))
-        item = self.browserModel.itemFromIndex(srcIdx)
-        if item and not item.data(IS_DIR_ROLE):
-            return item.data(FILEPATH_ROLE)
-        return None
-
-
-# ---------------------------------------------------------------------------
 # Background Workers for AI
 # ---------------------------------------------------------------------------
 
 class SearchWorker(QThread):
     finished = Signal(str, list)
+
     def __init__(self, indexer: ModuleIndexer, query: str, k: int = 5):
         super().__init__()
         self.setObjectName(f"SearchWorker_{query[:10]}")
@@ -426,92 +81,227 @@ class IndexWorker(QThread):
             loop.run_until_complete(self.indexer.indexModules(self.folder))
         except Exception as e:
             logger.error(f"Background Indexing Error: {e}")
-            
 
-class DocViewer(QTextBrowser):
-    """Doc viewer with Ctrl+wheel zoom."""
 
-    def __init__(self, parent=None):
+def getCategoryColor(category: str) -> str:
+    """Return a stable color string for a category name."""
+    if not category or category in (".", ""):
+        return "#6ea7ff"  # accent blue for root
+    hashVal = sum(ord(c) for c in category)
+    colors = ["#4e54c8", "#11998e", "#fc4a1a", "#ee0979", "#00c6ff",
+              "#f7b733", "#38ef7d", "#ff6a00", "#b5179e", "#7209b7"]
+    return colors[hashVal % len(colors)]
+
+
+# ---------------------------------------------------------------------------
+# Simple Card Widget for Module List Items
+# ---------------------------------------------------------------------------
+
+class ModuleCardWidget(QWidget):
+    def __init__(self, name: str, filepath: str, score: float = 0.0, parent=None):
         super().__init__(parent)
-        self.setOpenExternalLinks(True)
-        self.setReadOnly(True)
-        self.setMaximumHeight(160)
-        self.setMinimumHeight(60)
-        self.hide()
+        self.name = name
+        self.filepath = filepath
+        self.setStyleSheet("background: transparent;")
 
-    def setContent(self, html: str):
-        """Display rendered HTML and show the panel."""
-        self.setHtml(html)
-        self.show()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(8)
 
-    def clearContent(self):
-        """Hide the panel."""
-        self.hide()
+        # Color dot indicating category
+        self.dot = QFrame()
+        self.dot.setFixedSize(8, 8)
 
-    def wheelEvent(self, event: QWheelEvent):
-        """Ctrl+wheel zooms the text."""
-        if event.modifiers() & Qt.ControlModifier:
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self.zoomIn(1)
-            elif delta < 0:
-                self.zoomOut(1)
+        # Determine dot color by hashing category name
+        rel = os.path.relpath(filepath, settings.modulesPath)
+        cat = os.path.dirname(rel)
+        color = getCategoryColor(cat)
+        self.dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
+
+        self.nameLabel = QLabel(name)
+        self.nameLabel.setStyleSheet("font-family: Consolas, monospace; font-size: 12px; font-weight: bold; color: #e8eaed; background: transparent;")
+
+        layout.addWidget(self.dot)
+        layout.addWidget(self.nameLabel)
+        layout.addStretch()
+
+        if 0.0 < score < 1.0:
+            self.scoreLabel = QLabel(f"{score:.0%}")
+            self.scoreLabel.setStyleSheet(
+                "font-family: Consolas; font-size: 10px; color: #6ea7ff; background: transparent;")
+            layout.addWidget(self.scoreLabel)
+
+    def getCategoryColor(self, category: str) -> str:
+        return getCategoryColor(category)
+
+
+class CategoryItemWidget(QWidget):
+    """Category list item with a matching color dot."""
+
+    def __init__(self, label: str, category: str, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background: transparent;")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 3, 4, 3)
+        layout.setSpacing(6)
+
+        if category:
+            dot = QFrame()
+            dot.setFixedSize(8, 8)
+            dot.setStyleSheet(
+                f"background-color: {getCategoryColor(category)};"
+                " border-radius: 4px; border: none;")
+            layout.addWidget(dot)
+
+        lbl = QLabel(label)
+        lbl.setStyleSheet("font-family: Consolas, monospace; background: transparent;")
+        layout.addWidget(lbl)
+        layout.addStretch()
+
+
+# ---------------------------------------------------------------------------
+# Module Browser Popup Dialog
+# ---------------------------------------------------------------------------
+
+class ModuleBrowserHeader(QWidget):
+    def __init__(self, title: str, parentDialog: QDialog, parent=None):
+        super().__init__(parent)
+        self.parentDialog = parentDialog
+        self.dragPosition = QPoint()
+
+        self.setStyleSheet("background-color: #1a1e24; border-top-left-radius: 9px; border-top-right-radius: 9px;")
+        self.setFixedHeight(32)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 12, 0)
+
+        self.titleLabel = QLabel(title)
+        self.titleLabel.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; font-weight: bold; color: #8a92a3; background: transparent;")
+        layout.addWidget(self.titleLabel)
+        layout.addStretch()
+
+        self.closeBtn = QPushButton("×")
+        self.closeBtn.setFixedSize(16, 16)
+        self.closeBtn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #8a92a3;
+                border: none;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 0;
+            }
+            QPushButton:hover {
+                color: #ff5555;
+            }
+        """)
+        self.closeBtn.clicked.connect(self.parentDialog.close)
+        layout.addWidget(self.closeBtn)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self.dragPosition = event.globalPosition().toPoint() - self.parentDialog.frameGeometry().topLeft()
             event.accept()
-        else:
-            super().wheelEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if event.buttons() == Qt.LeftButton:
+            self.parentDialog.move(event.globalPosition().toPoint() - self.dragPosition)
+            event.accept()
 
 
-class ModuleBrowser(QWidget):
-    """Embeddable module selector with filter, source options, and module tree."""
-
+class ModuleBrowser(QDialog):
+    """Refactored module browser dialog triggered by pressing Tab."""
     modulesReloaded = Signal()
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
 
-        # AI Semantic Search setup
+        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
         self.indexer = ModuleIndexer()
         self.semanticResults: List[Tuple[str, float]] = []
         self._indexWorker: Optional[QThread] = None
-
         self._currentSearchWorker: Optional[SearchWorker] = None
         self._activeThreads = set()
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(layout)
+        # Dialog main layout
+        self.dialogLayout = QVBoxLayout(self)
+        self.dialogLayout.setContentsMargins(10, 10, 10, 10)
 
-        self.pathLabel = QLabel()
-        self.pathLabel.setWordWrap(True)
-        self.pathLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.pathLabel.setStyleSheet(
-            "color: #AAAAAA; font-style: italic; background-color: rgba(255, 255, 255, 0.05);"
-            " padding: 5px; border-radius: 4px; margin-top: 5px;")
+        # Styled Container
+        self.container = QWidget()
 
+        self.dialogLayout.addWidget(self.container)
+
+        # Layout inside the container
+        containerLayout = QVBoxLayout(self.container)
+        containerLayout.setContentsMargins(0, 0, 0, 12)
+        containerLayout.setSpacing(10)
+
+        # Header bar
+        self.headerBar = ModuleBrowserHeader("Module Browser", self)
+        containerLayout.addWidget(self.headerBar)
+
+        # Content layout inside the container (with margins)
+        contentLayout = QVBoxLayout()
+        contentLayout.setContentsMargins(12, 0, 12, 0)
+        contentLayout.setSpacing(10)
+        containerLayout.addLayout(contentLayout)
+
+        # Header: search widget
         self.searchWidget = QLineEdit()
-        self.searchWidget.setPlaceholderText("Module name or description...")
+        self.searchWidget.setPlaceholderText("Search modules...")
         self.searchWidget.textChanged.connect(self._onMaskTextChanged)
-        self.searchWidget.returnPressed.connect(self._runSemanticSearch)
+        self.searchWidget.returnPressed.connect(self.addSelectedModule)
+        contentLayout.addWidget(self.searchWidget)
 
-        self.clearFilterButton = QPushButton("🧹 Clear")
-        self.clearFilterButton.clicked.connect(self.searchWidget.clear)
-        self.clearFilterButton.hide()
+        # Body: splitter
+        self.splitter = QSplitter(Qt.Horizontal)
+        contentLayout.addWidget(self.splitter)
 
-        filterLayout = QHBoxLayout()
-        filterLayout.addWidget(QLabel("Search"))
-        filterLayout.addWidget(self.searchWidget)
-        filterLayout.addWidget(self.clearFilterButton)
-        layout.addLayout(filterLayout)
+        # Left Panel: Categories Sidebar & Action Buttons
+        self.sidebarWidget = QWidget()
+        sidebarLayout = QVBoxLayout(self.sidebarWidget)
+        sidebarLayout.setContentsMargins(0, 0, 0, 0)
+        sidebarLayout.setSpacing(6)
 
-        self.treeWidget = ModuleBrowserTree()
-        layout.addWidget(self.treeWidget)
+        self.categoryList = QListWidget()
+        self.categoryList.itemSelectionChanged.connect(self._onCategoryChanged)
+        sidebarLayout.addWidget(self.categoryList)
 
-        self._docViewer = DocViewer()
-        layout.addWidget(self._docViewer)
+        self.openFolderBtn = QPushButton("📂 Open Folder")
+        self.openFolderBtn.clicked.connect(self.openModulesFolder)
+        sidebarLayout.addWidget(self.openFolderBtn)
 
-        layout.addWidget(self.pathLabel)
+        self.splitter.addWidget(self.sidebarWidget)
 
-        # Setup timers
+        # Center Panel: Modules List
+        self.modulesList = QListWidget()
+        self.modulesList.setMinimumWidth(220)
+        self.modulesList.itemSelectionChanged.connect(self._onModuleSelectionChanged)
+        self.modulesList.itemDoubleClicked.connect(self.addSelectedModule)
+        self.splitter.addWidget(self.modulesList)
+
+        # Right Panel: Doc Browser & Add Button
+        self.docContainer = QWidget()
+        docLayout = QVBoxLayout(self.docContainer)
+        docLayout.setContentsMargins(0, 0, 0, 0)
+        docLayout.setSpacing(8)
+
+        self.docBrowser = DocBrowser(editable=False)        
+        docLayout.addWidget(self.docBrowser)
+
+        self.addButton = QPushButton("➕ Add Module")
+        self.addButton.clicked.connect(self.addSelectedModule)
+        docLayout.addWidget(self.addButton)
+
+        self.splitter.addWidget(self.docContainer)
+
+        self.splitter.setSizes([140, 240, 360])
+
+
+        # Setup Timers
         self.searchTimer = QTimer(self)
         self.searchTimer.setSingleShot(True)
         self.searchTimer.timeout.connect(self._runSemanticSearch)
@@ -520,18 +310,38 @@ class ModuleBrowser(QWidget):
         self.indexTimer.setSingleShot(True)
         self.indexTimer.timeout.connect(self._doIndexing)
 
-        self.maskTimer = QTimer(self)
-        self.maskTimer.setSingleShot(True)
-        self.maskTimer.timeout.connect(self._applyMaskInternal)
+        # Install event filter on search widget to intercept Up/Down arrows
+        self.searchWidget.installEventFilter(self)
 
-        self.treeWidget.selectionModel().selectionChanged.connect(self._onSelectionChanged)
+        # Resize grip for frameless window resizing
+        self.sizeGrip = QSizeGrip(self)
+        self.sizeGrip.setStyleSheet("background: transparent;")
 
         self._setupAutoReloadWatcher()
         self.refreshModules()
 
-    # ------------------------------------------------------------------
-    # Thread management
-    # ------------------------------------------------------------------
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Position the size grip in the bottom right corner, accounting for dialog margins (10px)
+        self.sizeGrip.move(self.width() - self.sizeGrip.width() - 10, self.height() - self.sizeGrip.height() - 10)
+
+    def eventFilter(self, watched, event):
+        if watched == self.searchWidget and event.type() == QEvent.KeyPress:
+            key = event.key()
+            if key in (Qt.Key_Down, Qt.Key_Up):
+                rowCount = self.modulesList.count()
+                if rowCount > 0:
+                    currentRow = self.modulesList.currentRow()
+                    if key == Qt.Key_Down:
+                        newRow = (currentRow + 1) % rowCount
+                    else:
+                        newRow = (currentRow - 1 + rowCount) % rowCount
+                    self.modulesList.setCurrentRow(newRow)
+                return True
+            elif key == Qt.Key_Escape:
+                self.close()
+                return True
+        return super().eventFilter(watched, event)
 
     def _launchThread(self, worker: QThread):
         """Safely start a thread and keep a reference until it finishes."""
@@ -559,9 +369,140 @@ class ModuleBrowser(QWidget):
         self._indexWorker.finished.connect(lambda: setattr(self, "_indexWorker", None))
         self._launchThread(self._indexWorker)
 
-    # ------------------------------------------------------------------
-    # Semantic search
-    # ------------------------------------------------------------------
+    def refreshModules(self):
+        """Syncs modules, trigger indexing, and rebuild the UI list."""
+        UidManager.sync()
+
+        self.indexer.filePath = os.path.join(settings.workspacePath, "moduleIndex.json")
+        self.indexer.refresh()
+        self._startIndexing()
+
+        self._rebuildCategoryList()
+        self._rebuildModulesList()
+
+    def _rebuildCategoryList(self):
+        selected = self.categoryList.currentItem()
+        selectedCat = selected.data(Qt.UserRole) if selected else None  # None = All Modules
+
+        self.categoryList.clear()
+
+        categories = set()
+        for filepath in UidManager.uids().values():
+            rel = os.path.relpath(filepath, settings.modulesPath)
+            cat = os.path.dirname(rel)
+            if cat and cat != ".":
+                categories.add(cat.replace("\\", "/"))
+
+        sortedCats = sorted(list(categories))
+
+        # Add "All Modules" first
+        allItem = QListWidgetItem()
+        allWidget = CategoryItemWidget("All Modules", "")
+        self.categoryList.addItem(allItem)
+        self.categoryList.setItemWidget(allItem, allWidget)
+
+        for cat in sortedCats:
+            item = QListWidgetItem()
+            widget = CategoryItemWidget(cat, cat)
+            item.setData(Qt.UserRole, cat)
+            self.categoryList.addItem(item)
+            self.categoryList.setItemWidget(item, widget)
+
+        # Restore selection
+        for i in range(self.categoryList.count()):
+            item = self.categoryList.item(i)
+            if item.data(Qt.UserRole) == selectedCat:
+                self.categoryList.setCurrentItem(item)
+                break
+        else:
+            self.categoryList.setCurrentRow(0)
+
+    def _rebuildModulesList(self):
+        selectedCatItem = self.categoryList.currentItem()
+        selectedCategory = selectedCatItem.data(Qt.UserRole) if selectedCatItem else None
+
+        searchQuery = self.searchWidget.text().strip().lower()
+
+        # Get all modules with an initial score of 0.0
+        allModules = []
+        for filepath in UidManager.uids().values():
+            name = os.path.splitext(os.path.basename(filepath))[0]
+            rel = os.path.relpath(filepath, settings.modulesPath)
+            cat = os.path.dirname(rel).replace("\\", "/")
+            if not cat or cat == ".":
+                cat = ""
+            allModules.append((name, filepath, cat, 0.0))
+
+        # Filter by category
+        if selectedCategory:  # None = "All Modules"
+            allModules = [m for m in allModules if m[2] == selectedCategory or m[2].startswith(selectedCategory + "/")]
+
+        # Filter and rank by search query
+        if searchQuery:
+            scores = {os.path.normpath(p).lower(): s for p, s in self.semanticResults if p}
+            scoredModules = []
+            for name, filepath, cat, _ in allModules:
+                if searchQuery in name.lower():
+                    score = 1.0
+                else:
+                    score = scores.get(os.path.normpath(filepath).lower(), 0.0)
+
+                if score >= 0.5:
+                    scoredModules.append((name, filepath, cat, score))
+            scoredModules.sort(key=lambda x: (-x[3], x[0].lower()))
+            allModules = scoredModules
+        else:
+            allModules.sort(key=lambda x: x[0].lower())
+
+        self.modulesList.clear()
+
+        for name, filepath, cat, score in allModules:
+            item = QListWidgetItem()
+            card = ModuleCardWidget(name, filepath, score=score)
+            item.setSizeHint(card.sizeHint())
+            self.modulesList.addItem(item)
+            self.modulesList.setItemWidget(item, card)
+
+        if self.modulesList.count() > 0:
+            self.modulesList.setCurrentRow(0)
+        else:
+            self.docBrowser.clear()
+            self.addButton.setEnabled(False)
+
+    def _onCategoryChanged(self):
+        self._rebuildModulesList()
+
+    def _onModuleSelectionChanged(self):
+        selectedItem = self.modulesList.currentItem()
+        if not selectedItem:
+            self.docBrowser.clear()
+            self.addButton.setEnabled(False)
+            return
+
+        card = self.modulesList.itemWidget(selectedItem)
+        if not card:
+            self.docBrowser.clear()
+            self.addButton.setEnabled(False)
+            return
+
+        self.addButton.setEnabled(True)
+        doc = getDocFromFile(card.filepath)
+        self.docBrowser.setDoc(doc)
+
+    def addSelectedModule(self):
+        selectedItem = self.modulesList.currentItem()
+        if not selectedItem:
+            return
+
+        card = self.modulesList.itemWidget(selectedItem)
+        if not card or not card.filepath:
+            return
+
+        filepath = card.filepath
+        self.close()
+
+        mainWindow = self.parent()
+        mainWindow.addModuleBySpec(filepath)
 
     def _runSemanticSearch(self):
         """Perform background semantic search using the current filter text."""
@@ -569,7 +510,7 @@ class ModuleBrowser(QWidget):
         query = self.searchWidget.text().strip()
         if not query or query.startswith("/"):
             self.semanticResults = []
-            self.applyMask()
+            self._rebuildModulesList()
             return
 
         if self._currentSearchWorker:
@@ -587,61 +528,23 @@ class ModuleBrowser(QWidget):
         self._launchThread(self._currentSearchWorker)
 
         self.semanticResults = []
-        self.applyMask()
+        self._rebuildModulesList()
 
     def _onSemanticSearchFinished(self, query: str, results: List[Tuple[str, float]]):
         """Handle results from the semantic search thread."""
         if query != self.searchWidget.text().strip():
             return
         self.semanticResults = results
-        self.applyMask()
+        self._rebuildModulesList()
 
-    # ------------------------------------------------------------------
-    # Doc panel
-    # ------------------------------------------------------------------
-
-    def _onSelectionChanged(self, *_):
-        """Update the doc panel when the tree selection changes."""
-        if not self.treeWidget.selectionModel().hasSelection():
-            self._docViewer.clearContent()
-            return
-
-        fp = self.treeWidget.currentFilePath()
-        doc = getDocFromFile(fp) if fp else ""
-        if not doc:
-            self._docViewer.clearContent()
-            return
-
-        html = markdown.markdown(
-            doc,
-            extensions=["fenced_code", "tables", "nl2br",
-                        "sane_lists", "codehilite", "toc", "extra"],
-            output_format="html5")
-        self._docViewer.setContent(html)
-
-    # ------------------------------------------------------------------
-    # Path label
-    # ------------------------------------------------------------------
-
-    def _updatePathLabel(self):
-        path = os.path.normpath(settings.modulesPath)
-        userRoot = os.path.normpath(RIG_BUILDER_USER_PATH)
-        appRoot = os.path.normpath(RIG_BUILDER_PATH)
-
-        if path.lower().startswith(userRoot.lower()):
-            rel = os.path.relpath(path, userRoot)
-            displayText = "User" if rel == "." else os.path.join("User", rel)
-        elif path.lower().startswith(appRoot.lower()):
-            rel = os.path.relpath(path, appRoot)
-            displayText = "App" if rel == "." else os.path.join("App", rel)
+    def _onMaskTextChanged(self, text: str):
+        if not text.strip():
+            self.searchTimer.stop()
+            self.semanticResults = []
+            self._rebuildModulesList()
         else:
-            displayText = path
-
-        self.pathLabel.setText(displayText.replace("\\", "/"))
-
-    # ------------------------------------------------------------------
-    # Watcher
-    # ------------------------------------------------------------------
+            self.searchTimer.start(300)
+            self._rebuildModulesList()
 
     def _setupAutoReloadWatcher(self):
         self.modulesAutoReloadWatcher = DirectoryWatcher(
@@ -652,111 +555,7 @@ class ModuleBrowser(QWidget):
             parent=self)
         self.modulesAutoReloadWatcher.fileChanged.connect(lambda _: self.refreshModules())
 
-    # ------------------------------------------------------------------
-    # Refresh / build
-    # ------------------------------------------------------------------
-
-    def refreshModules(self):
-        """Startup and auto-reload entry point. Rebuilds the model."""
-        self._updatePathLabel()
-        UidManager.sync()
-
-        self.indexer.filePath = os.path.join(settings.workspacePath, "moduleIndex.json")
-        self.indexer.refresh()
-        self._startIndexing()
-
-        self._buildTree()
-        self.applyMask()
-
-    def _buildTree(self):
-        """Rebuild the model from disk. Proxy filtering is applied separately."""
-        modulesDirectory = settings.modulesPath
-        modules = sorted(UidManager.uids().values())
-        self.treeWidget.browserModel.rebuild(modulesDirectory, modules)
-
-    # ------------------------------------------------------------------
-    # Filtering / masking
-    # ------------------------------------------------------------------
-
-    def _onMaskTextChanged(self, text: str):
-        self.clearFilterButton.setVisible(bool(text))
-        if not text.strip():
-            self.searchTimer.stop()
-            self.semanticResults = []
-            self.applyMask()
-        else:
-            self.searchTimer.start(500)
-            self.applyMask()
-
-    def applyMask(self, *_):
-        """Schedule a debounced tree visibility update."""
-        self.maskTimer.start(50)
-
-    def _applyMaskInternal(self):
-        """Update model visibility flags and sorting via the proxy."""
-        maskText = self.searchWidget.text().strip()
-        isSearching = bool(maskText)
-
-        scores = (
-            {os.path.normpath(p).lower(): s for p, s in self.semanticResults if p}
-            if self.semanticResults else {})
-
-        model = self.treeWidget.browserModel
-        foldersToExpand = []
-
-        # 1. Assign scores and hidden flags to file items
-        for nameItem in model.fileItems():
-            absF = nameItem.data(FILEPATH_ROLE) or ""
-
-            score = 0.0
-            if isSearching:
-                moduleName = os.path.splitext(os.path.basename(absF))[0]
-                if all(m in moduleName.lower() for m in maskText.lower().split()):
-                    score = 1.0
-                else:
-                    score = scores.get(absF, 0.0)
-
-            model.setScore(nameItem, score)
-            showItem = (not isSearching) or score >= 0.5
-            nameItem.setData(not showItem, _HIDDEN_ROLE)
-
-        # 2. Update folder visibility based on their children
-        def updateFolder(parentItem: QStandardItem) -> float:
-            maxScore = 0.0
-            anyVisible = False
-            for r in range(parentItem.rowCount()):
-                child = parentItem.child(r, COL_NAME)
-                if child is None:
-                    continue
-
-                childScore = 0.0
-                if child.data(IS_DIR_ROLE):
-                    childScore = updateFolder(child)
-                else:
-                    childScore = child.data(SCORE_ROLE) or 0.0
-
-                maxScore = max(maxScore, childScore)
-                anyVisible = anyVisible or not child.data(_HIDDEN_ROLE)
-
-            if parentItem is not model.invisibleRootItem():
-                parentItem.setData(not anyVisible, _HIDDEN_ROLE)
-                model.setScore(parentItem, maxScore)
-                if isSearching and anyVisible:
-                    foldersToExpand.append(parentItem)
-
-            return maxScore
-
-        updateFolder(model.invisibleRootItem())
-
-        # 3. Notify proxy to re-evaluate filter and re-sort
-        self.treeWidget.proxyModel.invalidateFilter()
-
-        # 4. Expand folders after filter update
-        if isSearching:
-            for item in foldersToExpand:
-                proxyIdx = self.treeWidget.proxyModel.mapFromSource(
-                    model.indexFromItem(item))
-                if proxyIdx.isValid():
-                    self.treeWidget.setExpanded(proxyIdx, True)
-
-        self.treeWidget.sortByColumn(COL_NAME, Qt.AscendingOrder)
+    def openModulesFolder(self):
+        """Open the modules directory in default file browser."""
+        if os.path.exists(settings.modulesPath):
+            subprocess.call(f'explorer "{os.path.normpath(settings.modulesPath)}"')

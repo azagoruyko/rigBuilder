@@ -126,7 +126,10 @@ QPlainTextEdit::placeholder-text {
 
 QTextBrowser {
 	background-color: #1E1E2E;
+	border: 1px solid #343c49;
+	border-radius: 6px;
 	padding: 10px;
+	color: #e8eaed;
 }
 
 QComboBox::drop-down {
