@@ -180,6 +180,16 @@ class RigBuilderAPI:
         """Read the registered API from the main window's API browser"""
         return {"api": cls.mainWindow.apiBrowser.browser.toPlainText()}
 
+    @classmethod
+    def get_workspace_settings(cls, req):
+        """Get the settings of the current active workspace"""
+        import os
+        from rigBuilder.core.settings import settings
+        data = settings.toDict()
+        data["workspaceName"] = os.path.basename(settings.workspacePath)
+        return data
+
+
 class ZmqServer(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)

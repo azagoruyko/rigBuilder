@@ -162,6 +162,22 @@ def read_module_api() -> str:
     res = client.send_request("read_module_api")
     return res.get("api", "No API registered.")
 
+@mcp.tool()
+def get_workspace_settings() -> str:
+    """Returns the settings of the current active workspace, including paths and auto-save options."""
+    res = client.send_request("get_workspace_settings")
+    if not res:
+        return "Failed to retrieve workspace settings."
+    
+    workspace_name = res.get("workspaceName", "Unknown")
+    out = f"Active Workspace: {workspace_name}\nSettings:\n"
+    for k, v in sorted(res.items()):
+        if k == "workspaceName":
+            continue
+        out += f"- {k}: {v}\n"
+    return out
+
+
 
 if __name__ == "__main__":
     mcp.run()
