@@ -12,7 +12,18 @@ class ZmqClient:
         self.socket.setsockopt(zmq.RCVTIMEO, 1000)
         self.socket.connect(f"tcp://127.0.0.1:{ZMQ_PORT}")
 
+    def is_running(self) -> bool:
+        import socket
+        try:
+            with socket.create_connection(("127.0.0.1", ZMQ_PORT), timeout=0.05):
+                return True
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            return False
+
     def send_request(self, action: str, **kwargs) -> dict:
+        if not self.is_running():
+            raise Exception("Rig Builder is offline. Please ensure the Rig Builder GUI application is running.")
+
         req = {"action": action}
         req.update(kwargs)
         
