@@ -25,6 +25,15 @@ def read_rig_builder_reference() -> str:
     with open(tech_md_path, "r", encoding="utf-8") as f:
         return f.read()
 
+@mcp.resource("docs://example.rb")
+def get_example_module() -> str:
+    """Returns the example.rb module. Useful as a reference for Rig Builder module structure."""
+    example_path = os.path.join(os.path.dirname(MCP_DIRECTORY), "modules", "example.rb")
+    if os.path.exists(example_path):
+        with open(example_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "example.rb not found."
+
 @mcp.tool()
 def get_selected_modules() -> str:
     """Returns the names and paths of the currently selected modules in the UI.
