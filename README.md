@@ -9,8 +9,6 @@ While initially developed for rigging, it has evolved into a versatile tool for 
 
 <img width="1584" height="945" alt="image" src="https://github.com/user-attachments/assets/3f8bb48a-d597-467a-89b0-aa03c88308f1" />
 
----
-
 ## ⚙️ Core Concepts
 
 At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
@@ -22,8 +20,6 @@ At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 - **🖥️ Host Connectivity**: Rig Builder connects to host applications and executes modules inside, bringing the result back in real-time.
 - **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its native API.
 - **💼 Workspaces**: Isolated environments that encapsulate your script hierarchies, Git-backed history, and dedicated tool settings.
-
----
 
 ## ✨ Key Features
 
@@ -37,8 +33,6 @@ At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 - **🔄 Native Auto-Sync** — Real-time synchronization between the application and your files on disk, ensuring your UI always reflects the latest changes.
 - **📝 Responsive Markdown Docs** — Author and view module documentation in native Markdown for a modern documentation experience.
 - **🔌 Model Context Protocol (MCP)** — Built-in MCP server exposing workspace modules, allowing external AI agents (or vscode-like editors) to query, inspect, and modify your modules.
-
----
 
 ## 🚀 Quick Start
 
@@ -82,7 +76,7 @@ run.bat
 
 Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine), it will automatically appear in the Host Manager.
 
-To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment. 
+To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment.
 
 💡 `zmq` will be automatically installed on the first connection if it's missing (using a non-intrusive local installation).
 
@@ -90,20 +84,13 @@ To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in t
 
 To get started with building your own modules, take a look at the [example.rb](modules/example.rb) module provided in the `modules` directory. This serves as a primary reference for module structure and usage patterns.
 
----
+## 🖥️ Host Requirements
 
-## 🛠️ Dependencies
+To execute Rig Builder modules inside a host application (like Maya, Blender, or Unreal Engine), the host must meet the following requirements:
 
-- **Python** ≥ 3.9
-- **PySide6** ≥ 6.0.0 (Standalone UI framework)
-- **pyzmq** ≥ 24.0.0 (High-performance host connectivity)
-- **markdown** ≥ 3.1.0 (Module documentation rendering)
-- **Pygments** (Syntax highlighting for documentation and AI chat)
-- **ollama** (Local AI connectivity and tool execution)
-- **json-repair** (Robust parsing for AI-generated data)
-- **pytest** ≥ 7.0.0 (Core testing suite)
-
----
+- **Python**: Version 3.6+ available within the host environment.
+- **zmq** (or `pyzmq`): Required for high-performance communication between Rig Builder and the host.
+  - *Note: Rig Builder will attempt to automatically install `zmq` into the host environment on first connection if it is missing.*
 
 ## 🧪 Testing
 
