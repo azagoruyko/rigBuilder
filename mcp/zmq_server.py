@@ -62,7 +62,7 @@ class RigBuilderAPI:
         
         parentModule = rootModule.findModuleByPath(parent_path) if parent_path else rootModule
         if not parentModule:
-            raise Exception(f"Parent module not found: {parent_path}")
+            return {"error": f"Parent module not found: {parent_path}"}
             
         parentIndex = model.indexForModule(parentModule)
         
@@ -90,14 +90,14 @@ class RigBuilderAPI:
         
         module = rootModule.findModuleByPath(module_path)
         if not module:
-            raise Exception(f"Module not found: {module_path}")
+            return {"error": f"Module not found: {module_path}"}
             
         if module == rootModule:
-            raise Exception("Cannot remove ROOT module")
+            return {"error": "Cannot remove ROOT module"}
             
         idx = model.indexForModule(module)
         if not idx.isValid():
-            raise Exception(f"Invalid index for module: {module_path}")
+            return {"error": f"Invalid index for module: {module_path}"}
             
         from rigBuilder.ui import RemoveModulesCommand
         cmd = RemoveModulesCommand(model, [idx])
@@ -112,7 +112,7 @@ class RigBuilderAPI:
         module_path = req.get("module_path", "")
         module = rootModule.findModuleByPath(module_path) if module_path else rootModule
         if not module:
-            raise Exception(f"Module not found: {module_path}")
+            return {"error": f"Module not found: {module_path}"}
         return {"xml": module.toXml()}
 
     @classmethod
@@ -125,7 +125,7 @@ class RigBuilderAPI:
         
         existing_module = rootModule.findModuleByPath(module_path) if module_path else rootModule
         if not existing_module:
-            raise Exception(f"Module not found: {module_path}")
+            return {"error": f"Module not found: {module_path}"}
             
         from rigBuilder.core import Module
         from rigBuilder.ui import SyncModuleWithCommand
@@ -133,7 +133,7 @@ class RigBuilderAPI:
         try:
             new_module = Module.fromXml(xml_str)
         except Exception as e:
-            return {"message": f"Error: {str(e)}"}
+            return {"error": f"Error: {str(e)}"}
 
         model.undoStack.push(SyncModuleWithCommand(model, existing_module, new_module))
         cls.mainWindow.treeWidget.selectModule(existing_module)
@@ -169,7 +169,7 @@ class RigBuilderAPI:
         rootModule = model.rootModule()
         module = rootModule.findModuleByPath(module_path)
         if not module:
-            raise Exception(f"Module not found: {module_path}")
+            return {"error": f"Module not found: {module_path}"}
             
         cls.mainWindow.treeWidget.selectModule(module)
         cls.mainWindow.runModule()
@@ -239,15 +239,15 @@ class ZmqServer(QObject):
         action = req.get("action")
         
         if not RigBuilderAPI.mainWindow:
-            raise Exception("MainWindow not set on ZmqServer")
+            return {"error": "MainWindow not set on ZmqServer"}
 
         # Disallow calling private methods
         if not action or action.startswith("_"):
-            raise Exception(f"Invalid action: {action}")
+            return {"error": f"Invalid action: {action}"}
 
         # Dispatch to RigBuilderAPI
         method = getattr(RigBuilderAPI, action, None)
         if not method or not callable(method):
-            raise Exception(f"Unknown action: {action}")
+            return {"error": f"Unknown action: {action}"}
             
         return method(req)
