@@ -148,6 +148,32 @@ class TestAttribute:
         simpleAttribute.setExpression("value = value * 2")
         assert simpleAttribute.expression() == "value = value * 2"
 
+    def testAttributeSetNameUpdatesCodeAndConnections(self, moduleHierarchy):
+        """Test that setName updates the module runCode and connections correctly."""
+        root = moduleHierarchy
+        child1 = root.findChild("child1")
+        
+        # Set up a connection from rootAttr to childAttr
+        rootAttr = root.findAttribute("rootAttr")
+        childAttr = child1.findAttribute("childAttr")
+        childAttr.setConnect("/rootAttr")
+        
+        # Set up runCode on root
+        root.setRunCode("v = @rootAttr; @rootAttr = v; @set_rootAttr(v); d = @rootAttr_data;")
+        
+        # Rename rootAttr
+        rootAttr.setName("newRootAttr")
+        
+        # Verify runCode is updated
+        assert root.runCode() == "v = @newRootAttr; @newRootAttr = v; @set_newRootAttr(v); d = @newRootAttr_data;"
+        
+        # Verify connection is updated
+        assert childAttr.connect() == "/newRootAttr"
+        
+        # Rename to same name should do nothing
+        rootAttr.setName("newRootAttr")
+        assert root.runCode() == "v = @newRootAttr; @newRootAttr = v; @set_newRootAttr(v); d = @newRootAttr_data;"
+
     def testAttributeDataOperations(self, simpleAttribute):
         """Test get/set and data operations."""
         # Simple get/set

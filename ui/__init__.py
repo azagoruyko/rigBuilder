@@ -41,367 +41,456 @@ from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .workspaceManager import WorkspaceWidget, getWorkspace
 
 
-class AttributesWidget(QWidget):
-    moduleChanged = Signal(object) # Module
+class AttributeWidget(QWidget):
+    Clipboard = None
+    moduleChanged = Signal(object)
     executionRequested = Signal(str)
 
-    def __init__(self, module: Module, category: str, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, module: Module, attribute: Attribute, parent=None):
+        super().__init__(parent)
+        self.attr = attribute
 
-        self.module = module
-        self.category = category
+        self._dragging = False
 
-        self._attributeAndWidgets = [] # [attribute, nameWidget, templateWidget]
+        self.nameWidget = QLabel(self.attr.name())
+        self.templateWidget = TemplateWidgets[self.attr.template()]()
 
-        self.updateAttributes()
-
-    def updateAttributes(self):
-        if not self.module:
-            return
-
-        layout = QGridLayout()
-        layout.setDefaultPositioning(2, Qt.Horizontal)
-        layout.setColumnStretch(1, 1)
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
 
-        self._attributeAndWidgets = []
-        self.attributes = [a for a in self.module.attributes() if a.category() == self.category]
+        self.nameWidget.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.nameWidget.setCursor(Qt.PointingHandCursor)
+        self.nameWidget.contextMenuEvent = self.nameContextMenuEvent
+        self.nameWidget.mouseDoubleClickEvent = self.nameMouseDoubleClickEvent
+        self.nameWidget.setStyleSheet("QLabel:hover { color: #6496ff; }")
 
-        for idx, a in enumerate(self.attributes):
-            templateWidget = TemplateWidgets[a.template()]()
-            nameWidget = QLabel(a.name())
+        layout.addWidget(self.nameWidget)
+        layout.addWidget(self.templateWidget)
+        layout.setStretch(1, 1)
 
-            self._attributeAndWidgets.append((a, nameWidget, templateWidget))
-            
-            self.updateWidget(idx)
-            self.updateWidgetStyle(idx)
+        self.templateWidget.somethingChanged.connect(self._onSomethingChanged)
+        self.templateWidget.moduleCodeExecutionRequested.connect(self.executionRequested.emit)
 
-            templateWidget.somethingChanged.connect(partial(self._onWidgetChange, idx))
-            templateWidget.moduleCodeExecutionRequested.connect(self._onModuleCodeExecutionRequested)
+        self.updateWidget()
+        self.updateWidgetStyle()
 
-            nameWidget.setAlignment(Qt.AlignRight)
-            nameWidget.setCursor(Qt.PointingHandCursor)
-            nameWidget.contextMenuEvent = partial(self.nameContextMenuEvent, attrWidgetIndex=idx)
+    def updateWidget(self):
+        with blockedWidgetContext(self.templateWidget) as w:
+            w.setJsonData(self.attr.data())
 
-            layout.addWidget(nameWidget)
-            layout.addWidget(templateWidget)
+    def updateWidgetStyle(self):
+        style = ""
+        tooltip = []
+        if self.attr.connect():
+            tooltip.append("Connect: " + self.attr.connect())
+        if self.attr.expression():
+            tooltip.append("Expression:\n" + self.attr.expression())
 
-        layout.addWidget(QLabel())
-        layout.setRowStretch(layout.rowCount(), 1)
+        if self.attr.connect() and not self.attr.expression():
+            style = "TemplateWidget { border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
+        elif self.attr.expression() and not self.attr.connect():
+            style = "TemplateWidget { border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
+        elif self.attr.expression() and self.attr.connect():
+            style = "TemplateWidget { border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
 
-    def _onModuleCodeExecutionRequested(self, code: str):
-        if not code:
-            return
+        self.nameWidget.setText(self.attr.name())
+        self.templateWidget.setStyleSheet(style)
+        self.templateWidget.setToolTip("\n".join(tooltip))
 
-        self.executionRequested.emit(code)
+    @staticmethod
+    def logWrapper(f: Callable[..., object]):
+        def inner(self, *args, **kwargs):
+            try:
+                return f(self, *args, **kwargs)
+            except Exception as e:
+                moduleName = self.attr.module().name() if self.attr.module() else "unknown"
+                logger.error(f"{moduleName}.{self.attr.name()}: {str(e)}")
+                if type(e) == AttributeResolverError:
+                    with blockedWidgetContext(self.templateWidget) as w:
+                        w.setJsonData(self.attr.localData())
+        return inner
 
-    def connectionMenu(self, menu: QMenu, module: Module, attrWidgetIndex: int, path: str = "/"):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
+    @logWrapper
+    def _onSomethingChanged(self):
+        widgetData = self.templateWidget.getJsonData()
+        self.attr.setData(widgetData)
+        
+        if self.attr.module():
+            self.moduleChanged.emit(self.attr.module())
 
+    def connectionMenu(self, menu: QMenu, module: Module, path: str = "/"):
         subMenu = QMenu(module.name(), self)
 
         for a in module.attributes():
-            if a.template() == attr.template() and a.name(): # skip empty names as well
-                subMenu.addAction(a.name(), partial(self.connectAttr, path+module.name()+"/"+a.name(), attrWidgetIndex))
+            if a.template() == self.attr.template() and a.name():
+                subMenu.addAction(a.name(), partial(self.connectAttr, path+module.name()+"/"+a.name()))
 
         for ch in module.children():
-            self.connectionMenu(subMenu, ch, attrWidgetIndex, path+module.name()+"/")
+            self.connectionMenu(subMenu, ch, path+module.name()+"/")
 
         if subMenu.actions():
             menu.addMenu(subMenu)
 
-    def nameContextMenuEvent(self, event: QContextMenuEvent, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-
+    def nameContextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
-        titleAction = menu.addAction(attr.name() or "(Unnamed)")
+        titleAction = menu.addAction(self.attr.name() or "(Unnamed)")
         titleAction.setEnabled(False)
         font = titleAction.font()
         font.setBold(True)
         titleAction.setFont(font)
         menu.addSeparator()
 
-        if self.module and self.module.parent():
+        if self.attr.module() and self.attr.module().parent():
             makeConnectionMenu = menu.addMenu("Make connection")
+            for a in self.attr.module().parent().attributes():
+                if a.template() == self.attr.template() and a.name():
+                    makeConnectionMenu.addAction(a.name(), partial(self.connectAttr, "/"+a.name()))
 
-            for a in self.module.parent().attributes():
-                if a.template() == attr.template() and a.name(): # skip empty names as well
-                    makeConnectionMenu.addAction(a.name(), partial(self.connectAttr, "/"+a.name(), attrWidgetIndex))
+            for ch in self.attr.module().parent().children():
+                if ch is not self.attr.module():
+                    self.connectionMenu(makeConnectionMenu, ch)
 
-            for ch in self.module.parent().children():
-                if ch is not self.module:
-                    self.connectionMenu(makeConnectionMenu, ch, attrWidgetIndex)
-
-        if attr.connect():
-            menu.addAction("Break connection", partial(self.disconnectAttr, attrWidgetIndex))
-
-        menu.addSeparator()
-
-        menu.addAction("Edit data", partial(self.editData, attrWidgetIndex))
-        menu.addSeparator()
-        menu.addAction("Edit expression", partial(self.editExpression, attrWidgetIndex))
-
-        if attr.expression():
-            menu.addAction("Evaluate expression", partial(self.updateWidget, attrWidgetIndex))
-            menu.addAction("Clear expression", partial(self.clearExpression, attrWidgetIndex))
-
-        menu.addSeparator()
-        menu.addAction("Expose", partial(self.exposeAttr, attrWidgetIndex))
-        menu.addSeparator()
-        menu.addAction("Reset", partial(self.resetAttr, attrWidgetIndex))
+        if self.attr.connect():
+            menu.addAction("Break connection", self.disconnectAttr)
 
         menu.addSeparator()
 
-        # Presets submenu
+        menu.addAction("Edit data", self.editData)
+
+        menu.addSeparator()
+        menu.addAction("Edit expression", self.editExpression)
+
+        if self.attr.expression():
+            menu.addAction("Evaluate expression", self.updateWidget)
+            menu.addAction("Clear expression", self.clearExpression)
+
+        menu.addAction("Reset", self.resetAttr)
+
+        menu.addAction("Expose", self.exposeAttr)
+
         presetsMenu = menu.addMenu("Presets")
         presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
-        presetsMenu.addAction("Save as Preset...", partial(self._saveAsPreset, attrWidgetIndex))
+        presetsMenu.addAction("Save as Preset...", self._saveAsPreset)
         
-        # Presets filtered by template
         presets = WidgetPresetManager.presets()
-        compatiblePresets = {name: data for name, data in presets.items() if data.get("template") == attr.template()}
-        
+        compatiblePresets = {name: data for name, data in presets.items() if data.get("template") == self.attr.template()}
         if compatiblePresets:
             presetsMenu.addSeparator()
             for name, data in sorted(compatiblePresets.items()):
-                presetsMenu.addAction(name, partial(self._applyPreset, attrWidgetIndex, data["data"]))
+                presetsMenu.addAction(name, partial(self._applyPreset, data["data"]))
+
+        menu.addSeparator()
+        menu.addAction("Copy", self._copyAttribute)
+        menu.addAction("Cut", self._cutAttribute)
+
+        menu.addAction("Remove", self._onRemoveAttribute)
 
         menu.popup(event.globalPos())
 
-    def _saveAsPreset(self, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, attr.name())
-        if ok and name:
-            WidgetPresetManager.savePreset(name, attr.template(), attr.localData())
+    def nameMouseDoubleClickEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, self.attr.name())
+            if ok and newName != self.attr.name():
+                uniqueName = findUniqueName(replaceSpecialChars(newName), [a.name() for a in self.attr.module().attributes()])
+                self.attr.setName(uniqueName if newName else "")
+                self.updateWidgetStyle()
+                self.moduleChanged.emit(self.attr.module())
 
-    def _applyPreset(self, attrWidgetIndex: int, data: dict):
-        attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
-        attr.setData(data)
-        self.updateWidget(attrWidgetIndex)
-        self.updateWidgetStyle(attrWidgetIndex)
+    def _onRemoveAttribute(self):
+        if QMessageBox.question(self, "Rig Builder", f"Remove '{self.attr.name()}' attribute?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            self.attr.module().removeAttribute(self.attr)
+            self.setParent(None)
+            self.moduleChanged.emit(self.attr.module())
 
-    @staticmethod
-    def _wrapper(f: Callable[..., object]):
-        def inner(self, attrWidgetIndex: int, *args, **kwargs):
-            attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
-            try:
-                return f(self, attrWidgetIndex, *args, **kwargs)
-            
-            except Exception as e:
-                moduleName = self.module.name() if self.module else "unknown"
-                logger.error(f"{moduleName}.{attr.name()}: {str(e)}")
+    def _cutAttribute(self):
+        AttributeWidget.Clipboard = self.attr.copy()
+        self.attr.module().removeAttribute(self.attr)
+        self.setParent(None)
+        self.moduleChanged.emit(self.attr.module())
 
-                if type(e) == AttributeResolverError:
-                    with blockedWidgetContext(widget) as w:
-                        w.setJsonData(attr.localData())
+    def _copyAttribute(self):
+        AttributeWidget.Clipboard = self.attr.copy()
 
-        return inner
-    
-    @_wrapper
-    def _onWidgetChange(self, attrWidgetIndex: int):
-        attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
-
-        widgetData = widget.getJsonData()
-        attr.setData(widgetData) # implicitly push
-
-        if not self.module:
+    def _pasteAttribute(self):
+        if not AttributeWidget.Clipboard:
             return
 
-        previousData = {id(a):a.localData() for a in self.module.attributes()}
-        modifiedAttrs = []
-        for otherAttr in self.module.attributes():
-            otherAttr.pull()
-            if otherAttr.localData() != previousData[id(otherAttr)]:
-                modifiedAttrs.append(otherAttr)
+        newAttr = AttributeWidget.Clipboard.copy()
+        currentTab = self.tabWidget().tabText(self.tabWidget().currentIndex())
+        newAttr.setCategory(currentTab)
+        newName = findUniqueName(newAttr.name(), [a.name() for a in self.attr.module().attributes()])
+        newAttr.setName(newName)
         
-        if modifiedAttrs:
-            self.moduleChanged.emit(self.module)
+        mod = self.attr.module()
+        mod.addAttribute(newAttr)
+        self.tabWidget().addAttributeWidget(newAttr)
 
-        for idx, (otherAttr, _, otherWidget) in enumerate(self._attributeAndWidgets): # update attributes' widgets
-            if otherAttr in modifiedAttrs:
-                with blockedWidgetContext(otherWidget) as w:
-                    w.setJsonData(otherAttr.localData())
-                self.updateWidgetStyle(idx)
+        self.moduleChanged.emit(mod)
 
-        # style not updated by the loop above (attr's data didn't change after pull), refresh it here
-        if attr not in modifiedAttrs: 
-            self.updateWidgetStyle(attrWidgetIndex)       
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MiddleButton:
+            self._dragging = True
+            self.setCursor(Qt.SizeVerCursor)
+            self.setStyleSheet("background-color: rgba(100, 150, 255, 0.2);")
+        super().mousePressEvent(event)
 
-    @_wrapper
-    def updateWidget(self, attrWidgetIndex: int):
-        attr, _, widget = self._attributeAndWidgets[attrWidgetIndex]
-        with blockedWidgetContext(widget) as w:
-            w.setJsonData(attr.data()) # pull data
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._dragging:
+            layout = self.parentWidget().layout()
+            idx = layout.indexOf(self)
+            mouseY = QCursor.pos().y()
 
-    def updateWidgets(self):
-        for i in range(len(self._attributeAndWidgets)):
-            self.updateWidget(i)
+            for step in (1, -1):
+                n_idx = idx + step
+                neighbor = layout.itemAt(n_idx).widget() if 0 <= n_idx < layout.count() - 1 else None
+                
+                if isinstance(neighbor, AttributeWidget):
+                    centerY = neighbor.mapToGlobal(neighbor.rect().center()).y()
+                    if (step == 1 and mouseY > centerY) or (step == -1 and mouseY < centerY):
+                        layout.insertWidget(n_idx, self)
+                        mod = self.attr.module()
+                        target_idx = mod.attributes().index(neighbor.attr)
+                        mod.removeAttribute(self.attr)
+                        mod.insertAttribute(target_idx, self.attr)
+                        return
+                        
+        super().mouseMoveEvent(event)
 
-    def updateWidgetStyle(self, attrWidgetIndex: int):
-        attr, nameWidget, widget = self._attributeAndWidgets[attrWidgetIndex]
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        super().mouseReleaseEvent(event)
+        if event.button() == Qt.MiddleButton:
+            self._dragging = False
+            self.unsetCursor()
+            self.setStyleSheet("")
+            
+            self.moduleChanged.emit(self.attr.module())
 
-        style = ""
-        tooltip = []
-        if attr.connect():
-            tooltip.append("Connect: "+attr.connect())
-        if attr.expression():
-            tooltip.append("Expression:\n" + attr.expression())
+    def _saveAsPreset(self):
+        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, self.attr.name())
+        if ok and name:
+            WidgetPresetManager.savePreset(name, self.attr.template(), self.attr.localData())
 
-        if attr.connect() and not attr.expression(): # only connection (yellow)
-            style = "TemplateWidget { border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
-        
-        elif attr.expression() and not attr.connect(): # only expression (bluish purple)
-            style = "TemplateWidget { border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
-        
-        elif attr.expression() and attr.connect(): # both (magenta)
-            style = "TemplateWidget { border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
+    def _applyPreset(self, data: dict):
+        self.attr.setData(data)
+        self.updateWidget()
+        self.updateWidgetStyle()
 
-        nameWidget.setText(attr.name())
+    def exposeAttr(self):
+        parentModule = self.attr.module().parent()
 
-        widget.setStyleSheet(style)
-        widget.setToolTip("\n".join(tooltip))
-
-    def updateWidgetStyles(self):
-        for i in range(len(self._attributeAndWidgets)):
-            self.updateWidgetStyle(i)
-
-    def exposeAttr(self, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-
-        if not self.module or not self.module.parent():
+        if not parentModule or parentModule.name() == "ROOT":
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: no parent module")
             return
 
-        if self.module.parent().findAttribute(attr.name()):
+        if parentModule.findAttribute(self.attr.name()):
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: attribute already exists")
             return
 
         doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        prefix = self.module.name() + "_" if doUsePrefix else ""
-        expAttr = attr.copy()
+        prefix = self.attr.module().name() + "_" if doUsePrefix else ""
+        expAttr = self.attr.copy()
         expAttr.setName(prefix + expAttr.name())
-        self.module.parent().addAttribute(expAttr)
-        self.connectAttr("/"+expAttr.name(), attrWidgetIndex)
-        self.moduleChanged.emit(self.module.parent())
+        parentModule.addAttribute(expAttr)
+        self.connectAttr("/"+expAttr.name())
+        self.moduleChanged.emit(parentModule)
 
-    @_wrapper
-    def editData(self, attrWidgetIndex: int):
+    @logWrapper
+    def editData(self):
         def save(data):
-            @AttributesWidget._wrapper
-            def _save(_, attrWidgetIndex: int):
-                attr.setData(data[0]) # use [0] because data is a list
-                self.updateWidget(attrWidgetIndex)
-                self.updateWidgetStyle(attrWidgetIndex)
-            _save(self, attrWidgetIndex)
+            @AttributeWidget._wrapper
+            def _save(_):
+                self.attr.setData(data[0])
+                self.updateWidget()
+                self.updateWidgetStyle()
+            _save(self)
 
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        w = EditJsonDialog(attr.localData(), title="Edit data", parent=self)
+        w = EditJsonDialog(self.attr.localData(), title="Edit data", parent=self)
         w.saved.connect(save)
         w.show()
 
-    def editExpression(self, attrWidgetIndex: int):
+    def editExpression(self):
         def save(text: str):
-            attr.setExpression(text)
-            self.updateWidgets()
-            self.updateWidgetStyle(attrWidgetIndex)
+            self.attr.setExpression(text)
+            self.updateWidget()
+            self.updateWidgetStyle()
+            self.moduleChanged.emit(self.attr.module())
 
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-
-        if not self.module:
+        if not self.attr.module():
             return
 
         w = EditTextDialog(
-            attr.expression(), 
-            title="Edit expression for '{}'".format(attr.name()), 
+            self.attr.expression(), 
+            title="Edit expression for '{}'".format(self.attr.name()), 
             placeholder='# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]', 
-            words=set(self.module.context().keys()), 
+            words=set(self.attr.module().context().keys()), 
             python=True,
             parent=self)
 
         w.saved.connect(save)
         w.show()
 
-    def clearExpression(self, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        attr.setExpression("")
-        self.updateWidgetStyle(attrWidgetIndex)
+    def clearExpression(self):
+        self.attr.setExpression("")
+        self.updateWidgetStyle()
+        self.moduleChanged.emit(self.attr.module())
 
-    def resetAttr(self, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
+    def resetAttr(self):
+        self.attr.setConnect("")
+        self.attr.setData(copyJson(DEFAULT_WIDGETS_DATA[self.attr.template()]))
+        self.updateWidget()
+        self.updateWidgetStyle()
+        self.moduleChanged.emit(self.attr.module())
 
-        attr.setConnect("")
-        attr.setData(copyJson(DEFAULT_WIDGETS_DATA[attr.template()]))
-        self.updateWidget(attrWidgetIndex)
-        self.updateWidgetStyle(attrWidgetIndex)
+    def disconnectAttr(self):
+        self.attr.setConnect("")
+        self.updateWidgetStyle()
+        self.moduleChanged.emit(self.attr.module())
 
-    def disconnectAttr(self, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        attr.setConnect("")
-        self.updateWidgetStyle(attrWidgetIndex)
+    def connectAttr(self, connect: str):
+        self.attr.setConnect(connect)
+        self.updateWidget()
+        self.updateWidgetStyle()
+        self.moduleChanged.emit(self.attr.module())
 
-    def connectAttr(self, connect: str, attrWidgetIndex: int):
-        attr, _, _ = self._attributeAndWidgets[attrWidgetIndex]
-        attr.setConnect(connect)
-        self.updateWidget(attrWidgetIndex)
-        self.updateWidgetStyle(attrWidgetIndex)
 
 class AttributesTabWidget(QTabWidget):
     moduleChanged = Signal(object) # Module
     executionRequested = Signal(str)
-    attributesChanged = Signal()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self.module = None
-        self.tabsAttributes = {}
-        self._attributesWidget = None
+        self._widgets = []
+
+        self.setMovable(True)
+        self.tabBar().setCursor(Qt.PointingHandCursor)
+        self.tabBar().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tabBar().customContextMenuRequested.connect(self._onTabContextMenu)
+        self.tabBar().tabMoved.connect(self._onTabMoved)
+        self.tabBar().tabBarDoubleClicked.connect(self._onRenameTab)
 
         self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"], parent=self)
         self.searchAndReplaceDialog.onReplace.connect(self._onReplace)
-
+        
         self.currentChanged.connect(self.selectTab)
+
+    def _onTabContextMenu(self, pos: QPoint):
+        idx = self.tabBar().tabAt(pos)
+        menu = QMenu(self)
+        
+        menu.addAction("New", self._onNewTab)
+        if idx != -1:
+            menu.addSeparator()
+            menu.addAction("Rename", partial(self._onRenameTab, idx))
+            menu.addAction("Remove", partial(self._onRemoveTab, idx))
+            
+        menu.popup(self.tabBar().mapToGlobal(pos))
+
+    def _onNewTab(self):
+        name, ok = QInputDialog.getText(self, "Rig Builder", "New tab name:", QLineEdit.Normal, "NewTab")
+        if ok and name:
+            existingTabs = [self.tabText(i) for i in range(self.count())]
+            uniqueName = findUniqueName(name, existingTabs)
+            self.addTab(QScrollArea(), uniqueName)
+            self.setCurrentIndex(self.count() - 1)
+
+    def _onRenameTab(self, idx: int):
+        oldName = self.tabText(idx)
+        newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
+        if ok and newName:
+            newName = replaceSpecialChars(newName)
+            
+            if newName == oldName:
+                return
+                
+            existingTabs = [self.tabText(i) for i in range(self.count())]
+            uniqueName = findUniqueName(newName, existingTabs)
+
+            for a in self.module.attributes():
+                if a.category() == oldName:
+                    a.setCategory(uniqueName)
+                    
+            self.setTabText(idx, newName)
+            self.moduleChanged.emit(self.module)
+
+    def _onRemoveTab(self, idx: int):
+        if QMessageBox.question(self, "Rig Builder", f"Remove '{self.tabText(idx)}' tab?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            category = self.tabText(idx)
+            toRemove = [a for a in self.module.attributes() if a.category() == category]
+            for a in toRemove:
+                self.module.removeAttribute(a)
+
+            self.removeTab(idx)
+            self.moduleChanged.emit(self.module)
+
+    def _onTabMoved(self, from_idx: int, to_idx: int):
+        visualCategories = [self.tabText(i) for i in range(self.count())]
+        newAttrs = []
+        for cat in visualCategories:
+            newAttrs.extend([a for a in self.module.attributes() if a.category() == cat])
+        for a in self.module.attributes():
+            if a not in newAttrs:
+                newAttrs.append(a)
+
+        self.module.removeAttributes()
+        for a in newAttrs:
+            self.module.addAttribute(a)
+        
+        self.moduleChanged.emit(self.module)
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
 
         if self.module:
             addAttrMenu = menu.addMenu("Add attribute")
+            addAttrMenu.addAction("Browse...", self.addTemplateAttribute)
+            addAttrMenu.addSeparator()
             for templateName in sorted(TemplateWidgets.keys()):
                 addAttrMenu.addAction(templateName, partial(self._onQuickAddAttribute, templateName))
 
-            menu.addSeparator()
-            menu.addAction("Edit attributes", self.editAttributes)
+            if AttributeWidget.Clipboard:
+                menu.addAction(f"Paste attribute ({AttributeWidget.Clipboard.template()})", self._onPasteAttribute)
+
             menu.addSeparator()
             menu.addAction("Replace in values", self.searchAndReplaceDialog.exec)
 
         menu.popup(event.globalPos())
 
+    def _onPasteAttribute(self):
+        if not AttributeWidget.Clipboard:
+            return
+            
+        newAttr = AttributeWidget.Clipboard.copy()
+        newAttr.setCategory(self.tabText(self.currentIndex()))
+        
+        newName = newAttr.name()
+        if newName:
+            newName = findUniqueName(newAttr.name(), [a.name() for a in self.module.attributes()])
+        newAttr.setName(newName)
+        
+        self.module.addAttribute(newAttr)
+        self.addAttributeWidget(newAttr)
+        self.moduleChanged.emit(self.module)
+
+    def addTemplateAttribute(self):
+        selector = TemplateSelectorDialog(parent=self)
+        selector.selectedTemplate.connect(self._onQuickAddAttribute)
+        selector.exec()
+
     def _onQuickAddAttribute(self, template: str):
-        name, ok = QInputDialog.getText(self, "Quick Add Attribute", "Enter attribute name:", QLineEdit.Normal, "newAttr")
-        if not ok:
-            return
+        name = findUniqueName("attr", [a.name() for a in self.module.attributes()])
 
-        if name and self.module.findAttribute(name):
-            QMessageBox.warning(self, "Rig Builder", "Attribute already exists")
-            return
-
-        category = self.tabText(self.currentIndex()) or "General"
+        category = self.tabText(self.currentIndex())
         newAttr = Attribute(name=name, template=template, category=category)
         
         if template in DEFAULT_WIDGETS_DATA:
             newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[template]))
 
         self.module.addAttribute(newAttr)
-        self.attributesChanged.emit()
-        self.updateTabs()
-
-    def editAttributes(self):
-        dialog = EditAttributesDialog(self.module, self.currentIndex(), parent=self)
-        dialog.exec()
-
-        self.attributesChanged.emit()
-        self.updateTabs()
+        self.addAttributeWidget(newAttr)
+        self.moduleChanged.emit(self.module)
 
     def _onReplace(self, old: str, new: str, opts: dict[str, bool]):
         def replaceStringInData(data: object, old: str, new: str) -> object:
@@ -411,95 +500,129 @@ class AttributesTabWidget(QTabWidget):
                 return data
 
         if opts.get("In all tabs"):
-            attributes = []
-            for attrs in self.tabsAttributes.values(): # merge all attributes
-                attributes.extend(attrs)
+            attributes = self.module.attributes()
         else:
-            attributes = self.tabsAttributes[self.tabText(self.currentIndex())]
+            category = self.tabText(self.currentIndex())
+            attributes = [a for a in self.module.attributes() if a.category() == category]
 
         for attr in attributes:
             v = replaceStringInData(attr.get(), old, new)
             attr.set(v)
 
-        self.updateTabs()
+    def _onModuleChanged(self, module):
+        for w in self._widgets:
+            if not w.attr.name():
+                continue
+                
+            oldData = w.attr.localData()
+            w.attr.pull()
+            if oldData != w.attr.localData():
+                w.updateWidget()
+                w.updateWidgetStyle()
+
+        self.moduleChanged.emit(module)
+
+    def updateWidgetsStyle(self):
+        for w in self._widgets:
+            w.updateWidgetStyle()
+
+    def clearWidgets(self):
+        for w in self._widgets:
+            w.deleteLater()
+        self._widgets.clear()        
+
+    def _syncLabelsWidth(self):
+        maxWidth = 0
+        for w in self._widgets:
+            width = w.nameWidget.sizeHint().width()
+            maxWidth = max(maxWidth, width)
+        
+        for w in self._widgets:
+            w.nameWidget.setFixedWidth(maxWidth + 10)
 
     def selectTab(self, idx: int):
-        """Switch to tab at index and build attributes widget."""
-
         if self.count() == 0:
             return
 
-        idx = clamp(idx, 0, self.count()-1)
-
-        title = self.tabText(idx)
-        if title not in self.tabsAttributes:
-            self._attributesWidget = None
-            return
-
+        idx = clamp(idx, 0, self.count() - 1)
+        category = self.tabText(idx)
+        
+        self.clearWidgets()
+        
         scrollArea = self.widget(idx)
-        self._attributesWidget = AttributesWidget(self.module, title)
         
-        # Forward signals
-        self._attributesWidget.moduleChanged.connect(self.moduleChanged.emit)
-        self._attributesWidget.executionRequested.connect(self.executionRequested.emit)
+        container = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        container.setLayout(layout)
         
-        scrollArea.setWidget(self._attributesWidget)
-        self.setCurrentIndex(idx)
+        scrollArea.setWidget(container)
+
+        for a in self.module.attributes():
+            if a.category() != category:
+                continue
+                
+            self.addAttributeWidget(a)
+
+        layout.addStretch()
+        self._syncLabelsWidth()
+
+    def addAttributeWidget(self, attr: Attribute):
+        w = AttributeWidget(self.module, attr, self)
+        w.moduleChanged.connect(self._onModuleChanged)
+        w.executionRequested.connect(self.executionRequested.emit)
+        self._widgets.append(w)
+        
+        idx = self.currentIndex()
+        if idx >= 0:
+            scrollArea = self.widget(idx)
+            container = scrollArea.widget()
+            if container and container.layout():
+                layout = container.layout()
+                layout.insertWidget(layout.count() - 1, w)
+
+        self._syncLabelsWidth()
 
     def updateTabs(self):
-        oldIndex = self.currentIndex()
-        oldCount = self.count()
+        currentTabText = self.tabText(self.currentIndex())
 
-        self._attributesWidget = None
-        self.tabsAttributes.clear()
+        self.clear()
 
-        module = self.module
-        if not module:
+        if not self.module:
             return
 
-        self.blockSignals(True)
-
-        tabTitlesInOrder = []
-        for a in module.attributes():
-            if a.category() not in self.tabsAttributes:
-                self.tabsAttributes[a.category()] = []
-                tabTitlesInOrder.append(a.category())
-
-            self.tabsAttributes[a.category()].append(a)
-
-        if not tabTitlesInOrder: # no attributes, show placeholder
+        if not self.module.attributes():
             label = QLabel("No attributes, right-click to add them.")
             label.setAlignment(Qt.AlignCenter)
             label.setStyleSheet("color: gray;")
             scrollArea = QScrollArea()
             scrollArea.setWidgetResizable(True)
             scrollArea.setWidget(label)
-            self.addTab(scrollArea, "")
+            self.blockSignals(True) # prevent calling currentChanged
+            self.addTab(scrollArea, "General")
+            self.blockSignals(False)
+            return
 
-        for t in tabTitlesInOrder:
-            scrollArea = QScrollArea() # empty, in tabChanged actual widget is set
+        tabTitles = []
+        for a in self.module.attributes():
+            if a.category() not in tabTitles:
+                tabTitles.append(a.category())
+
+        self.blockSignals(True)
+        
+        idx = 0
+        for t in tabTitles:
+            scrollArea = QScrollArea()
             scrollArea.setWidgetResizable(True)
-            self.addTab(scrollArea, t) # add new tabs in front of the old ones
+            self.addTab(scrollArea, t)
 
-        # remove previous tabs
-        for _ in range(oldCount):
-            w = self.widget(0)
-            if w:
-                w.deleteLater()
-            self.removeTab(0)
+            if t == currentTabText:
+                idx = self.count()-1
 
-        if self.count() == 1:
-            self.tabBar().hide()
-        else:
-            self.tabBar().show()
-
-        self.selectTab(oldIndex)
+        self.setCurrentIndex(idx)
         self.blockSignals(False)
-
-    def updateWidgetStyles(self):
-        if self._attributesWidget:
-            self._attributesWidget.updateWidgetStyles()
-
+            
+        self.selectTab(idx)
 
 class ModuleTracker(QObject):
     """
@@ -1204,6 +1327,7 @@ class ModuleTreeWidget(QTreeView):
         else:
             super().wheelEvent(event)
 
+
     def contextMenuEvent(self, event: QContextMenuEvent):
         mainWindow.menu().popup(event.globalPos())
 
@@ -1407,7 +1531,7 @@ class ModuleTreeWidget(QTreeView):
                         QMessageBox.critical(mainWindow, "Rig Builder", "Can't save history for '{}'".format(module.name()))
                 
                 self.moduleModel.dataChanged.emit(idx, idx) # refresh display
-                mainWindow.attributesTabWidget.updateWidgetStyles()
+                mainWindow.attributesTabWidget.updateWidgetsStyle()
 
         mainWindow.moduleHistoryBrowser.syncModuleHistory()
 
@@ -1652,434 +1776,6 @@ class TemplateSelectorDialog(QDialog):
             selectBtn.clicked.connect(partial(self.selectTemplate, t))
             self.gridLayout.addWidget(selectBtn)
 
-class DragHandleButton(QPushButton):
-    dragged = Signal()
-
-    def __init__(self, parent=None):
-        super().__init__("↕️", parent)        
-        self.setToolTip("Drag to reorder")
-        self.dragging = False
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self.dragging = True
-            self.setCursor(Qt.SizeVerCursor)
-            self.setStyleSheet("background-color: #6496ff; color: white;")
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if self.dragging:
-            self.dragged.emit()
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self.dragging = False
-            self.unsetCursor()
-            self.setStyleSheet("")
-        super().mouseReleaseEvent(event)
-
-class EditTemplateWidget(QWidget):
-    Clipboard = []
-    nameChanged = Signal(str, str)
-
-    def __init__(self, name: str, template: str, **kwargs):
-        super().__init__(**kwargs)
-
-        self.template = template
-        self.attrConnect = ""
-        self.attrExpression = ""
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0,0,0,0)
-
-        self.nameWidget = QLabel(name)
-        self.nameWidget.setAlignment(Qt.AlignRight)
-        self.nameWidget.setFixedWidth(self.fontMetrics().averageCharWidth()*20)
-        self.nameWidget.setCursor(Qt.PointingHandCursor)
-        self.nameWidget.mouseDoubleClickEvent = self.nameMouseDoubleClickEvent
-        self.nameWidget.contextMenuEvent = self.nameContextMenuEvent
-
-        self.templateWidget = TemplateWidgets[template]()
-
-        self.dragBtn = DragHandleButton()
-        self.dragBtn.setFixedSize(35, 30)
-        self.dragBtn.dragged.connect(self._onDragged)
-
-        self.removeBtn = QPushButton("❌")
-        self.removeBtn.setFixedSize(35, 30)
-        self.removeBtn.setToolTip("Remove attribute")
-        self.removeBtn.clicked.connect(self._onRemoveBtnClicked)
-
-        layout.addWidget(self.nameWidget)
-        layout.addWidget(self.templateWidget)
-        layout.addWidget(self.dragBtn)
-        layout.addWidget(self.removeBtn)
-
-    def nameContextMenuEvent(self, event: QContextMenuEvent):
-        menu = QMenu(self)
-        titleAction = menu.addAction(self.nameWidget.text() or "(Unnamed)")
-        titleAction.setEnabled(False)
-        font = titleAction.font()
-        font.setBold(True)
-        titleAction.setFont(font)
-        menu.addSeparator()
-
-        menu.addAction("Copy", self.copyTemplate)
-
-        if EditTemplateWidget.Clipboard and EditTemplateWidget.Clipboard[0]["template"] == self.template:
-            menu.addAction("Paste", partial(self.templateWidget.setJsonData, EditTemplateWidget.Clipboard[0]["data"]))
-
-        menu.addSeparator()
-        presetsMenu = menu.addMenu("Presets")
-        presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
-        presetsMenu.addAction("Save as Preset...", self._saveAsPreset) 
-
-        presets = WidgetPresetManager.presets()
-        if presets:
-            matchingPresets = {name: data for name, data in presets.items() if data["template"] == self.template}
-            if matchingPresets:
-                presetsMenu.addSeparator()
-                for name, data in sorted(matchingPresets.items()):
-                    presetsMenu.addAction(name, partial(self._applyPreset, data))
-
-        menu.popup(event.globalPos())
-
-    def _applyPreset(self, presetData: dict):
-        data = presetData["data"]
-        self.templateWidget.setJsonData(data)
-
-    def _saveAsPreset(self):
-        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, self.nameWidget.text())
-        if ok and name:
-            WidgetPresetManager.savePreset(name, self.template, self.templateWidget.getJsonData())
-
-    def copyTemplate(self):
-        module = {"data": self.templateWidget.getJsonData(),
-                  "template": self.template,
-                  "name": self.nameWidget.text()}
-
-        EditTemplateWidget.Clipboard = [module]
-
-    def nameMouseDoubleClickEvent(self, event: QMouseEvent):
-        oldName = self.nameWidget.text()
-        newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
-        if ok:
-            newName = replaceSpecialChars(newName)
-            self.nameWidget.setText(newName)
-            self.nameChanged.emit(oldName, newName)
-
-    def _onRemoveBtnClicked(self):
-        if QMessageBox.question(self, "Rig Builder", "Remove '{}' attribute?".format(self.nameWidget.text()), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            self.copyTemplate()
-            self.deleteLater()
-
-    def _onDragged(self) -> bool:
-        editAttrsWidget = self.parent()
-        layout = editAttrsWidget.attributesLayout
-        idx = layout.indexOf(self)
-        mouseY = QCursor.pos().y()
-
-        # Check neighbor below
-        if idx < layout.count() - 1:
-            neighbor = layout.itemAt(idx + 1).widget()
-            if neighbor:
-                neighborCenterY = neighbor.mapToGlobal(neighbor.rect().center()).y()
-                if mouseY > neighborCenterY:
-                    layout.insertWidget(idx + 1, self)
-                    return True
-
-        # Check neighbor above
-        if idx > 0:
-            neighbor = layout.itemAt(idx - 1).widget()
-            if neighbor:
-                neighborCenterY = neighbor.mapToGlobal(neighbor.rect().center()).y()
-                if mouseY < neighborCenterY:
-                    layout.insertWidget(idx - 1, self)
-                    return True
-        return False
-
-class EditAttributesWidget(QWidget):
-    nameChanged = Signal(str, str)
-    RecentTemplates = []
-
-    def __init__(self, module: Module, category: str, **kwargs):
-        super().__init__(**kwargs)
-
-        self.category = category
-        self.module = module
-        if not self.module:
-             return
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        self.attributesLayout = QVBoxLayout()
-        self.placeholderWidget = QLabel("Right-click to add attributes")
-        self.placeholderWidget.setAlignment(Qt.AlignCenter)
-        self.placeholderWidget.setStyleSheet("color: gray;")
-
-        for a in self.module.attributes():
-            if a.category() == self.category:
-                w = self.insertCustomWidget(a.template())
-                w.nameWidget.setText(a.name())
-                w.templateWidget.setJsonData(a.localData())
-                w.attrConnect = a.connect()
-                w.attrExpression = a.expression()
-
-        layout.addWidget(self.placeholderWidget)
-        layout.addLayout(self.attributesLayout)
-        layout.addStretch()
-
-    def contextMenuEvent(self, event: QContextMenuEvent):
-        menu = QMenu(self)
-
-        menu.addAction("Add", self.addTemplateAttribute)
-        menu.addAction("Copy visible", self.copyVisibleAttributes)
-
-        if EditTemplateWidget.Clipboard:
-            menu.addAction("Paste", self.pasteAttribute)
-
-        menu.addSeparator()
-
-        presetsMenu = menu.addMenu("Presets")
-        presetsMenu.addAction("Manage Presets...", PresetEditorDialog(parent=self).exec)
-        
-        presets = WidgetPresetManager.presets()
-        if presets:
-            presetsMenu.addSeparator()
-            for name, data in sorted(presets.items()):
-                presetsMenu.addAction(f"{name} ({data['template']})", partial(self._addFromPreset, name, data))        
-
-        if EditAttributesWidget.RecentTemplates:
-            menu.addSeparator()
-            titleAction = menu.addAction("Recent")
-            titleAction.setEnabled(False)
-            font = titleAction.font()
-            font.setBold(True)
-            titleAction.setFont(font)
-            for t in EditAttributesWidget.RecentTemplates:
-                menu.addAction("  " + t, partial(self._onTemplateSelected, t))
-
-        menu.popup(event.globalPos())
-
-    def _addFromPreset(self, presetName: str, presetData: dict):
-        template = presetData["template"]
-        data = presetData["data"]
-        w = self.insertCustomWidget(template)
-        if w:
-            w.templateWidget.setJsonData(data)
-            # Find unique name for the new attribute
-            existingNames = {self.attributesLayout.itemAt(k).widget().nameWidget.text() for k in range(self.attributesLayout.count()) if self.attributesLayout.itemAt(k).widget()}
-            w.nameWidget.setText(findUniqueName(presetName, existingNames))
-
-    def copyVisibleAttributes(self):
-        EditTemplateWidget.Clipboard = []
-
-        for k in range(self.attributesLayout.count()):
-            w = self.attributesLayout.itemAt(k).widget()
-            module = {"data": w.templateWidget.getJsonData(),
-                      "name": w.nameWidget.text(),
-                      "template": w.template}
-            EditTemplateWidget.Clipboard.append(module)
-
-    def pasteAttribute(self):
-        for module in EditTemplateWidget.Clipboard:
-            w = self.insertCustomWidget(module["template"])
-            w.templateWidget.setJsonData(module["data"])
-            w.nameWidget.setText(module["name"])
-
-    def _onTemplateSelected(self, template: str):
-        if template in EditAttributesWidget.RecentTemplates:
-            EditAttributesWidget.RecentTemplates.remove(template)
-        EditAttributesWidget.RecentTemplates.insert(0, template)
-        EditAttributesWidget.RecentTemplates = EditAttributesWidget.RecentTemplates[:5]
-        self.insertCustomWidget(template)
-
-    def addTemplateAttribute(self):
-        selector = TemplateSelectorDialog(parent=self)
-        selector.selectedTemplate.connect(self._onTemplateSelected)
-        selector.exec()
-
-    def insertCustomWidget(self, template: str, row: Optional[int] = None) -> Optional[EditTemplateWidget]:
-        if not TemplateWidgets.get(template):
-            return
-
-        row = self.attributesLayout.count() if row is None else row
-        w = EditTemplateWidget("attr{}".format(row+1), template)
-        w.templateWidget.setJsonData(w.templateWidget.getDefaultData())
-        w.nameChanged.connect(self.nameChanged.emit)
-        self.attributesLayout.insertWidget(row, w)
-        return w
-
-    def resizeNameFields(self):
-        fontMetrics = self.fontMetrics()
-        maxWidth = max([getFontWidth(fontMetrics, self.attributesLayout.itemAt(k).widget().nameWidget.text()) for k in range(self.attributesLayout.count())])
-        for k in range(self.attributesLayout.count()):
-            w = self.attributesLayout.itemAt(k).widget()
-            w.nameWidget.setFixedWidth(maxWidth)
-
-class EditAttributesTabWidget(QTabWidget):
-    def __init__(self, module: Module, currentIndex: int = 0, **kwargs):
-        super().__init__(**kwargs)
-
-        self.module = module
-        if not self.module:
-            self.setEnabled(False)
-            return
-
-        self.tempRunCode = self.module.runCode()
-
-        self.setMovable(True)
-        self.setTabsClosable(True)
-        self.tabBarDoubleClicked.connect(self._onTabBarDoubleClicked)
-        self.tabCloseRequested.connect(self._onTabCloseRequested)
-
-        tabTitlesInOrder = []
-        for a in self.module.attributes():
-            if a.category() not in tabTitlesInOrder:
-                tabTitlesInOrder.append(a.category())
-
-        for t in tabTitlesInOrder:
-            self.addTabCategory(t)
-
-        if self.count() == 0:
-            self.addTabCategory("General")
-
-        self.setCurrentIndex(currentIndex)
-
-    def addTabCategory(self, category: str):
-        w = EditAttributesWidget(self.module, category)
-        w.nameChanged.connect(self._onNameChanged)
-
-        scrollArea = QScrollArea()
-        scrollArea.setWidget(w)
-        scrollArea.setWidgetResizable(True)
-        self.addTab(scrollArea, category)
-        self.setCurrentIndex(self.count()-1)
-
-    def _onNameChanged(self, oldName: str, newName: str):
-        sameAttrs = []
-        for i in range(self.count()): # find other attributes with the same name, if any, then don't rename in code and connections
-            attrsLayout = self.widget(i).widget().attributesLayout # tab/scrollArea/EditAttributesWidget
-
-            for k in range(attrsLayout.count()):
-                w = attrsLayout.itemAt(k).widget()
-                attrName = w.nameWidget.text()
-                if attrName == oldName:
-                    sameAttrs.append(w)
-
-        if oldName.strip() and not sameAttrs:
-            pairs = [("@\\b{}\\b".format(oldName), "@"+newName),
-                     ("@\\bset_{}\\b".format(oldName), "@set_"+newName),
-                     ("@\\b{}_data\\b".format(oldName), "@"+newName+"_data")]
-
-            self.tempRunCode = replacePairs(pairs, self.tempRunCode)
-
-            # rename in connections
-            attr = self.module.findAttribute(oldName)
-            if attr:
-                for a in attr.listConnections():
-                    c = self.module.path().replace(attr.module().path(inclusive=False), "") + "/" + newName # update connection path
-                    a.setConnect(c)
-
-    def _onTabBarDoubleClicked(self, idx: int):
-        newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, self.tabText(idx))
-        if ok:
-            self.setTabText(idx, newName)
-
-    def _onTabCloseRequested(self, i: int):
-        if QMessageBox.question(self, "Rig Builder", "Remove '{}' tab?".format(self.tabText(i)), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            self.setCurrentIndex(i-1)
-            self.clearTab(i)
-
-    def contextMenuEvent(self, event: QContextMenuEvent):
-        menu = QMenu(self)
-        menu.addAction("New tab", partial(self.addTabCategory, "Untitled"))
-        menu.popup(event.globalPos())
-
-    def clearTab(self, i: int):
-        self.widget(i).deleteLater()
-        self.removeTab(i)
-
-    def clearTabs(self):
-        for _ in range(self.count()):
-            self.clearTab(0)
-
-class EditAttributesDialog(QDialog):
-    def __init__(self, module: Module, currentIndex: int = 0, **kwargs):
-        super().__init__(**kwargs)
-
-        self.module = module
-        self.setWindowTitle("Edit Attributes - " + self.module.name())
-        self.setGeometry(0, 0, 800, 600)
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        self.tabWidget = EditAttributesTabWidget(self.module, currentIndex)
-
-        okBtn = QPushButton("✅ OK")
-        okBtn.clicked.connect(self.saveAttributes)
-        cancelBtn = QPushButton("❌ Cancel")
-        cancelBtn.clicked.connect(self.close)
-
-        hlayout = QHBoxLayout()
-        hlayout.addWidget(okBtn)
-        hlayout.addWidget(cancelBtn)
-
-        layout.addWidget(self.tabWidget)
-        layout.addLayout(hlayout)
-
-        centerWindow(self)
-
-    def saveAttributes(self):
-        module = self.module
-
-        def attrMetaEqual(a: Attribute, b: Attribute) -> bool:
-            return (a.name() == b.name()
-                    and a.category() == b.category()
-                    and a.template() == b.template()
-                    and a.connect() == b.connect()
-                    and a.expression() == b.expression()
-                    and a.localData() == b.localData())
-
-        origAttrs = list(module.attributes())
-        origByName = {a.name(): a for a in origAttrs if a.name()}
-
-        newAttrs = self.buildAttributesFromTabs()
-        newRunCode = self.tabWidget.tempRunCode
-
-        module.removeAttributes()
-
-        for a in newAttrs:
-            module.addAttribute(a)
-
-        if module.runCode() != newRunCode:
-            module.setRunCode(newRunCode)
-
-        self.accept()
-
-    def buildAttributesFromTabs(self) -> List[Attribute]:
-        attrs = []
-        for i in range(self.tabWidget.count()):
-            attrsLayout = self.tabWidget.widget(i).widget().attributesLayout
-            category = self.tabWidget.tabText(i)
-
-            for k in range(attrsLayout.count()):
-                w = attrsLayout.itemAt(k).widget()
-
-                a = Attribute()
-                a._name = w.nameWidget.text()
-                a._category = category
-                a._template = w.template
-                a._connect = w.attrConnect
-                a._expression = w.attrExpression
-                a._data = copyJson(w.templateWidget.getJsonData())
-                attrs.append(a)
-
-        return attrs
-
 class CodeEditorWidget(CodeEditorWithNumbersWidget):
     def __init__(self, module: Optional[Module] = None, **kwargs):
         super().__init__(**kwargs)
@@ -2098,20 +1794,21 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
     def updateState(self):
         self.editorWidget.ignoreStates = True
         self._skipSaving = True
-        self.editorWidget.setText(self.module.runCode())
+        self.editorWidget.setText(self.module.runCode() if self.module else "")
         self._skipSaving = False
         self.editorWidget.ignoreStates = False
 
         self.editorWidget.document().clearUndoRedoStacks()
+
+        if not self.module:
+            return
+
         self.generateCompletionWords()
 
         self.editorWidget.preset = self.module.path()
         self.editorWidget.loadState()
 
     def generateCompletionWords(self):
-        if not self.module:
-            return
-
         words = set(self.module.context().keys())
 
         for a in self.module.attributes():
@@ -2155,6 +1852,7 @@ class LogWidget(QTextEdit):
         self.syntax = LogHighligher(self.document())
         self.setPlaceholderText("Output and errors or warnings...")
         self.setReadOnly(True)
+
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = self.createStandardContextMenu()
@@ -2539,8 +2237,7 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.setEnabled(False)
 
         for label, func, hotkey in [
-            ("Execute", self._onExecuteCode, "Ctrl+Enter"),
-            ("Expose as Attribute", self._onExposeAsAttribute, "Ctrl+E")]:            
+            ("Execute", self._onExecuteCode, "Ctrl+Enter")]:            
             action = QAction(label, self.codeEditorWidget.editorWidget)
             action.setShortcut(hotkey)
             action.triggered.connect(lambda *_, f=func: f())
@@ -2552,9 +2249,8 @@ class RigBuilderWindow(QFrame):
         self.apiBrowser = ApiBrowser()
 
         self.attributesTabWidget = AttributesTabWidget()
-        self.attributesTabWidget.moduleChanged.connect(lambda *_: self.treeWidget.moduleModel.layoutChanged.emit()) # refresh tree
+        self.attributesTabWidget.moduleChanged.connect(self._onModuleChanged)
         self.attributesTabWidget.executionRequested.connect(self._onModuleExecutionRequested)
-        self.attributesTabWidget.attributesChanged.connect(self.codeEditorWidget.updateState)
         self.attributesTabWidget.setEnabled(False)
 
         self.runBtn = QPushButton("🚀 Run")
@@ -2657,6 +2353,10 @@ class RigBuilderWindow(QFrame):
     def _onTreeContextMenu(self, pos):
         self.menu().exec(self.treeWidget.mapToGlobal(pos))
 
+    def _onModuleChanged(self, module: Module):
+        self.treeWidget.moduleModel.layoutChanged.emit() # refresh tree
+        self.codeEditorWidget.updateState()
+
     def _onModuleExecutionRequested(self, code: str):
         module = self.treeWidget.currentModule()
         if not module:
@@ -2712,43 +2412,6 @@ class RigBuilderWindow(QFrame):
         idx = self.treeWidget.moduleModel.indexForModule(module)
         if idx.isValid():
             self.treeWidget.replaceModule(idx, newModule)
-
-    def _onExposeAsAttribute(self):
-        module = self.treeWidget.currentModule()
-        if not module:
-            return
-
-        cursor = self.codeEditorWidget.editorWidget.textCursor()
-        code = cursor.selectedText().replace("\u2029", "\n").strip()
-        if not code:
-            return
-
-        try:
-            v = copyJson(eval(code))
-        except:
-            QMessageBox.critical(self, "Rig Builder", "Selected value is not JSON-compatible.")
-            return
-
-        name, ok = QInputDialog.getText(self, "Rig Builder", "Attribute name to expose:", QLineEdit.Normal)
-        if not ok:
-            return
-
-        if not name:
-            QMessageBox.critical(self, "Rig Builder", "Attribute name must be specified")
-            return
-        
-        if module.findAttribute(name):
-            QMessageBox.critical(self, "Rig Builder", "Attribute with this name already exists")
-            return        
-
-        category = self.attributesTabWidget.tabText(self.attributesTabWidget.currentIndex())
-        attr = getAttributeFromValue(name, v, category)
-
-        module.addAttribute(attr)
-        self.attributesTabWidget.updateTabs()
-
-        self.codeEditorWidget.editorWidget.textCursor().insertText(f"@{name}")
-        logger.info(f"Attribute '{name}' exposed.")
 
     def _refreshHostCombo(self):
         """Update host selection dropdown based on discovered servers."""
@@ -3007,12 +2670,12 @@ class RigBuilderWindow(QFrame):
 
         self.moduleHistoryBrowser.filterEdit.setText(module.uid() if module else "")
 
-        if module:
-            self.docBrowser.setDoc(module.doc())
-            self.attributesTabWidget.module = module
-            self.attributesTabWidget.updateTabs()
-            self.codeEditorWidget.module = module
-            self.codeEditorWidget.updateState()
+        self.docBrowser.setDoc(module.doc() if module else "")
+
+        self.attributesTabWidget.module = module
+        self.attributesTabWidget.updateTabs()
+        self.codeEditorWidget.module = module
+        self.codeEditorWidget.updateState()
 
     def showLog(self):
         self.logWidget.ensureCursorVisible()

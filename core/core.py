@@ -6,7 +6,7 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson
+from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson, replacePairs
 from . import widgets
 from .uidManager import UidManager
 
@@ -144,11 +144,29 @@ class Attribute:
         """Get attribute name."""
         return self._name
 
-    def setName(self, name: str):
-        """Set attribute name."""
-        if name != self._name:
-            self._name = name
+    def setName(self, newName: str):
+        """Set attribute name, updates connections and run code (if module exists)."""
+        if newName == self._name:
+            return
+
+        if self._module and self._name and newName:
+            runCode = self._module.runCode()
+            
+            pairs = [(r"@\b{}\b".format(self._name), "@"+newName),
+                     (r"@\bset_{}\b".format(self._name), "@set_"+newName),
+                     (r"@\b{}_data\b".format(self._name), "@"+newName+"_data")]
+
+            newRunCode = replacePairs(pairs, runCode)
+
+            for a in self.listConnections():
+                c = self._module.path().replace(a.module().path(inclusive=False), "") + "/" + newName
+                a.setConnect(c)
+                
+            if newRunCode != runCode:
+                self._module.setRunCode(newRunCode)
     
+        self._name = newName
+
     def category(self) -> str:
         """Get attribute category."""
         return self._category
