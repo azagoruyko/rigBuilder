@@ -40,6 +40,7 @@ from .utils import *
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .workspaceManager import WorkspaceWidget, getWorkspace
 
+undoStack = QUndoStack()
 
 class AttributeWidget(QWidget):
     Clipboard = None
@@ -49,8 +50,10 @@ class AttributeWidget(QWidget):
     def __init__(self, module: Module, attribute: Attribute, parent=None):
         super().__init__(parent)
         self.attr = attribute
+        self.tabWidget = parent
 
         self._dragging = False
+        self._dragInitialOrder = []
 
         self.nameWidget = QLabel(self.attr.name())
         self.templateWidget = TemplateWidgets[self.attr.template()]()
@@ -114,10 +117,13 @@ class AttributeWidget(QWidget):
     @logWrapper
     def _onSomethingChanged(self):
         widgetData = self.templateWidget.getJsonData()
-        self.attr.setData(widgetData)
+        if self.attr.localData() == widgetData:
+            return
+            
+        newAttr = self.attr.copy()
+        newAttr.setLocalData(widgetData)
         
-        if self.attr.module():
-            self.moduleChanged.emit(self.attr.module())
+        undoStack.push(EditAttributeCommand(self.tabWidget, self.attr, self.attr.toXml(keepConnection=True), newAttr.toXml(keepConnection=True), f"Edit '{self.attr.name()}'"))
 
     def connectionMenu(self, menu: QMenu, module: Module, path: str = "/"):
         subMenu = QMenu(module.name(), self)
@@ -193,21 +199,26 @@ class AttributeWidget(QWidget):
             newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, self.attr.name())
             if ok and newName != self.attr.name():
                 uniqueName = findUniqueName(replaceSpecialChars(newName), [a.name() for a in self.attr.module().attributes()])
-                self.attr.setName(uniqueName if newName else "")
-                self.updateWidgetStyle()
-                self.moduleChanged.emit(self.attr.module())
+                uniqueName = uniqueName if newName else ""
+                
+                newAttr = self.attr.copy()
+                newAttr.setName(uniqueName)
+                
+                undoStack.push(EditAttributeCommand(
+                    self.tabWidget, 
+                    self.attr, 
+                    self.attr.toXml(keepConnection=True), 
+                    newAttr.toXml(keepConnection=True), 
+                    f"Rename attribute '{self.attr.name()}' to '{uniqueName}'"
+                ))
 
     def _onRemoveAttribute(self):
         if QMessageBox.question(self, "Rig Builder", f"Remove '{self.attr.name()}' attribute?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            self.attr.module().removeAttribute(self.attr)
-            self.setParent(None)
-            self.moduleChanged.emit(self.attr.module())
+            undoStack.push(RemoveAttributeCommand(self.tabWidget, self.attr))
 
     def _cutAttribute(self):
         AttributeWidget.Clipboard = self.attr.copy()
-        self.attr.module().removeAttribute(self.attr)
-        self.setParent(None)
-        self.moduleChanged.emit(self.attr.module())
+        undoStack.push(RemoveAttributeCommand(self.tabWidget, self.attr))
 
     def _copyAttribute(self):
         AttributeWidget.Clipboard = self.attr.copy()
@@ -217,22 +228,20 @@ class AttributeWidget(QWidget):
             return
 
         newAttr = AttributeWidget.Clipboard.copy()
-        currentTab = self.tabWidget().tabText(self.tabWidget().currentIndex())
+        currentTab = self.tabWidget.tabText(self.tabWidget.currentIndex())
         newAttr.setCategory(currentTab)
         newName = findUniqueName(newAttr.name(), [a.name() for a in self.attr.module().attributes()])
         newAttr.setName(newName)
         
         mod = self.attr.module()
-        mod.addAttribute(newAttr)
-        self.tabWidget().addAttributeWidget(newAttr)
-
-        self.moduleChanged.emit(mod)
+        undoStack.push(AddAttributeCommand(self.tabWidget, mod, newAttr))
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MiddleButton:
             self._dragging = True
             self.setCursor(Qt.SizeVerCursor)
             self.setStyleSheet("background-color: rgba(100, 150, 255, 0.2);")
+            self._dragInitialOrder = self.attr.module().attributes()[:]
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
@@ -264,7 +273,11 @@ class AttributeWidget(QWidget):
             self.unsetCursor()
             self.setStyleSheet("")
             
-            self.moduleChanged.emit(self.attr.module())
+            finalOrder = self.attr.module().attributes()[:]
+            if self._dragInitialOrder != finalOrder:
+                undoStack.push(MoveAttributesCommand(self.tabWidget, self.attr.module(), self._dragInitialOrder, finalOrder))
+            else:
+                self.moduleChanged.emit(self.attr.module())
 
     def _saveAsPreset(self):
         name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, self.attr.name())
@@ -300,9 +313,15 @@ class AttributeWidget(QWidget):
         def save(data):
             @AttributeWidget._wrapper
             def _save(_):
-                self.attr.setData(data[0])
-                self.updateWidget()
-                self.updateWidgetStyle()
+                newAttr = self.attr.copy()
+                newAttr.setLocalData(data[0])
+                undoStack.push(EditAttributeCommand(
+                    self.tabWidget, 
+                    self.attr, 
+                    self.attr.toXml(keepConnection=True), 
+                    newAttr.toXml(keepConnection=True), 
+                    f"Edit attribute data '{self.attr.name()}'"
+                ))
             _save(self)
 
         w = EditJsonDialog(self.attr.localData(), title="Edit data", parent=self)
@@ -311,11 +330,15 @@ class AttributeWidget(QWidget):
 
     def editExpression(self):
         def save(text: str):
-            self.attr.setExpression(text)
-            self.updateWidget()
-            self.updateWidgetStyle()
-            self.moduleChanged.emit(self.attr.module())
-
+            newAttr = self.attr.copy()
+            newAttr.setExpression(text)
+            undoStack.push(EditAttributeCommand(
+                self.tabWidget, 
+                self.attr, 
+                self.attr.toXml(keepConnection=True), 
+                newAttr.toXml(keepConnection=True), 
+                f"Edit attribute expression '{self.attr.name()}'"
+            ))
         if not self.attr.module():
             return
 
@@ -331,28 +354,49 @@ class AttributeWidget(QWidget):
         w.show()
 
     def clearExpression(self):
-        self.attr.setExpression("")
-        self.updateWidgetStyle()
-        self.moduleChanged.emit(self.attr.module())
+        newAttr = self.attr.copy()
+        newAttr.setExpression("")
+        undoStack.push(EditAttributeCommand(
+            self.tabWidget, 
+            self.attr, 
+            self.attr.toXml(keepConnection=True), 
+            newAttr.toXml(keepConnection=True), 
+            f"Clear attribute expression '{self.attr.name()}'"
+        ))
 
     def resetAttr(self):
-        self.attr.setConnect("")
-        self.attr.setData(copyJson(DEFAULT_WIDGETS_DATA[self.attr.template()]))
-        self.updateWidget()
-        self.updateWidgetStyle()
-        self.moduleChanged.emit(self.attr.module())
+        newAttr = self.attr.copy()
+        newAttr.setConnect("")
+        newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[self.attr.template()]))
+        undoStack.push(EditAttributeCommand(
+            self.tabWidget, 
+            self.attr, 
+            self.attr.toXml(keepConnection=True), 
+            newAttr.toXml(keepConnection=True), 
+            f"Reset attribute '{self.attr.name()}'"
+        ))
 
     def disconnectAttr(self):
-        self.attr.setConnect("")
-        self.updateWidgetStyle()
-        self.moduleChanged.emit(self.attr.module())
+        newAttr = self.attr.copy()
+        newAttr.setConnect("")
+        undoStack.push(EditAttributeCommand(
+            self.tabWidget, 
+            self.attr, 
+            self.attr.toXml(keepConnection=True), 
+            newAttr.toXml(keepConnection=True), 
+            f"Disconnect attribute '{self.attr.name()}'"
+        ))
 
     def connectAttr(self, connect: str):
-        self.attr.setConnect(connect)
-        self.updateWidget()
-        self.updateWidgetStyle()
-        self.moduleChanged.emit(self.attr.module())
-
+        newAttr = self.attr.copy()
+        newAttr.setConnect(connect)
+        undoStack.push(EditAttributeCommand(
+            self.tabWidget, 
+            self.attr, 
+            self.attr.toXml(keepConnection=True), 
+            newAttr.toXml(keepConnection=True), 
+            f"Connect attribute '{self.attr.name()}'"
+        ))
 
 class AttributesTabWidget(QTabWidget):
     moduleChanged = Signal(object) # Module
@@ -383,7 +427,6 @@ class AttributesTabWidget(QTabWidget):
         menu.addAction("New", self._onNewTab)
         if idx != -1:
             menu.addSeparator()
-            menu.addAction("Rename", partial(self._onRenameTab, idx))
             menu.addAction("Remove", partial(self._onRemoveTab, idx))
             
         menu.popup(self.tabBar().mapToGlobal(pos))
@@ -408,22 +451,29 @@ class AttributesTabWidget(QTabWidget):
             existingTabs = [self.tabText(i) for i in range(self.count())]
             uniqueName = findUniqueName(newName, existingTabs)
 
+            undoStack.beginMacro(f"Rename Tab '{oldName}'")
             for a in self.module.attributes():
                 if a.category() == oldName:
-                    a.setCategory(uniqueName)
-                    
-            self.setTabText(idx, newName)
-            self.moduleChanged.emit(self.module)
+                    newAttr = a.copy()
+                    newAttr.setCategory(uniqueName)
+                    undoStack.push(EditAttributeCommand(
+                        self, 
+                        a, 
+                        a.toXml(keepConnection=True), 
+                        newAttr.toXml(keepConnection=True), 
+                        f"Move attribute '{a.name()}' to '{uniqueName}'"
+                    ))
+            undoStack.endMacro()
 
     def _onRemoveTab(self, idx: int):
         if QMessageBox.question(self, "Rig Builder", f"Remove '{self.tabText(idx)}' tab?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             category = self.tabText(idx)
             toRemove = [a for a in self.module.attributes() if a.category() == category]
+            
+            undoStack.beginMacro(f"Remove Tab '{category}'")
             for a in toRemove:
-                self.module.removeAttribute(a)
-
-            self.removeTab(idx)
-            self.moduleChanged.emit(self.module)
+                undoStack.push(RemoveAttributeCommand(self, a))
+            undoStack.endMacro()
 
     def _onTabMoved(self, from_idx: int, to_idx: int):
         visualCategories = [self.tabText(i) for i in range(self.count())]
@@ -434,11 +484,8 @@ class AttributesTabWidget(QTabWidget):
             if a not in newAttrs:
                 newAttrs.append(a)
 
-        self.module.removeAttributes()
-        for a in newAttrs:
-            self.module.addAttribute(a)
-        
-        self.moduleChanged.emit(self.module)
+        oldOrder = self.module.attributes()
+        undoStack.push(MoveAttributesCommand(self, self.module, oldOrder, newAttrs))
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         menu = QMenu(self)
@@ -470,9 +517,7 @@ class AttributesTabWidget(QTabWidget):
             newName = findUniqueName(newAttr.name(), [a.name() for a in self.module.attributes()])
         newAttr.setName(newName)
         
-        self.module.addAttribute(newAttr)
-        self.addAttributeWidget(newAttr)
-        self.moduleChanged.emit(self.module)
+        undoStack.push(AddAttributeCommand(self, self.module, newAttr))
 
     def addTemplateAttribute(self):
         selector = TemplateSelectorDialog(parent=self)
@@ -488,9 +533,7 @@ class AttributesTabWidget(QTabWidget):
         if template in DEFAULT_WIDGETS_DATA:
             newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[template]))
 
-        self.module.addAttribute(newAttr)
-        self.addAttributeWidget(newAttr)
-        self.moduleChanged.emit(self.module)
+        undoStack.push(AddAttributeCommand(self, self.module, newAttr))
 
     def _onReplace(self, old: str, new: str, opts: dict[str, bool]):
         def replaceStringInData(data: object, old: str, new: str) -> object:
@@ -505,9 +548,15 @@ class AttributesTabWidget(QTabWidget):
             category = self.tabText(self.currentIndex())
             attributes = [a for a in self.module.attributes() if a.category() == category]
 
+        undoStack.beginMacro("Search and Replace in values")
+
         for attr in attributes:
             v = replaceStringInData(attr.get(), old, new)
-            attr.set(v)
+            if v != attr.get():
+                newAttr = attr.copy()
+                newAttr.set(v)
+                undoStack.push(EditAttributeCommand(self, attr, attr.toXml(keepConnection=True), newAttr.toXml(keepConnection=True), f"Replace in '{attr.name()}'"))
+        undoStack.endMacro()
 
     def _onModuleChanged(self, module):
         for w in self._widgets:
@@ -541,7 +590,7 @@ class AttributesTabWidget(QTabWidget):
             w.nameWidget.setFixedWidth(maxWidth + 10)
 
     def selectTab(self, idx: int):
-        if self.count() == 0:
+        if not self.module or self.count() == 0:
             return
 
         idx = clamp(idx, 0, self.count() - 1)
@@ -851,6 +900,7 @@ class MoveModulesCommand(QUndoCommand):
                 oldParent.insertChild(oldRow, m)
                 self.model.endMoveRows()
                 
+
 class SyncModulesCommand(QUndoCommand):
     def __init__(self, model: 'ModuleModel', modules: List[Module]):
         super().__init__("Sync Module(s)")
@@ -901,6 +951,116 @@ class SyncModuleWithCommand(QUndoCommand):
         self.module.syncWith(oldModule)
         self.model.endResetModel()
 
+class AddAttributeCommand(QUndoCommand):
+    def __init__(self, tabWidget, module: Module, attr: Attribute):
+        super().__init__(f"Add attribute '{attr.name()}'")
+        self.tabWidget = tabWidget
+        self.module = module
+        self.attr = attr
+
+    def redo(self):
+        self.module.addAttribute(self.attr)
+        self.tabWidget.updateTabs()
+        self.tabWidget.moduleChanged.emit(self.module)
+
+    def undo(self):
+        self.module.removeAttribute(self.attr)
+        self.tabWidget.updateTabs()
+        self.tabWidget.moduleChanged.emit(self.module)
+
+class RemoveAttributeCommand(QUndoCommand):
+    def __init__(self, tabWidget, attr: Attribute):
+        super().__init__(f"Remove attribute '{attr.name()}'")
+        self.tabWidget = tabWidget
+        self.module = attr.module()
+        self.attr = attr
+        self.index = self.module.attributes().index(attr)
+
+    def redo(self):
+        self.module.removeAttribute(self.attr)
+        self.tabWidget.updateTabs()
+        self.tabWidget.moduleChanged.emit(self.module)
+
+    def undo(self):
+        self.module.insertAttribute(self.index, self.attr)
+        self.tabWidget.updateTabs()
+        self.tabWidget.moduleChanged.emit(self.module)
+
+class EditAttributeCommand(QUndoCommand):
+    def __init__(self, tabWidget, attr: Attribute, oldState: str, newState: str, text: str):
+        super().__init__(text)
+        self.tabWidget = tabWidget
+        self.attr = attr
+        self.module = attr.module()
+        self.oldState = oldState
+        self.newState = newState
+        oldAttr = Attribute.fromXml(oldState)
+        newAttr = Attribute.fromXml(newState)
+        self._needsRebuild = (oldAttr.template() != newAttr.template() or
+                              oldAttr.category() != newAttr.category() or
+                              oldAttr.name() != newAttr.name())
+
+    def redo(self):
+        newAttr = Attribute.fromXml(self.newState)
+        if self.attr.name() != newAttr.name():
+            self.attr.setName(newAttr.name())
+        self.attr.setCategory(newAttr.category())
+        self.attr.setTemplate(newAttr.template())
+        self.attr.setConnect(newAttr.connect())
+        self.attr.setExpression(newAttr.expression())
+        self.attr.setLocalData(newAttr.localData())
+        
+        if self._needsRebuild:
+            self.tabWidget.updateTabs()
+        else:
+            for w in self.tabWidget._widgets:
+                if w.attr is self.attr:
+                    w.updateWidget()
+                    w.updateWidgetStyle()
+        self.tabWidget.moduleChanged.emit(self.module)
+
+    def undo(self):
+        oldAttr = Attribute.fromXml(self.oldState)
+        if self.attr.name() != oldAttr.name():
+            self.attr.setName(oldAttr.name())
+        self.attr.setCategory(oldAttr.category())
+        self.attr.setTemplate(oldAttr.template())
+        self.attr.setConnect(oldAttr.connect())
+        self.attr.setExpression(oldAttr.expression())
+        self.attr.setLocalData(oldAttr.localData())
+
+        if self._needsRebuild:
+            self.tabWidget.updateTabs()
+        else:
+            for w in self.tabWidget._widgets:
+                if w.attr is self.attr:
+                    w.updateWidget()
+                    w.updateWidgetStyle()
+        self.tabWidget.moduleChanged.emit(self.module)
+
+class MoveAttributesCommand(QUndoCommand):
+    def __init__(self, tabWidget, module: Module, oldOrder: list, newOrder: list):
+        super().__init__("Reorder attributes")
+        self.tabWidget = tabWidget
+        self.module = module
+        self.oldOrder = oldOrder
+        self.newOrder = newOrder
+
+    def redo(self):
+        if self.module.attributes() != self.newOrder:
+            self.module.removeAttributes()
+            for a in self.newOrder:
+                self.module.addAttribute(a)
+            self.tabWidget.updateTabs()
+            self.tabWidget.moduleChanged.emit(self.module)
+
+    def undo(self):
+        self.module.removeAttributes()
+        for a in self.oldOrder:
+            self.module.addAttribute(a)
+        self.tabWidget.updateTabs()
+        self.tabWidget.moduleChanged.emit(self.module)
+
 
 class ModuleModel(QAbstractItemModel):
     """
@@ -915,7 +1075,6 @@ class ModuleModel(QAbstractItemModel):
         
         self.moduleTracker = ModuleTracker(self)
         self.moduleTracker.moduleChanged.connect(self._onModuleTrackerChanged)
-        self.undoStack: Optional[QUndoStack] = None
 
     def rootModule(self) -> Module:
         return self._rootModule
@@ -1059,11 +1218,7 @@ class ModuleModel(QAbstractItemModel):
                 if not newName or newName == oldName:
                     return False
 
-                if self.undoStack:
-                    self.undoStack.push(RenameModuleCommand(self, module, oldName, newName))
-                else:
-                    module.setName(newName)
-                    self.dataChanged.emit(index, index)
+                undoStack.push(RenameModuleCommand(self, module, oldName, newName))
                 return True
         return False
     def _saveConnections(self, currentModule: Module):
@@ -1096,9 +1251,8 @@ class ModuleModel(QAbstractItemModel):
 
     # Helpers for structural changes
     def addModuleAt(self, module: Module, parentIndex: QModelIndex = QModelIndex(), row: int = -1):
-        if self.undoStack:
-            self.undoStack.push(AddModuleCommand(self, module, parentIndex, row))
-            return self.indexForModule(module)
+        undoStack.push(AddModuleCommand(self, module, parentIndex, row))
+        return self.indexForModule(module)
 
         parentModule = self.getModule(parentIndex) or self._rootModule
         
@@ -1161,8 +1315,7 @@ class ModuleModel(QAbstractItemModel):
         if not data.hasFormat("application/x-rigbuilder-module-internal") and not data.hasUrls():
             return False
 
-        if self.undoStack:
-            self.undoStack.beginMacro("Drop Module(s)")
+        undoStack.beginMacro("Drop Module(s)")
 
         parentModule = self.getModule(parent) or self._rootModule
         if row < 0:
@@ -1181,12 +1334,11 @@ class ModuleModel(QAbstractItemModel):
             # Internal move
             if data.hasFormat("application/x-rigbuilder-module-internal"):
                 if not self._draggedModules: return False
-                self.undoStack.push(MoveModulesCommand(self, self._draggedModules, parent, row))
+                undoStack.push(MoveModulesCommand(self, self._draggedModules, parent, row))
                 self._draggedModules = []
                 return True
         finally:
-            if self.undoStack:
-                self.undoStack.endMacro()
+            undoStack.endMacro()
         return False
         
     def isInsideReferenceModule(self, module: Module) -> bool:
@@ -1545,26 +1697,14 @@ class ModuleTreeWidget(QTreeView):
         if QMessageBox.question(mainWindow, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
-        if self.moduleModel.undoStack:
-            self.moduleModel.undoStack.push(EmbedModuleCommand(self.moduleModel, self.selectionModel().selectedRows()))
-        else:
-            selectedIndices = self.selectionModel().selectedRows()
-            for idx in selectedIndices:
-                module = self.moduleModel.getModule(idx)
-                module.embed()
-                self.moduleModel.dataChanged.emit(idx, idx)
+        undoStack.push(EmbedModuleCommand(self.moduleModel, self.selectionModel().selectedRows()))
 
     def syncAllModules(self):
         """Full refresh of the entire tree from disk while preserving expansion state."""
         state = self._getTreeState()
         self.moduleModel.refreshReferences()
         
-        if self.moduleModel.undoStack:
-            self.moduleModel.undoStack.push(SyncModulesCommand(self.moduleModel, [self.moduleModel.rootModule()]))
-        else:
-            self.moduleModel.beginResetModel()
-            self.moduleModel.rootModule().sync()
-            self.moduleModel.endResetModel()
+        undoStack.push(SyncModulesCommand(self.moduleModel, [self.moduleModel.rootModule()]))
         
         self._setTreeState(state)
 
@@ -1587,13 +1727,7 @@ class ModuleTreeWidget(QTreeView):
                 modules.append(module)
                 
         if modules:
-            if self.moduleModel.undoStack:
-                self.moduleModel.undoStack.push(SyncModulesCommand(self.moduleModel, modules))
-            else:
-                self.moduleModel.beginResetModel()
-                for module in modules:
-                    module.sync()
-                self.moduleModel.endResetModel()
+            undoStack.push(SyncModulesCommand(self.moduleModel, modules))
         self._setTreeState(state)
 
     def muteModule(self):
@@ -1601,23 +1735,14 @@ class ModuleTreeWidget(QTreeView):
         if not selectedIndices:
             return
 
-        if self.moduleModel.undoStack:
-            self.moduleModel.undoStack.push(MuteModuleCommand(self.moduleModel, selectedIndices))
-        else:
-            for idx in selectedIndices:
-                module = self.moduleModel.getModule(idx)
-                if module.muted(): module.unmute()
-                else: module.mute()
-            self.moduleModel.layoutChanged.emit()
-
+        undoStack.push(MuteModuleCommand(self.moduleModel, selectedIndices))
     def duplicateModule(self):
         # Sort indices by row descending to avoid index shifting issues during insertion
         rows = sorted(self.selectionModel().selectedRows(0), key=lambda x: x.row(), reverse=True)
         if not rows:
             return
 
-        if self.moduleModel.undoStack:
-            self.moduleModel.undoStack.beginMacro("Duplicate Module(s)")
+        undoStack.beginMacro("Duplicate Module(s)")
 
         newIndices = []
         try:
@@ -1631,8 +1756,7 @@ class ModuleTreeWidget(QTreeView):
                     newIndices.append(newIdx)
                     if parentIdx.isValid(): self.setExpanded(parentIdx, True)
         finally:
-            if self.moduleModel.undoStack:
-                self.moduleModel.undoStack.endMacro()
+            undoStack.endMacro()
 
         # Select all newly created modules
         if newIndices:
@@ -1673,8 +1797,7 @@ class ModuleTreeWidget(QTreeView):
         if parentIdx.isValid():
             self.setExpanded(parentIdx, True)
 
-        if self.moduleModel.undoStack:
-            self.moduleModel.undoStack.beginMacro("Paste Module(s)")
+        undoStack.beginMacro("Paste Module(s)")
 
         pastedIndices = []
         try:
@@ -1683,8 +1806,7 @@ class ModuleTreeWidget(QTreeView):
                 newIdx = self.moduleModel.addModuleAt(newModule, parentIdx)
                 pastedIndices.append(newIdx)
         finally:
-            if self.moduleModel.undoStack:
-                self.moduleModel.undoStack.endMacro()
+            undoStack.endMacro()
         
         # Select pasted items
         self.selectionModel().clearSelection()
@@ -1702,19 +1824,7 @@ class ModuleTreeWidget(QTreeView):
             if QMessageBox.question(mainWindow, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
-        if self.moduleModel.undoStack:
-            self.moduleModel.undoStack.push(RemoveModulesCommand(self.moduleModel, selectedIndices))
-        else:
-            # Fallback manual removal logic
-            for idx in sorted(selectedIndices, key=lambda x: x.row(), reverse=True):
-                module = self.moduleModel.getModule(idx)
-                if module:
-                    parent = module.parent() or self.moduleModel.rootModule()
-                    row = parent.children().index(module)
-                    self.moduleModel.beginRemoveRows(idx.parent(), row, row)
-                    parent.removeChild(module)
-                    self.moduleModel.endRemoveRows()
-
+        undoStack.push(RemoveModulesCommand(self.moduleModel, selectedIndices))
     def addModule(self, module: "Module") -> "Module":
         """Adds top level module."""
         self.moduleModel.addModuleAt(module)
@@ -2081,9 +2191,7 @@ class HostManagerDialog(QDialog):
 
         self.codeEdit = QPlainTextEdit()
         self.codeEdit.setReadOnly(True)
-        # Use a monospace font for code
-        font = QFont("Consolas", 10) if sys.platform == "win32" else QFont("Monospace", 10)
-        self.codeEdit.setFont(font)
+
         self.codeEdit.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #333; border-radius: 4px;")
         generatorLayout.addWidget(self.codeEdit)
         
@@ -2203,8 +2311,6 @@ class RigBuilderWindow(QFrame):
         self.autoSaveTimer = QTimer(self)
         self.autoSaveTimer.timeout.connect(self._onAutoSaveTimer)
 
-        self.undoStack = QUndoStack(self)
-
         self.windowPinBtn = QPushButton("📌")
         self.windowPinBtn.setCheckable(True)
         self.windowPinBtn.setToolTip("Pin window (stays on top)")
@@ -2224,7 +2330,6 @@ class RigBuilderWindow(QFrame):
         layout.addLayout(headerRow)
 
         self.treeWidget = ModuleTreeWidget()
-        self.treeWidget.moduleModel.undoStack = self.undoStack
         self.treeWidget.selectionModel().selectionChanged.connect(self._onTreeSelectionChanged)
         self.treeWidget.addActions(getActions(self.menu()))
         self.treeWidget.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -2524,11 +2629,11 @@ class RigBuilderWindow(QFrame):
     def menu(self):
         menu = QMenu(self)
 
-        undoAction = self.undoStack.createUndoAction(self, "Undo")
+        undoAction = undoStack.createUndoAction(self, "Undo")
         undoAction.setShortcut(QKeySequence.Undo)
         menu.addAction(undoAction)
 
-        redoAction = self.undoStack.createRedoAction(self, "Redo")
+        redoAction = undoStack.createRedoAction(self, "Redo")
         redoAction.setShortcut(QKeySequence.Redo)
         menu.addAction(redoAction)
 
@@ -2660,6 +2765,7 @@ class RigBuilderWindow(QFrame):
         subprocess.call("explorer \"{}\"".format(RIG_BUILDER_USER_PATH))
 
     def _onTreeSelectionChanged(self, selected, deselected):
+
         module = self.treeWidget.currentModule()
         en = module is not None
         
@@ -2682,7 +2788,7 @@ class RigBuilderWindow(QFrame):
 
     def flushUndo(self):
         """Clear the undo/redo history."""
-        self.undoStack.clear()
+        undoStack.clear()
 
     def onConnectionErrorCallback(self, text: str):
         QMessageBox.warning(self, "Rig Builder", text)
