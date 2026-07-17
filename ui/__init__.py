@@ -259,9 +259,9 @@ class AttributeWidget(QWidget):
                     if (step == 1 and mouseY > centerY) or (step == -1 and mouseY < centerY):
                         layout.insertWidget(n_idx, self)
                         mod = self.attr.module()
-                        target_idx = mod.attributes().index(neighbor.attr)
-                        mod.removeAttribute(self.attr)
-                        mod.insertAttribute(target_idx, self.attr)
+                        idx1 = mod.attributes().index(self.attr)
+                        idx2 = mod.attributes().index(neighbor.attr)
+                        mod._attributes[idx1], mod._attributes[idx2] = mod._attributes[idx2], mod._attributes[idx1]
                         return
                         
         super().mouseMoveEvent(event)
@@ -292,7 +292,7 @@ class AttributeWidget(QWidget):
     def exposeAttr(self):
         parentModule = self.attr.module().parent()
 
-        if not parentModule or parentModule.name() == "ROOT":
+        if parentModule == self.attr.module().root():
             QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: no parent module")
             return
 
@@ -1051,8 +1051,8 @@ class MoveAttributesCommand(QUndoCommand):
             self.module.removeAttributes()
             for a in self.newOrder:
                 self.module.addAttribute(a)
-            self.tabWidget.updateTabs()
-            self.tabWidget.moduleChanged.emit(self.module)
+        self.tabWidget.updateTabs()
+        self.tabWidget.moduleChanged.emit(self.module)
 
     def undo(self):
         self.module.removeAttributes()
