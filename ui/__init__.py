@@ -89,23 +89,20 @@ class AttributeFormLabel(QLabel):
         else:
             super().mouseDoubleClickEvent(event)
 
+def updateTemplateWidgetData(widget: TemplateWidget):
+    with blockedWidgetContext(widget):
+        try:
+            widget.setJsonData(widget.attr.data())
+        except Exception as e:
+            logger.error(f"{widget.attr.module().name()}.{widget.attr.name()}: {str(e)}")
+            if type(e) == AttributeResolverError:
+                with blockedWidgetContext(widget):
+                    widget.setJsonData(widget.getDefaultData())
+
 class AttributesGroupWidget(QWidget):
     Clipboard = None
     moduleChanged = Signal(object)
     moduleCodeExecutionRequested = Signal(str)
-
-    @staticmethod
-    def logWrapper(f: Callable[..., object]):
-        def inner(self, *args, **kwargs):
-            try:
-                return f(self, *args, **kwargs)
-            except Exception as e:
-                moduleName = self.attr.module().name() if self.attr.module() else "unknown"
-                logger.error(f"{moduleName}.{self.attr.name()}: {str(e)}")
-                if type(e) == AttributeResolverError:
-                    with blockedWidgetContext(self.templateWidget) as w:
-                        w.setJsonData(self.attr.localData())
-        return inner
 
     def __init__(self, tabWidget: AttributesTabWidget, category: str, parent=None):
         super().__init__(parent)
@@ -189,16 +186,14 @@ class AttributesGroupWidget(QWidget):
         templateWidget.attr = attr
         templateWidget.templateWidget = templateWidget
 
-        with blockedWidgetContext(templateWidget) as w:
-            w.setJsonData(attr.data())
-        self.updateTemplateWidgetStyle(templateWidget, attr)
+        updateTemplateWidgetData(templateWidget)
+        self.updateTemplateWidgetStyle(templateWidget)
 
         templateWidget.somethingChanged.connect(partial(self.onWidgetChanged, templateWidget))
         templateWidget.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
 
         return label, templateWidget
 
-    @logWrapper
     def onWidgetChanged(self, widget: TemplateWidget):
         widgetData = widget.getJsonData()
         if widget.attr.localData() == widgetData:
@@ -220,8 +215,7 @@ class AttributesGroupWidget(QWidget):
 
         for otherAttr, (_, otherWidget) in self._widgets.items():  # update widgets whose data changed
             if otherAttr in modifiedAttrs:
-                with blockedWidgetContext(otherWidget) as ow:
-                    ow.setJsonData(otherAttr.localData())
+                updateTemplateWidgetData(otherWidget)
 
     def onLabelDoubleClicked(self, attr, event):
         if event.button() == Qt.LeftButton:
@@ -242,19 +236,19 @@ class AttributesGroupWidget(QWidget):
                         f"Rename '{attr.name()}' to '{uniqueName}'"
                     ))
 
-    def updateTemplateWidgetStyle(self, widget, attr):
+    def updateTemplateWidgetStyle(self, widget):
         style = ""
         tooltip = []
-        if attr.connect():
-            tooltip.append("Connect: " + attr.connect())
-        if attr.expression():
-            tooltip.append("Expression:\n" + attr.expression())
+        if widget.attr.connect():
+            tooltip.append("Connect: " + widget.attr.connect())
+        if widget.attr.expression():
+            tooltip.append("Expression:\n" + widget.attr.expression())
 
-        if attr.connect() and not attr.expression():
+        if widget.attr.connect() and not widget.attr.expression():
             style = "TemplateWidget { padding: 2px; border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
-        elif attr.expression() and not attr.connect():
+        elif widget.attr.expression() and not widget.attr.connect():
             style = "TemplateWidget { padding: 2px; border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
-        elif attr.expression() and attr.connect():
+        elif widget.attr.expression() and widget.attr.connect():
             style = "TemplateWidget { padding: 2px; border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
 
         widget.setStyleSheet(style)
@@ -500,8 +494,8 @@ class AttributesGroupWidget(QWidget):
             return
 
         expAttr = attr.copy()
-        expAttr.setName(newName)
         parentModule.addAttribute(expAttr)
+        expAttr.setName(newName)
         self.connectAttr(attr, "/"+expAttr.name())
         self.tabWidget.moduleChanged.emit(parentModule)
 
@@ -509,7 +503,6 @@ class AttributesGroupWidget(QWidget):
         templateWidget.attr = attr
         templateWidget.templateWidget = templateWidget
 
-        @AttributesGroupWidget.logWrapper
         def save(w, data):
             newAttr = w.attr.copy()
             newAttr.setLocalData(data[0])
@@ -536,6 +529,7 @@ class AttributesGroupWidget(QWidget):
                 newAttr.toXml(keepConnection=True), 
                 f"Edit expression '{attr.name()}'"
             ))
+            
         if not attr.module():
             return
 
