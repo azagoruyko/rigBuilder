@@ -89,15 +89,23 @@ class AttributeFormLabel(QLabel):
         else:
             super().mouseDoubleClickEvent(event)
 
-def updateTemplateWidgetData(widget: TemplateWidget):
-    with blockedWidgetContext(widget):
-        try:
-            widget.setJsonData(widget.attr.data())
-        except Exception as e:
-            logger.error(f"{widget.attr.module().name()}.{widget.attr.name()}: {str(e)}")
-            if type(e) == AttributeResolverError:
-                with blockedWidgetContext(widget):
-                    widget.setJsonData(widget.getDefaultData())
+def updateTemplateWidgetStyle(widget: TemplateWidget):
+    style = ""
+    tooltip = []
+    if widget.attr.connect():
+        tooltip.append("Connect: " + widget.attr.connect())
+    if widget.attr.expression():
+        tooltip.append("Expression:\n" + widget.attr.expression())
+
+    if widget.attr.connect() and not widget.attr.expression():
+        style = "TemplateWidget { padding: 2px; border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
+    elif widget.attr.expression() and not widget.attr.connect():
+        style = "TemplateWidget { padding: 2px; border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
+    elif widget.attr.expression() and widget.attr.connect():
+        style = "TemplateWidget { padding: 2px; border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
+
+    widget.setStyleSheet(style)
+    widget.setToolTip("\n".join(tooltip))
 
 class AttributesGroupWidget(QWidget):
     Clipboard = None
@@ -186,8 +194,12 @@ class AttributesGroupWidget(QWidget):
         templateWidget.attr = attr
         templateWidget.templateWidget = templateWidget
 
-        updateTemplateWidgetData(templateWidget)
-        self.updateTemplateWidgetStyle(templateWidget)
+        try:
+            templateWidget.setJsonData(attr.data())
+        except Exception as e:
+            logger.error(f"{attr.module().name()}.{attr.name()}: {str(e)}")
+
+        updateTemplateWidgetStyle(templateWidget)
 
         templateWidget.somethingChanged.connect(partial(self.onWidgetChanged, templateWidget))
         templateWidget.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
@@ -195,6 +207,12 @@ class AttributesGroupWidget(QWidget):
         return label, templateWidget
 
     def onWidgetChanged(self, widget: TemplateWidget):
+        try:
+            self.updateAttributeFromTemplateWidget(widget)
+        except Exception as e:
+            logger.error(f"{widget.attr.module().name()}.{widget.attr.name()}: {str(e)}")
+
+    def updateAttributeFromTemplateWidget(self, widget: TemplateWidget):
         widgetData = widget.getJsonData()
         if widget.attr.localData() == widgetData:
             return
@@ -207,6 +225,7 @@ class AttributesGroupWidget(QWidget):
         modifiedAttrs = set()
         for otherAttr in module.attributes():
             otherAttr.pull()
+
             if otherAttr.localData() != previousData[id(otherAttr)]:
                 modifiedAttrs.add(otherAttr)
 
@@ -215,7 +234,7 @@ class AttributesGroupWidget(QWidget):
 
         for otherAttr, (_, otherWidget) in self._widgets.items():  # update widgets whose data changed
             if otherAttr in modifiedAttrs:
-                updateTemplateWidgetData(otherWidget)
+                otherWidget.setJsonData(otherAttr.data())
 
     def onLabelDoubleClicked(self, attr, event):
         if event.button() == Qt.LeftButton:
@@ -235,24 +254,6 @@ class AttributesGroupWidget(QWidget):
                         newAttr.toXml(keepConnection=True), 
                         f"Rename '{attr.name()}' to '{uniqueName}'"
                     ))
-
-    def updateTemplateWidgetStyle(self, widget):
-        style = ""
-        tooltip = []
-        if widget.attr.connect():
-            tooltip.append("Connect: " + widget.attr.connect())
-        if widget.attr.expression():
-            tooltip.append("Expression:\n" + widget.attr.expression())
-
-        if widget.attr.connect() and not widget.attr.expression():
-            style = "TemplateWidget { padding: 2px; border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
-        elif widget.attr.expression() and not widget.attr.connect():
-            style = "TemplateWidget { padding: 2px; border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
-        elif widget.attr.expression() and widget.attr.connect():
-            style = "TemplateWidget { padding: 2px; border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
-
-        widget.setStyleSheet(style)
-        widget.setToolTip("\n".join(tooltip))
 
     def startDrag(self, row):
         self._dragging = True
@@ -529,7 +530,7 @@ class AttributesGroupWidget(QWidget):
                 newAttr.toXml(keepConnection=True), 
                 f"Edit expression '{attr.name()}'"
             ))
-            
+
         if not attr.module():
             return
 
