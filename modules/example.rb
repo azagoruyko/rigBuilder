@@ -38,8 +38,6 @@ Happy creating!]]></doc>
 <attr name="out_lst" template="listBox" category="General" connect=""><![CDATA[{"items": [], "default": "items"}]]></attr>
 <attr name="out_other" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "", "placeholder": "", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
 <attr name="slider" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": 10, "placeholder": "", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 1, "default": "value"}]]></attr>
-<attr name="lst" template="listBox" category="Expression" connect=""><![CDATA[{"items": [], "default": "items", "_expression": "value = ch(\"/out_lst\")"}]]></attr>
-<attr name="selected" template="lineEditAndButton" category="Expression" connect=""><![CDATA[{"value": [], "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 100, "validator": 0, "default": "value", "_expression": "value = ch(\"/lst\")"}]]></attr>
 </attributes>
 <children>
 <module name="child" muted="1" uid="">
@@ -55,7 +53,7 @@ print("lineAttr = {}".format(ch("../lineAttr")))]]></run>
 </module>
 <module name="curve" muted="0" uid="">
 <attributes>
-<attr name="param" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": 0.0, "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 1, "validator": 2, "default": "value", "_expression": "p = curve_evaluateFromX(chdata(\"/curve\"), value)\nchset(\"/out_vec\", p)"}]]></attr>
+<attr name="param" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": 0.0, "placeholder": "", "buttonCommand": "print(\"Hello, world!\")", "buttonLabel": "Button", "buttonEnabled": false, "min": 0, "max": 1, "validator": 2, "default": "value", "_expression": "p = curve_evaluateFromX(chdata(\"/curve\"), value)\nchset(\"/out_vec\", p)"}]]></attr>
 <attr name="curve" template="curve" category="General" connect=""><![CDATA[{"cvs": [[0.0, 1.0], [0.1364919774234294, 0.7236900971443566], [0.3293209876543207, -0.0], [0.49398148148148113, -0.0], [0.6626543209876541, -0.0], [0.8591423581319826, 0.7216353982411047], [1.0, 1.0]], "default": "cvs"}]]></attr>
 <attr name="out_vec" template="vector" category="General" connect=""><![CDATA[{"value": [0.0008004017767750135, 0.9983758855280973], "default": "value", "dimension": 2, "precision": 4, "columns": 3}]]></attr>
 <attr name="node" template="lineEditAndButton" category="General" connect=""><![CDATA[{"value": "", "buttonCommand": "import maya.cmds as cmds\nls = cmds.ls(sl=True)\nif ls: value = ls[0]", "buttonLabel": "<", "buttonEnabled": true, "min": 0, "max": 100, "validator": 0, "default": "value"}]]></attr>
