@@ -22,7 +22,7 @@ class ZmqClient:
 
     def send_request(self, action: str, **kwargs) -> dict:
         if not self.is_running():
-            raise Exception("Rig Builder is offline. Please ensure the Rig Builder GUI application is running.")
+            return {"error": "Rig Builder is offline. Please ensure the Rig Builder GUI application is running."}
 
         req = {"action": action}
         req.update(kwargs)
@@ -32,7 +32,7 @@ class ZmqClient:
             resp = self.socket.recv_string()
             data = json.loads(resp)
             if data.get("status") == "error":
-                raise Exception(f"RigBuilder Error: {data.get('message')}")
+                return {"error": f"RigBuilder Error: {data.get('message')}"}
             return data.get("data")
             
         except zmq.Again:
@@ -41,4 +41,6 @@ class ZmqClient:
             self.socket = self.context.socket(zmq.REQ)
             self.socket.setsockopt(zmq.RCVTIMEO, 1000)
             self.socket.connect(f"tcp://127.0.0.1:{ZMQ_PORT}")
-            raise Exception("Rig Builder is offline or not responding. Please ensure Rig Builder is running.")
+            return {"error": "Rig Builder is offline or not responding. Please ensure Rig Builder is running."}
+        except Exception as e:
+            return {"error": f"ZMQ Communication failed: {str(e)}"}

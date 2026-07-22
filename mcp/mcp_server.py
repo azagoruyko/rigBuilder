@@ -5,11 +5,17 @@ from fastmcp import FastMCP
 
 MCP_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(MCP_DIRECTORY)
-from zmq_client import ZmqClient
-
 # Initialize MCP Server
 mcp = FastMCP("RigBuilder AI", instructions="CRITICAL: You MUST read the 'docs://rig-builder-reference' resource before interacting with this server.")
-client = ZmqClient()
+
+client = None
+
+def get_client():
+    global client
+    if client is None:
+        from zmq_client import ZmqClient
+        client = ZmqClient()
+    return client
 
 @mcp.resource("docs://rig-builder-reference")
 def read_rig_builder_reference() -> str:
@@ -32,6 +38,7 @@ def get_example_module() -> str:
     if os.path.exists(example_path):
         with open(example_path, "r", encoding="utf-8") as f:
             return f.read()
+            
     return "example.rb not found."
 
 @mcp.tool()
@@ -39,7 +46,10 @@ def get_selected_modules() -> str:
     """Returns the names and paths of the currently selected modules in the UI.
     Useful for contextual edits when the user has something selected.
     """
-    res = client.send_request("get_selected_modules")
+    res = get_client().send_request("get_selected_modules")
+    if res.get("error"):
+        return res.get("error")
+
     names = res.get("names", [])
     paths = res.get("paths", [])
     if not names:
@@ -48,6 +58,7 @@ def get_selected_modules() -> str:
     output = "Selected Modules:\n"
     for name, path in zip(names, paths):
         output += f"- {name} (Path: {path})\n"
+
     return output
 
 @mcp.tool()
@@ -55,7 +66,10 @@ def get_modules() -> str:
     """Returns a list of all instantiated modules currently in the active tree.
     This provides the AI with the structural overview of the module tree (the module paths).
     """
-    res = client.send_request("get_modules")
+    res = get_client().send_request("get_modules")
+    if res.get("error"):
+        return res.get("error")
+
     modules = res.get("modules", [])
     if not modules:
         return "No modules are currently in the tree."
@@ -73,7 +87,10 @@ def query_module(query: str, k: int = 5) -> str:
         query: Natural language query describing what you're looking for.
         k: Maximum number of results to return.
     """
-    res = client.send_request("query_module", query=query, k=k)
+    res = get_client().send_request("query_module", query=query, k=k)
+    if res.get("error"):
+        return res.get("error")
+
     results = res.get("results", [])
     results = [r for r in results if r['score'] > 0.5]
     if not results:
@@ -82,6 +99,7 @@ def query_module(query: str, k: int = 5) -> str:
     out = f"Search results for '{query}':\n"
     for r in results:
         out += f"- {r['name']} (Path: {r['path']}, Score: {r['score']:.2f})\n"
+
     return out
 
 @mcp.tool()
@@ -92,7 +110,10 @@ def add_module(parent_path: str, name: str, reference_path: str = "") -> str:
         name: The name for the new module.
         reference_path: (Optional) Path string relative to 'modules/' of an existing module file in the current workspace (e.g. 'biped/arm.xml'). If empty, creates an empty module.
     """
-    res = client.send_request("add_module", parent_path=parent_path, name=name, reference_path=reference_path)
+    res = get_client().send_request("add_module", parent_path=parent_path, name=name, reference_path=reference_path)
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("message", "Success")
 
 @mcp.tool()
@@ -101,7 +122,10 @@ def remove_module(module_path: str) -> str:
     Args:
         module_path: The full path to the module to remove (e.g. 'ROOT/spine/arm_L').
     """
-    res = client.send_request("remove_module", module_path=module_path)
+    res = get_client().send_request("remove_module", module_path=module_path)
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("message", "Success")
 
 @mcp.tool()
@@ -114,7 +138,10 @@ def get_module_xml(module_path: str = "") -> str:
     Args:
         module_path: The full path to the module (e.g. 'ROOT/spine_01'). Leave empty for ROOT.
     """
-    res = client.send_request("get_module_xml", module_path=module_path)
+    res = get_client().send_request("get_module_xml", module_path=module_path)
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("xml", "")
 
 @mcp.tool()
@@ -129,22 +156,32 @@ def set_module_xml(module_path: str, xml_str: str) -> str:
         module_path: The full path to the module being updated.
         xml_str: The complete XML string of the updated module.
     """
-    res = client.send_request("set_module_xml", module_path=module_path, xml=xml_str)
+    res = get_client().send_request("set_module_xml", module_path=module_path, xml=xml_str)
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("message", "Success")
 
 @mcp.tool()
 def read_log() -> str:
     """Read the contents of the log widget from the main window."""
-    res = client.send_request("read_log")
+    res = get_client().send_request("read_log")
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("log", "")
 
 @mcp.tool()
 def get_available_hosts() -> str:
     """Returns a list of available discovered hosts."""
-    res = client.send_request("get_available_hosts")
+    res = get_client().send_request("get_available_hosts")
+    if res.get("error"):
+        return res.get("error")
+
     hosts = res.get("hosts", [])
     if not hosts:
         return "No hosts available."
+
     return "Available hosts:\n" + "\n".join(f"- {h}" for h in hosts)
 
 @mcp.tool()
@@ -153,7 +190,10 @@ def switch_host(host_name: str) -> str:
     Args:
         host_name: The name of the host to switch to.
     """
-    res = client.send_request("switch_host", host_name=host_name)
+    res = get_client().send_request("switch_host", host_name=host_name)
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("message", "Success")
 
 @mcp.tool()
@@ -162,19 +202,28 @@ def execute_module(module_path: str) -> str:
     Args:
         module_path: The full path to the module (e.g. 'ROOT/spine_01').
     """
-    res = client.send_request("execute_module", module_path=module_path)
+    res = get_client().send_request("execute_module", module_path=module_path)
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("message", "Success")
 
 @mcp.tool()
 def read_module_api() -> str:
     """Reads the API functions and objects available to modules at runtime (from APIRegistry)."""
-    res = client.send_request("read_module_api")
+    res = get_client().send_request("read_module_api")
+    if res.get("error"):
+        return res.get("error")
+
     return res.get("api", "No API registered.")
 
 @mcp.tool()
 def get_workspace_settings() -> str:
     """Returns the settings of the current active workspace, including paths and auto-save options."""
-    res = client.send_request("get_workspace_settings")
+    res = get_client().send_request("get_workspace_settings")
+    if res.get("error"):
+        return res.get("error")
+
     if not res:
         return "Failed to retrieve workspace settings."
     
