@@ -67,7 +67,7 @@ class RigBuilderAPI:
         parentIndex = model.indexForModule(parentModule)
         
         from rigBuilder.core import Module
-        from rigBuilder.ui import AddModuleCommand
+        from rigBuilder.ui import AddModuleCommand, undoStack
         
         if reference_path:
             new_module = Module.loadModule(reference_path)
@@ -77,7 +77,7 @@ class RigBuilderAPI:
             new_module = Module(module_name)
             
         cmd = AddModuleCommand(model, new_module, parentIndex, -1)
-        model.undoStack.push(cmd)
+        undoStack.push(cmd)
         return {"message": f"Added module {new_module.name()} to {parent_path}"}
 
     @classmethod
@@ -99,9 +99,9 @@ class RigBuilderAPI:
         if not idx.isValid():
             return {"error": f"Invalid index for module: {module_path}"}
             
-        from rigBuilder.ui import RemoveModulesCommand
+        from rigBuilder.ui import RemoveModulesCommand, undoStack
         cmd = RemoveModulesCommand(model, [idx])
-        model.undoStack.push(cmd)
+        undoStack.push(cmd)
         
         return {"message": f"Removed module {module_path}"}
 
@@ -128,14 +128,14 @@ class RigBuilderAPI:
             return {"error": f"Module not found: {module_path}"}
             
         from rigBuilder.core import Module
-        from rigBuilder.ui import SyncModuleWithCommand
+        from rigBuilder.ui import SyncModuleWithCommand, undoStack
 
         try:
             new_module = Module.fromXml(xml_str)
         except Exception as e:
             return {"error": f"Error: {str(e)}"}
 
-        model.undoStack.push(SyncModuleWithCommand(model, existing_module, new_module))
+        undoStack.push(SyncModuleWithCommand(model, existing_module, new_module))
         cls.mainWindow.treeWidget.selectModule(existing_module)
         
         return {"message": f"Successfully updated module from XML: {module_path}"}
