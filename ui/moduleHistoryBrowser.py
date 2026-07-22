@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 from .qt import *
 from ..core import Module
 from ..core.uidManager import UidManager
+from ..core.utils import relativePath
 from ..core.settings import settings
 from ..core.gitrepo import GitRepo
 from .utils import centerWindow
@@ -52,7 +53,13 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
     moduleCopy = module.copy()
     moduleCopy.saveToFile(historyFile)
 
-    message = "{}: {}".format(moduleCopy.name(), commitMessage.strip() or "update")
+    ref = moduleCopy.referenceFile()
+    if ref:
+        label = relativePath(ref, settings.modulesPath)
+    else:
+        label = moduleCopy.name()
+
+    message = "{}: {}".format(label, commitMessage.strip() or "update")
 
     err, _ = repo.commit(message, [historyFile])
     return not err
