@@ -16,7 +16,14 @@ class MayaServer(HostServer):
     """Dispatches execution to Maya's main thread via maya.utils.executeDeferred."""
 
     def executeOnMainThread(self, taskFunction):
-        maya.utils.executeDeferred(taskFunction)
+        def f():
+            cmds.undoInfo(openChunk=True)
+            try:
+                taskFunction()
+            finally:
+                cmds.undoInfo(closeChunk=True)
+        
+        maya.utils.executeDeferred(f)
 
     def ping(self) -> dict:
         return {
