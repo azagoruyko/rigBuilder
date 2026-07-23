@@ -2474,6 +2474,7 @@ class RigBuilderWindow(QFrame):
         self.docBrowser.setEnabled(False)
 
         self.moduleBrowser = ModuleBrowser(parent=self)
+        self.moduleBrowser.moduleRequested.connect(self.addModuleBySpec)
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self._onModuleFileChanged)
         
         self.workspaceWidget.updateRequested.connect(self.moduleBrowser.refreshModules)

@@ -145,7 +145,7 @@ class CategoryItemWidget(QWidget):
         layout.setContentsMargins(4, 3, 4, 3)
         layout.setSpacing(6)
 
-        if category:
+        if category and category not in ["__all__"]:
             dot = QFrame()
             dot.setFixedSize(8, 8)
             dot.setStyleSheet(
@@ -212,6 +212,7 @@ class ModuleBrowserHeader(QWidget):
 class ModuleBrowser(QDialog):
     """Refactored module browser dialog triggered by pressing Tab."""
     modulesReloaded = Signal()
+    moduleRequested = Signal(str)
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
@@ -267,7 +268,7 @@ class ModuleBrowser(QDialog):
         sidebarLayout.setSpacing(6)
 
         self.categoryList = QListWidget()
-        self.categoryList.itemSelectionChanged.connect(self._onCategoryChanged)
+        self.categoryList.itemSelectionChanged.connect(self._rebuildModulesList)
         sidebarLayout.addWidget(self.categoryList)
 
         self.openFolderBtn = QPushButton("📂 Open Folder")
@@ -389,19 +390,18 @@ class ModuleBrowser(QDialog):
         categories = set()
         for filepath in UidManager.uids().values():
             rel = os.path.relpath(filepath, settings.modulesPath)
-            cat = os.path.dirname(rel)
+            cat = os.path.dirname(rel).replace("\\", "/")
             if cat and cat != ".":
-                categories.add(cat.replace("\\", "/"))
+                categories.add(cat)
 
-        sortedCats = sorted(list(categories))
+        for label, catKey in [("All Modules", "__all__")]:
+            item = QListWidgetItem()
+            widget = CategoryItemWidget(label, catKey)            
+            item.setData(Qt.UserRole, catKey)
+            self.categoryList.addItem(item)
+            self.categoryList.setItemWidget(item, widget)
 
-        # Add "All Modules" first
-        allItem = QListWidgetItem()
-        allWidget = CategoryItemWidget("All Modules", "")
-        self.categoryList.addItem(allItem)
-        self.categoryList.setItemWidget(allItem, allWidget)
-
-        for cat in sortedCats:
+        for cat in sorted(categories):
             item = QListWidgetItem()
             widget = CategoryItemWidget(cat, cat)
             item.setData(Qt.UserRole, cat)
@@ -417,48 +417,60 @@ class ModuleBrowser(QDialog):
         else:
             self.categoryList.setCurrentRow(0)
 
-    def _rebuildModulesList(self):
-        selectedCatItem = self.categoryList.currentItem()
-        selectedCategory = selectedCatItem.data(Qt.UserRole) if selectedCatItem else None
-
-        searchQuery = self.searchWidget.text().strip().lower()
-
-        # Get all modules with an initial score of 0.0
-        allModules = []
+    def _getAvailableModules(self) -> dict[str, dict]:
+        """Return dict mapping normpath -> module info dict."""
+        modules = {}
         for filepath in UidManager.uids().values():
             name = os.path.splitext(os.path.basename(filepath))[0]
-            rel = os.path.relpath(filepath, settings.modulesPath)
-            cat = os.path.dirname(rel).replace("\\", "/")
-            if not cat or cat == ".":
+            rel = os.path.relpath(filepath, settings.modulesPath).replace("\\", "/")
+            cat = os.path.dirname(rel)
+            if cat in (".", ""):
                 cat = ""
-            allModules.append((name, filepath, cat, 0.0))
+                
+            norm = os.path.normpath(filepath)
+            modules[norm] = {
+                "name": name,
+                "filepath": filepath,
+                "path": filepath,
+                "category": cat,
+                "score": 0.0,
+            }
+        return modules
 
-        # Filter by category
-        if selectedCategory:  # None = "All Modules"
-            allModules = [m for m in allModules if m[2] == selectedCategory or m[2].startswith(selectedCategory + "/")]
+    def _rebuildModulesList(self):
+        catItem = self.categoryList.currentItem()
+        selectedCategory = catItem.data(Qt.UserRole) if catItem else None
+        searchQuery = self.searchWidget.text().strip().lower()
 
-        # Filter and rank by search query
+        modulesMap = self._getAvailableModules()
+
+        # 1. Category Filter
+        if selectedCategory == "__recent__":
+            modules = [modulesMap[p] for p in self.getRecentModules() if p in modulesMap]
+        elif selectedCategory and selectedCategory != "__all__":
+            modules = [m for m in modulesMap.values() if m["category"] == selectedCategory or m["category"].startswith(selectedCategory + "/")]
+        else:
+            modules = list(modulesMap.values())
+
+        # 2. Search Filter & Sort
         if searchQuery:
             scores = {os.path.normpath(p).lower(): s for p, s in self.semanticResults if p}
-            scoredModules = []
-            for name, filepath, cat, _ in allModules:
-                if searchQuery in name.lower():
-                    score = 1.0
-                else:
-                    score = scores.get(os.path.normpath(filepath).lower(), 0.0)
-
+            scored = []
+            for m in modules:
+                score = 1.0 if searchQuery in m["name"].lower() else scores.get(os.path.normpath(m["filepath"]).lower(), 0.0)
                 if score >= 0.5:
-                    scoredModules.append((name, filepath, cat, score))
-            scoredModules.sort(key=lambda x: (-x[3], x[0].lower()))
-            allModules = scoredModules
-        else:
-            allModules.sort(key=lambda x: x[0].lower())
+                    m["score"] = score
+                    scored.append(m)
+            modules = sorted(scored, key=lambda m: (-m["score"], m["name"].lower()))
 
+        elif selectedCategory != "__recent__":
+            modules.sort(key=lambda m: m["name"].lower())
+
+        # 3. Populate List Widget
         self.modulesList.clear()
-
-        for name, filepath, cat, score in allModules:
+        for m in modules:
             item = QListWidgetItem()
-            card = ModuleCardWidget(name, filepath, score=score)
+            card = ModuleCardWidget(m["name"], m["filepath"], score=m["score"])
             item.setSizeHint(card.sizeHint())
             self.modulesList.addItem(item)
             self.modulesList.setItemWidget(item, card)
@@ -468,9 +480,6 @@ class ModuleBrowser(QDialog):
         else:
             self.docBrowser.clear()
             self.addButton.setEnabled(False)
-
-    def _onCategoryChanged(self):
-        self._rebuildModulesList()
 
     def _onModuleSelectionChanged(self):
         selectedItem = self.modulesList.currentItem()
@@ -499,10 +508,10 @@ class ModuleBrowser(QDialog):
             return
 
         filepath = card.filepath
+        ModuleBrowser.addRecentModule(filepath)
         self.close()
 
-        mainWindow = self.parent()
-        mainWindow.addModuleBySpec(filepath)
+        self.moduleRequested.emit(filepath)
 
     def _runSemanticSearch(self):
         """Perform background semantic search using the current filter text."""
