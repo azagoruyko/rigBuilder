@@ -508,7 +508,6 @@ class ModuleBrowser(QDialog):
             return
 
         filepath = card.filepath
-        ModuleBrowser.addRecentModule(filepath)
         self.close()
 
         self.moduleRequested.emit(filepath)
