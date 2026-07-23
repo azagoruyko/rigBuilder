@@ -2448,7 +2448,7 @@ class RigBuilderWindow(QFrame):
             action.triggered.connect(lambda *_, f=func: f())
             self.codeEditorWidget.editorWidget.addCustomAction(action)
         
-        self.vscodeBtn = QPushButton("📝 Edit in VSCode")
+        self.vscodeBtn = QPushButton("🧙‍♂️ Edit in VSCode")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
 
         self.apiBrowser = ApiBrowser()
