@@ -6,6 +6,7 @@ Run once inside Blender (e.g. from a startup script):
     BlenderServer(51605).start()
 """
 
+import os
 import bpy
 
 from rigBuilder.host.servers import HostServer
@@ -14,14 +15,24 @@ from rigBuilder.host.servers import HostServer
 class BlenderServer(HostServer):
     """Dispatches execution to Blender's main thread via bpy.app.timers."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.title = "Blender"
+
     def executeOnMainThread(self, taskFunction):
         bpy.app.timers.register(taskFunction, first_interval=0)
 
     def ping(self) -> dict:
+        def task():
+            filepath = bpy.data.filepath
+            scene = os.path.basename(filepath) if filepath else "Untitled.blend"
+            self.title = f"Blender {bpy.app.version_string} — {scene}"
+
+        bpy.app.timers.register(task, first_interval=0)
         return {
             "ok": True,
             "host": "blender",
-            "name": f"Blender {bpy.app.version_string}"
+            "name": self.title,
         }
 
 # API functions mostly used by the client's widgets

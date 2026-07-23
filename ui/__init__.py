@@ -2620,7 +2620,7 @@ class RigBuilderWindow(QFrame):
 
     def _refreshHostCombo(self):
         """Update host selection dropdown based on discovered servers."""
-        prevHost = self.hostCombo.currentData() or "Standalone"
+        prevData = self.hostCombo.currentData()
 
         self.hostCombo.blockSignals(True)
         self.hostCombo.clear()
@@ -2629,44 +2629,46 @@ class RigBuilderWindow(QFrame):
         servers = connectionManager.servers()
         entries = sorted(servers.items(), key=lambda x: x[0].lower())
         
-        for name, entry in entries:
+        for _, entry in entries:
             # Use icon for discovered hosts
             iconPath = os.path.join(RIG_BUILDER_PATH, "ui", "images", f"{entry['host']}.png")
             if os.path.exists(iconPath):
-                self.hostCombo.addItem(QIcon(iconPath), name, userData=name)
+                self.hostCombo.addItem(QIcon(iconPath), entry["name"], userData=entry)
             else:
-                label = "📡 {} ({})".format(name, entry["host"])
-                self.hostCombo.addItem(label, userData=name)
+                label = "📡 {} ({})".format(entry["name"], entry["host"])
+                self.hostCombo.addItem(label, userData=entry)
 
         if not servers:
             self.hostCombo.setPlaceholderText("No hosts discovered")
         
         # Try to restore selection
-        idx = self.hostCombo.findData(prevHost)
-        if idx >= 0:
-            self.hostCombo.setCurrentIndex(idx)
-        else:
-            # If nothing selected, disconnect
-            connectionManager.disconnect()
-            self.hostCombo.setStyleSheet("")
-
+        if prevData:
+            for i in range(self.hostCombo.count()):
+                itemData = self.hostCombo.itemData(i)
+                if itemData["cmdPort"] == prevData["cmdPort"]:
+                    self.hostCombo.setCurrentIndex(i)
+                    break
+        
+        # when no host restored
+        if self.hostCombo.count() > 0 and self.hostCombo.currentIndex() == -1:
+            self.hostCombo.setCurrentIndex(0) # select the first
+        
         self.hostCombo.blockSignals(False)
 
-        # If we have a selection but no active connection, try to connect
         if self.hostCombo.currentIndex() >= 0 and not connectionManager.isActive():
             self._onHostComboChanged(self.hostCombo.currentIndex())
 
     def _onHostComboChanged(self, index):
         """Automatically connect to the selected host."""
-        name = self.hostCombo.currentData()
+        entry = self.hostCombo.currentData()
         
-        if not name:
+        if not entry:
             connectionManager.disconnect()
             self.hostCombo.setStyleSheet("")
             return
 
         try:
-            conn = connectionManager.connect(name)
+            conn = connectionManager.connect(entry["name"])
             
         except Exception as e:
             self.hostCombo.setStyleSheet("color: #ff6b6b;")

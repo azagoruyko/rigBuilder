@@ -64,7 +64,13 @@ class DiscoveryServer:
                         name = msg.get("name", host.capitalize())
 
                         if cmdPort in self._discoveredHosts:
-                            self._discoveredHosts[cmdPort].update({"lastSeen": time.time()})
+                            oldName = self._discoveredHosts[cmdPort].get("name")
+                            self._discoveredHosts[cmdPort].update({
+                                "lastSeen": time.time(),
+                                "name": name,
+                            })
+                            if oldName != name:
+                                self.hostDiscovered.emit()
                         else: # when new server is discovered
                             count = 0
                             for entry in self._discoveredHosts.values():

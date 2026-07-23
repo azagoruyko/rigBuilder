@@ -203,18 +203,17 @@ class HostServer:
         sock.setsockopt(zmq.LINGER, 0)
         sock.setsockopt(zmq.SNDHWM, 1)  # drop old announcements if not delivered
 
-        identity = self.ping()
-        msg = json.dumps({
-            "cmd": "register",
-            "host": identity.get("host", "unknown"),
-            "name": identity.get("name", "Unknown Host"),
-            "cmdPort": self._pullPort,
-            "eventPort": self._pubPort,
-        })
-
         try:
             sock.connect(f"tcp://localhost:{self._discoveryPort}")
             while self._running:
+                identity = self.ping()
+                msg = json.dumps({
+                    "cmd": "register",
+                    "host": identity.get("host", "unknown"),
+                    "name": identity.get("name", "Unknown Host"),
+                    "cmdPort": self._pullPort,
+                    "eventPort": self._pubPort,
+                })
                 try:
                     sock.send_string(msg, zmq.NOBLOCK)
                 except zmq.Again:
