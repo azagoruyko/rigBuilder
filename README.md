@@ -1,7 +1,11 @@
-# Rig Builder
+<div align="center">
+   
+   [![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
+   ![Commits since latest release](https://img.shields.io/github/commits-since/azagoruyko/rigBuilder/latest)
 
-[![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
-![Commits since latest release](https://img.shields.io/github/commits-since/azagoruyko/rigBuilder/latest)
+   <img width="64" height="64" alt="icon" src="https://github.com/user-attachments/assets/810b267b-e60d-406c-963b-35c023381d57" />
+   
+</div>
 
 **Rig Builder** is a powerful, standalone environment for managing and executing complex Python script hierarchies across any host application (Maya, Blender, Unreal Engine, etc.).
 
