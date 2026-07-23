@@ -100,7 +100,8 @@ class ApiBrowser(QWidget):
         self.browser.setUndoRedoEnabled(False)
         layout.addWidget(self.browser)
         
-        # Initial refresh
+    def showEvent(self, event):
+        super().showEvent(event)
         self.refreshContent()
 
     def refreshContent(self):

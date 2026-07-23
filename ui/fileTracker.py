@@ -68,12 +68,8 @@ class DirectoryWatcher(QObject):
     def refreshWatchedPaths(self):
         paths = set()
         for root in self.roots:
-            for dirPath, _, fileNames in os.walk(root):
+            for dirPath, _, _ in os.walk(root):
                 paths.add(dirPath)
-                for fileName in fileNames:
-                    fileNameLower = fileName.lower()
-                    if not self.filePatterns or any(fnmatch.fnmatch(fileNameLower, p) for p in self.filePatterns):
-                        paths.add(os.path.join(dirPath, fileName))
                 if not self.recursive:
                     break
 

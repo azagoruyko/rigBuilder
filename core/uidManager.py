@@ -6,6 +6,7 @@ from typing import Optional
 
 class UidManager:
     _uids: dict[str, str] = {} # uid: path
+    _mtimeCache: dict[str, tuple[float, str]] = {} # path: (mtime, uid)
 
     @classmethod
     def sync(cls):
@@ -46,17 +47,26 @@ class UidManager:
 
         return os.path.normpath(modulePath) if modulePath else ""
 
-    @staticmethod
-    def getUidFromFile(path: str) -> str:
-        """Extract UID from a module file (.rb or .xml)."""
+    @classmethod
+    def getUidFromFile(cls, path: str) -> str:
+        """Extract UID from a module file (.rb or .xml) using mtime cache."""
         if not any(path.endswith(ext) for ext in MODULE_EXTS):
             return ""
 
+        mtime = os.path.getmtime(path)
+
+        if path in cls._mtimeCache:
+            cachedMtime, cachedUid = cls._mtimeCache[path]
+            if cachedMtime == mtime:
+                return cachedUid
+
         with open(path, "r", encoding="utf-8") as f:
             l = f.readline()  # read first line
-
         r = re.search("uid=\"(\\w*)\"", l)
-        return r.group(1) if r else ""
+        uid = r.group(1) if r else ""
+
+        cls._mtimeCache[path] = (mtime, uid)
+        return uid
 
     @classmethod
     def findUids(cls, path: str) -> dict[str, str]:

@@ -236,6 +236,9 @@ class ModuleHistoryBrowser(QWidget):
 
         layout.addWidget(self.filterEdit)
         layout.addWidget(self.textBrowser)
+
+    def showEvent(self, event):
+        super().showEvent(event)
         self.syncModuleHistory()
 
     def isHistoryTrackingEnabled(self) -> bool:
@@ -352,7 +355,7 @@ class ModuleHistoryBrowser(QWidget):
         genButton.setToolTip("Generate commit message from changes using AI")
         hLayout.addWidget(genButton)
 
-        if not engine.IS_OLLAMA_AVAILABLE or not diffText:
+        if not engine.isOllamaAvailable() or not diffText:
             genButton.hide()
 
         layout.addLayout(hLayout)
@@ -391,11 +394,6 @@ class ModuleHistoryBrowser(QWidget):
         layout.addWidget(bbox)
         accepted = dlg.exec_() == QDialog.Accepted
         return (accepted, lineEdit.text().strip() if accepted else "")
-
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.syncModuleHistory()
 
     def syncModuleHistory(self):
         """Sync the module history widget with the latest history if visible."""

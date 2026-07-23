@@ -15,7 +15,7 @@ from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 
 from .. import __version__
 from ..core import workspace
-from ..ai.engine import IS_OLLAMA_AVAILABLE
+from ..ai.engine import isOllamaAvailable
 from .hostExecutor import hostExecutor
 from ..core import *
 from ..core.connectionManager import connectionManager
@@ -2421,7 +2421,7 @@ class RigBuilderWindow(QFrame):
         headerRow.addWidget(self.workspaceWidget)
         headerRow.addWidget(self.syncBtn)
         headerRow.addStretch()
-        if IS_OLLAMA_AVAILABLE:
+        if isOllamaAvailable():
             headerRow.addWidget(self.aiChatBtn)
             headerRow.addStretch()
         headerRow.addWidget(self.hostCombo)
@@ -2538,7 +2538,6 @@ class RigBuilderWindow(QFrame):
 
         centerWindow(self)
 
-        self.moduleHistoryBrowser.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
         self.moduleBrowser.refreshModules()
 
@@ -2983,7 +2982,6 @@ class RigBuilderWindow(QFrame):
         self.aiChatDialog.loadChat()
         self._updateAutoSaveInterval()
         self._refreshHostCombo()
-        self.moduleHistoryBrowser.syncModuleHistory()
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([ws.settings.modulesPath])
         self.moduleBrowser.refreshModules()
 

@@ -190,7 +190,7 @@ class DocBrowser(QTextBrowser):
         editAction.setEnabled(not self._generating)
         editAction.triggered.connect(self.editRequested.emit)
 
-        if engine.IS_OLLAMA_AVAILABLE:
+        if engine.isOllamaAvailable():
             if self._generating:
                 genAction = menu.addAction("⌛ Generating...")
                 genAction.setEnabled(False)

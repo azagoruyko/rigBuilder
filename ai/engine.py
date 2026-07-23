@@ -2,6 +2,8 @@ import json
 import shutil
 import asyncio
 import os
+import socket
+import time
 import ollama
 from json_repair import repair_json
 
@@ -10,21 +12,27 @@ from ..core.settings import settings
 RootDirectory = os.path.dirname(__file__)
 DEFAULT_CONTEXT_LIMIT = 8192
 
-def isOllamaAvailable() -> bool:
-    """Check if the Ollama server is reachable or the CLI is installed."""
-    # Check if CLI is in PATH
-    if not shutil.which("ollama"):
-        return False
+_ollamaAvailableCache = (False, 0.0) # (isAvailable, lastCheckTime)
 
-    try:
-        # A simple request to see if the server responds
-        ollama.list()
-        return True
-    except Exception:
-        return False
+def isOllamaAvailable(ttl: float = 5.0) -> bool:
+    """Check if the Ollama server is reachable using a fast socket check with TTL caching."""
+    global _ollamaAvailableCache
+    status, lastCheck = _ollamaAvailableCache
+    now = time.time()
+    if now - lastCheck < ttl:
+        return status
 
-# Global status for later usage
-IS_OLLAMA_AVAILABLE = isOllamaAvailable()
+    available = False
+    if shutil.which("ollama"):
+        try:
+            with socket.create_connection(("127.0.0.1", 11434), timeout=0.2):
+                available = True
+        except Exception:
+            available = False
+
+    _ollamaAvailableCache = (available, now)
+    return available
+
 
 with open(os.path.join(RootDirectory, '..', 'docs', 'tech.md'), 'r', encoding='utf-8') as f:
     TECH_DOCS = f.read()
@@ -85,7 +93,7 @@ async def chat(messages: list, format: str = '', temperature: float = 0.0) -> st
     """
     Asynchronous coroutine to communicate with Ollama.
     """
-    if not IS_OLLAMA_AVAILABLE:
+    if not isOllamaAvailable():
         return ""
 
     try:
@@ -105,7 +113,7 @@ async def chatJSON(systemPrompt: str, userPrompt: str, temperature: float = 0.0)
     Asynchronous coroutine to communicate with Ollama expecting a JSON response. 
     Includes automatic JSON repair and parsing.
     """
-    if not IS_OLLAMA_AVAILABLE:
+    if not isOllamaAvailable():
         return {}
 
     messages = [
@@ -129,7 +137,7 @@ async def embed(text: str) -> list[float]:
     """
     Asynchronous coroutine to get embeddings for a single text string using the configured model.
     """
-    if not IS_OLLAMA_AVAILABLE:
+    if not isOllamaAvailable():
         return []
 
     model = settings.ollamaEmbeddingModel
