@@ -3203,6 +3203,7 @@ def applyStylesheet(widget):
 # initialize
 
 app = QApplication([])
+app.setWindowIcon(QIcon(os.path.join(RIG_BUILDER_PATH, "icon.png")))
 applyStylesheet(app)
 updatePalette(app)
 
