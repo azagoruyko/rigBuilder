@@ -206,21 +206,23 @@ class HostServer:
         try:
             sock.connect(f"tcp://localhost:{self._discoveryPort}")
             while self._running:
-                identity = self.ping()
-                msg = json.dumps({
-                    "cmd": "register",
-                    "host": identity.get("host", "unknown"),
-                    "name": identity.get("name", "Unknown Host"),
-                    "cmdPort": self._pullPort,
-                    "eventPort": self._pubPort,
-                })
                 try:
+                    identity = self.ping()
+                    msg = json.dumps({
+                        "cmd": "register",
+                        "host": identity.get("host", "unknown"),
+                        "name": identity.get("name", "Unknown Host"),
+                        "cmdPort": self._pullPort,
+                        "eventPort": self._pubPort,
+                    })
                     sock.send_string(msg, zmq.NOBLOCK)
                 except zmq.Again:
                     pass  # HWM reached — discovery server not consuming; skip this tick
                 except zmq.ZMQError as e:
                     print(f"[rigBuilder.host] registration ZMQError: {e}")
                     break
+                except Exception as e:
+                    print(f"[rigBuilder.host] registration error: {e}")
                 time.sleep(REGISTRATION_INTERVAL_SEC)
         finally:
             sock.close()
