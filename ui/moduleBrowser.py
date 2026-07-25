@@ -119,7 +119,6 @@ class ModuleCardWidget(QWidget):
         self.dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
 
         self.nameLabel = QLabel(name)
-        self.nameLabel.setStyleSheet("font-family: Consolas, monospace; font-size: 12px; font-weight: bold; color: #e8eaed; background: transparent;")
 
         layout.addWidget(self.dot)
         layout.addWidget(self.nameLabel)
@@ -127,8 +126,6 @@ class ModuleCardWidget(QWidget):
 
         if 0.0 < score < 1.0:
             self.scoreLabel = QLabel(f"{score:.0%}")
-            self.scoreLabel.setStyleSheet(
-                "font-family: Consolas; font-size: 10px; color: #6ea7ff; background: transparent;")
             layout.addWidget(self.scoreLabel)
 
     def getCategoryColor(self, category: str) -> str:
@@ -154,7 +151,7 @@ class CategoryItemWidget(QWidget):
             layout.addWidget(dot)
 
         lbl = QLabel(label)
-        lbl.setStyleSheet("font-family: Consolas, monospace; background: transparent;")
+        lbl.setStyleSheet("background: transparent;")
         layout.addWidget(lbl)
         layout.addStretch()
 
@@ -176,7 +173,7 @@ class ModuleBrowserHeader(QWidget):
         layout.setContentsMargins(12, 0, 12, 0)
 
         self.titleLabel = QLabel(title)
-        self.titleLabel.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; font-weight: bold; color: #8a92a3; background: transparent;")
+        self.titleLabel.setStyleSheet("font-size: 11px; font-weight: bold; color: #8a92a3; background: transparent;")
         layout.addWidget(self.titleLabel)
         layout.addStretch()
 

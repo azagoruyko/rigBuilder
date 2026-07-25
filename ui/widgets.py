@@ -791,14 +791,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
         self.setJsonData(data)
         self.somethingChanged.emit()
 
-    def colorizeButtons(self):
-        for b in self.buttonsGroupWidget.buttons():
-            font = b.font()
-            font.setBold(b.isChecked())
-            b.setFont(font)
-
     def _onButtonClicked(self, b):
-        self.colorizeButtons()
         self.somethingChanged.emit()
 
     def clearButtons(self):
@@ -843,8 +836,7 @@ class RadioButtonTemplateWidget(TemplateWidget):
             current = 0
 
         with blockedWidgetContext(self.buttonsGroupWidget) as w:
-            w.buttons()[current].setChecked(True)
-        self.colorizeButtons()
+            w.buttons()[current].setChecked(True)        
 
 class TableTemplateWidget(TemplateWidget):
     template = "table"

@@ -352,15 +352,12 @@ class AttributesGroupWidget(QWidget):
     def showAttributeContextMenu(self, attr, label, pos):
         globalPos = label.mapToGlobal(pos)
         menu = QMenu()
-        titleAction = menu.addAction(attr.name() or "(Unnamed)")
+        titleAction = menu.addAction(f"📝 {attr.name() or '(Unnamed)'}")
         titleAction.setEnabled(False)
-        font = titleAction.font()
-        font.setBold(True)
-        titleAction.setFont(font)
         menu.addSeparator()
 
         if attr.module() and attr.module().parent():
-            makeConnectionMenu = menu.addMenu("Make connection")
+            makeConnectionMenu = menu.addMenu("Connect")
             for a in attr.module().parent().attributes():
                 if a.template() == attr.template() and a.name():
                     makeConnectionMenu.addAction(a.name(), partial(self.connectAttr, attr, "/"+a.name()))
@@ -2400,7 +2397,7 @@ class RigBuilderWindow(QFrame):
         self.syncBtn.setToolTip("Sync all modules (reset local changes)")
         self.syncBtn.clicked.connect(self._onSyncRequested)
 
-        self.aiChatBtn = QPushButton("💬")
+        self.aiChatBtn = QPushButton("🤖")
         self.aiChatBtn.setToolTip("AI Chat (Ollama)")
         self.aiChatBtn.clicked.connect(self._onOpenAIChat)
  
