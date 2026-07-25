@@ -2,8 +2,8 @@
    
    [![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
    ![Commits since latest release](https://img.shields.io/github/commits-since/azagoruyko/rigBuilder/latest)
-
-   <img width="64" height="64" alt="icon" src="https://github.com/user-attachments/assets/810b267b-e60d-406c-963b-35c023381d57" />
+   
+   <img width="64" height="64" alt="icon" src="https://github.com/user-attachments/assets/2430f885-223b-4c67-83a8-101f69c24d14" />
    
 </div>
 
