@@ -11,7 +11,7 @@
 
 While initially developed for rigging, it has evolved into a versatile tool for building pipeline utilities, automation scripts, and custom DCC tools through a visual, module-based workflow. By assembling reusable building blocks, you can create anything from complex rigs to production-ready scene management tools.
 
-<img width="1584" height="945" alt="image" src="https://github.com/user-attachments/assets/3f8bb48a-d597-467a-89b0-aa03c88308f1" />
+<img width="1359" height="939" alt="Screenshot 2026-07-26 203558" src="https://github.com/user-attachments/assets/64c810a8-c812-46c7-8600-ea93d7e831f9" />
 
 ## ⚙️ Core Concepts
 
