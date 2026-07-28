@@ -239,7 +239,7 @@ class AttributesGroupWidget(QWidget):
     def onLabelDoubleClicked(self, attr, event):
         if event.button() == Qt.LeftButton:
             newName, ok = QInputDialog.getText(self, "Rename Attribute", "New name:", QLineEdit.Normal, attr.name())
-            if ok and newName:
+            if ok:
                 newName = replaceSpecialChars(newName.strip())
                 if newName != attr.name():
                     uniqueName = findUniqueName(newName, [a.name() for a in attr.module().attributes()])
