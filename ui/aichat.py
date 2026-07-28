@@ -125,7 +125,6 @@ class AIChatDialog(QDialog):
         layout.addLayout(bottomLayout)
 
         self.input.setFocus()
-        self.setupAIChatTools()
 
         # Cache highlighter CSS
         formatter = HtmlFormatter(style='monokai')
@@ -148,8 +147,12 @@ class AIChatDialog(QDialog):
         self.updateHistory()
 
     def sendMessage(self):
+        if self.worker:
+            self.stopWorker()
+            return
+
         text = self.input.toPlainText().strip()
-        if not text or self.worker:
+        if not text:
             return
 
         self.beforeSendMessage.emit()
@@ -168,8 +171,28 @@ class AIChatDialog(QDialog):
         
         self.currentResponse = ""
         self.statusLabel.setText("Thinking...")
-        self.sendBtn.setEnabled(False)
+        self.sendBtn.setText("⏹ Stop")
+        self.sendBtn.setEnabled(True)
         self.worker.start()
+
+    def stopWorker(self):
+        if self.worker:
+            worker = self.worker
+            self.worker = None
+            worker.stop()
+            try:
+                worker.chunkReceived.disconnect()
+                worker.toolCallUpdate.disconnect()
+                worker.toolResultUpdate.disconnect()
+                worker.finished.disconnect()
+                worker.error.disconnect()
+            except Exception:
+                pass
+            worker.quit()
+
+        self.sendBtn.setText("⏎ Send")
+        self.sendBtn.setEnabled(True)
+        self.statusLabel.setText("Stopped")
 
     def clearChat(self):
         if self.worker or not self.messages:
@@ -218,6 +241,8 @@ class AIChatDialog(QDialog):
         self.worker = None
         self.currentResponse = ""
         self.statusLabel.setText("Ready")
+        self.sendBtn.setText("⏎ Send")
+        self.sendBtn.setEnabled(True)
         
         if stats:
             promptTokens = stats.get('prompt_eval_count', 0)
@@ -233,12 +258,12 @@ class AIChatDialog(QDialog):
             )
             self.statsLabel.setText(statsLine)
         
-        self.sendBtn.setEnabled(True)
         self.updateHistory()
 
     def onError(self, error):
         self.statusLabel.setText(f"Error: {error}")
         self.worker = None
+        self.sendBtn.setText("⏎ Send")
         self.sendBtn.setEnabled(True)
 
     def _formatThinking(self, content):
@@ -331,96 +356,7 @@ class AIChatDialog(QDialog):
 
     def closeEvent(self, event):
         if self.worker:
-            self.worker.stop()
-            self.worker.wait()
+            self.stopWorker()
         super().closeEvent(event)
 
-    def setupAIChatTools(self):
-        def getCurrentState() -> str:
-            """
-            Get the current state of Rig Builder.
-            Useful for understanding the context the user is currently working in.
-            Returns the selected host and the currently selected module in the tree (its name and documentation),
-            and the python imports defined in the module's run code.
-            Use this to understand what the user is currently selecting or working on.
-            """
-            m = self.aiToolsContext["selectedModule"]
-            imports = []
-            if m:
-                for l in self.aiToolsContext["code"].splitlines():
-                    if not l.strip():
-                        continue
-                    if l.startswith("import") or l.startswith("from"):
-                        imports.append(l)
-                    else:
-                        break
-
-            state = f'''
-            Host: {self.aiToolsContext["host"]}, use appropriate coding standards for this host.
-            Selected module: {m.name() if m else 'No module'}
-            Module documentation:{'\n' + m.doc() if m else 'No documentation'}
-            Imports: {'; '.join(imports) if imports else 'No imports'}
-            Selected code:{'\n' + self.aiToolsContext["selectedCode"] if m else "Nothing selected"}
-            '''
-            return state
-
-        def getCurrentModuleCode() -> str:
-            """
-            Get currently selected module code.
-            Variables starting with '@' (e.g., @nodeName) represent module attributes.
-            Returns the code as a string.
-            """
-            if not self.aiToolsContext["selectedModule"]:
-                return "Code is not available"
-
-            return self.aiToolsContext["code"]
-
-        def queryModules(query: str) -> str:
-            """
-            Search for modules in the current workspace by name, description, or functionality.
-            This uses a semantic vector search, so you can describe what the module does in natural language.
-            Use this to find existing modules or to understand what is available.
-            Returns a list of matching module paths and their relevance scores.
-            """
-            from ..moduleIndexer import ModuleIndexer
-            import asyncio
-
-            indexer = ModuleIndexer(os.path.join(settings.workspacePath, "moduleIndex.json"))
-            indexer.refresh()
-            
-            try:
-                results = asyncio.run(indexer.search(query, k=10))
-
-                if not results:
-                    return "No results found"
-                
-                output = [f"{path} (score: {score:.2f})" for path, score in results if score > 0.5]
-                return "\n".join(output)
-
-            except Exception as e:
-                return f"Error during semantic search: {e}"
-
-        def readFile(path: str) -> str:
-            """
-            Read a file and return its content, or list directory entries if path is a directory.
-            Returns full absolute paths when listing a directory.
-            """
-            if not os.path.exists(path):
-                return f"File not found: {path}"
-
-            if os.path.isdir(path):
-                entries = os.listdir(path)
-                return "\n".join(os.path.join(path, e) for e in entries)
-
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return f.read()
-
-            except Exception as e:
-                return f"Error reading file: {e}"
-                
-        engine.AITools.getCurrentState = getCurrentState
-        engine.AITools.queryModules = queryModules
-        engine.AITools.readFile = readFile
-        engine.AITools.getCurrentModuleCode = getCurrentModuleCode
 

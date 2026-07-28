@@ -8,9 +8,12 @@ import ollama
 from json_repair import repair_json
 
 from ..core.settings import settings
+from ..mcp.mcp_client import MCPClientManager
 
 RootDirectory = os.path.dirname(__file__)
 DEFAULT_CONTEXT_LIMIT = 8192
+RESERVED_OUTPUT_TOKENS = 2048  # Reserved tokens for AI response generation
+CHARS_PER_TOKEN = 2.4          # Character-to-token ratio for context budgeting
 
 _ollamaAvailableCache = (False, 0.0) # (isAvailable, lastCheckTime)
 
@@ -69,14 +72,44 @@ def getContextLimit(model: str = None) -> int:
 
 def getMaxChars(model: str = None) -> int:
     """
-    Get the estimated maximum character limit for an input prompt based on the token limit.
-    Heuristic: 1 token is roughly 3 characters for code.
-    Leave 20% headroom for prompts and safety (3.0 * 0.8 = 2.4).
+    Get the estimated maximum character limit for input context based on token limit.
+    Reserves tokens for output response generation.
     """
-    return int(getContextLimit(model) * 2.4)
+    contextTokens = getContextLimit(model)
+    inputTokens = max(1024, contextTokens - RESERVED_OUTPUT_TOKENS)
+    return int(inputTokens * CHARS_PER_TOKEN)
+
+
+def pruneMessages(messages: list, maxChars: int = 250000) -> list:
+    """Prune conversation history dynamically to fit within maximum character headroom."""
+    if not messages:
+        return []
+
+    pruned = []
+    currentChars = 0
+
+    for msg in reversed(messages):
+        role = msg.get('role', '')
+        content = msg.get('content', '') or ""
+        msgChars = len(content)
+
+        if currentChars + msgChars > maxChars:
+            # If a single active tool/user message exceeds total headroom, truncate to fit available space
+            allowedSpace = maxChars - currentChars
+            if allowedSpace > 500 and len(content) > allowedSpace:
+                truncatedContent = content[:allowedSpace] + f"\n... [content truncated at {allowedSpace} chars to fit context headroom]"
+                msg = dict(msg, content=truncatedContent)
+                pruned.append(msg)
+            break
+
+        pruned.append(msg)
+        currentChars += msgChars
+
+    return list(reversed(pruned))
+
 
 def getChatMessages(messages: list) -> list:
-    """Prepare messages by injecting system prompts."""
+    """Prepare messages by injecting system prompts and pruning history."""
     systemMessages = [
         {
             'role': 'system',
@@ -87,7 +120,10 @@ def getChatMessages(messages: list) -> list:
             'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
         }
     ]
-    return systemMessages + messages
+    maxHeadroomChars = getMaxChars() - len(SYSTEM_PROMPT)
+    pruned = pruneMessages(messages, maxHeadroomChars)
+    return systemMessages + pruned
+
 
 async def chat(messages: list, format: str = '', temperature: float = 0.0) -> str:
     """
@@ -96,12 +132,16 @@ async def chat(messages: list, format: str = '', temperature: float = 0.0) -> st
     if not isOllamaAvailable():
         return ""
 
+    contextLimit = getContextLimit()
     try:
         response = await ollama.AsyncClient().chat(
             model=settings.ollamaModel,
             messages=getChatMessages(messages),
             format=format,
-            options={'temperature': temperature}
+            options={
+                'temperature': temperature,
+                'num_ctx': contextLimit
+            }
         )
         return response.get('message', {}).get('content', '')
     except Exception as e:
@@ -168,30 +208,6 @@ def cosineSimilarity(v1: list[float], v2: list[float]) -> float:
     return dotProduct / (normA * normB)
 
 
-class AITools:
-    """Registry for AI tools. Add new staticmethods here with type hints and docstrings."""
-
-    @classmethod
-    def getTools(cls):
-        tools = []
-        for name in dir(cls):
-            if not name.startswith('_') and name not in ['getTools', 'execute']:
-                attr = getattr(cls, name)
-                if callable(attr):
-                    tools.append(attr)
-        return tools
-
-    @classmethod
-    def execute(cls, name: str, args: dict):
-        if hasattr(cls, name):
-            func = getattr(cls, name)
-            if callable(func):
-                try:
-                    return func(**args)
-                except Exception as e:
-                    return f"Error executing {name}: {str(e)}"
-        return f"Unknown tool: {name}"
-
 def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int = 5):
     """
     Generator that yields events from the chat loop with tools:
@@ -201,11 +217,15 @@ def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int
     ('stats', stats_dict)
     """
     totalMessages = getChatMessages(messages)
-    tools = AITools.getTools()
+    tools = MCPClientManager.getOllamaTools()
 
     lastChunk = None
     
     for turn in range(turnLimit):
+        # Guarantee totalMessages fits within context headroom on every turn loop
+        userAndToolMsgs = [m for m in totalMessages if m.get('role') != 'system']
+        totalMessages = getChatMessages(userAndToolMsgs)
+
         hasToolCalls = False
         currentToolCalls = []
         streamedContent = ""
@@ -214,7 +234,10 @@ def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int
             model=settings.ollamaModel,
             messages=totalMessages,
             stream=True,
-            options={'temperature': temperature},
+            options={
+                'temperature': temperature,
+                'num_ctx': getContextLimit()
+            },
             tools=tools
         ):
             lastChunk = chunk
@@ -266,11 +289,19 @@ def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int
                     args = getattr(getattr(call, 'function', None), 'arguments', {})
 
                 if funcName:
-                    result = AITools.execute(funcName, args)
+                    result = MCPClientManager.executeTool(funcName, args)
                     
+                    resStr = str(result)
+                    # Dynamically compute available headroom in input context
+                    currentLength = sum(len(str(m.get('content', '') or '')) for m in totalMessages)
+                    availableHeadroom = getMaxChars() - currentLength
+
+                    if availableHeadroom > 0 and len(resStr) > availableHeadroom:
+                        resStr = resStr[:availableHeadroom] + f"\n... [tool result truncated at {availableHeadroom} chars to fit context limit]"
+
                     toolMsg = {
                         'role': 'tool',
-                        'content': str(result),
+                        'content': resStr,
                         'name': funcName
                     }
                     totalMessages.append(toolMsg)

@@ -42,6 +42,18 @@ def get_example_module() -> str:
     return "example.rb not found."
 
 @mcp.tool()
+def read_resource(uri: str) -> str:
+    """Read content from an MCP resource URI (e.g. 'docs://rig-builder-reference', 'docs://example.rb').
+    Args:
+        uri: Resource URI string to read.
+    """
+    if uri == "docs://rig-builder-reference":
+        return read_rig_builder_reference()
+    elif uri == "docs://example.rb":
+        return get_example_module()
+    return f"Unknown resource URI: {uri}"
+
+@mcp.tool()
 def get_selected_modules() -> str:
     """Returns the names and paths of the currently selected modules in the UI.
     Useful for contextual edits when the user has something selected.
@@ -235,7 +247,6 @@ def get_workspace_settings() -> str:
         out += f"- {k}: {v}\n"
     return out
 
-
-
 if __name__ == "__main__":
     mcp.run(show_banner=False)
+
