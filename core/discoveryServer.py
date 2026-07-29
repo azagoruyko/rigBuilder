@@ -57,28 +57,30 @@ class DiscoveryServer:
                 try:
                     msg = json.loads(socket.recv_string())
                     cmd = msg.get("cmd")
+
                     if cmd == "register":
                         host = msg.get("host", "unknown")
                         cmdPort = msg.get("cmdPort")
                         eventPort = msg.get("eventPort")
                         name = msg.get("name", host.capitalize())
 
+                        count = 0
+                        for entry in self._discoveredHosts.values():
+                            if entry["name"] == name and entry["cmdPort"] != cmdPort:
+                                count += 1
+
+                        nameSuffix = f" ({count})" if count > 0 else ""
+
                         if cmdPort in self._discoveredHosts:
                             oldName = self._discoveredHosts[cmdPort].get("name")
                             self._discoveredHosts[cmdPort].update({
                                 "lastSeen": time.time(),
-                                "name": name,
+                                "name": name + nameSuffix,
                             })
                             if oldName != name:
                                 self.hostDiscovered.emit()
+
                         else: # when new server is discovered
-                            count = 0
-                            for entry in self._discoveredHosts.values():
-                                if entry["name"].startswith(name):
-                                    count += 1
-
-                            nameSuffix = f" ({count})" if count > 0 else ""
-
                             entry = {
                                 "host": host,
                                 "cmdPort": cmdPort,
