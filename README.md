@@ -18,8 +18,8 @@ While initially developed for rigging, it has evolved into a versatile tool for 
 At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 
 - **📦 Modules**: The primary building blocks. Modules can represent anything from a rigging step (e.g., Spine, Limb) to a general utility (e.g., Batch Exporter, Scene Cleanup).
-- **🎛️ Attributes**: Parameters that define module behavior. Attributes can hold any JSON-compatible data and dynamic **Python expressions**.
-- **🔗 Connections**: Attributes can be "wired" together using absolute or relative paths (e.g., `/parent/input`).
+- **🎛️ Attributes**: Parameters that define module behavior. Attributes can hold any JSON-compatible data.
+- **🔗 Connections**: Attributes can be "wired" together using relative path (e.g., `/parent/input`).
 - **🧠 Expressions**: They alter attribute values at time of value resolution.
 - **🖥️ Host Connectivity**: Rig Builder connects to host applications and executes modules inside, bringing the result back in real-time.
 - **🚀 Execution**: When triggered, modules execute top-to-bottom **inside the host application**, driving the DCC/Engine via its native API.
