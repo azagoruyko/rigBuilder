@@ -45,7 +45,7 @@ class DirectoryWatcher(QObject):
 
     def __init__(self, roots: List[str], *, debounceMs: int = 700, filePatterns: Optional[List[str]] = None, recursive: bool = True, parent: Optional[QObject] = None):
         super().__init__(parent=parent)
-        self.roots = [p for p in roots if os.path.exists(p)]
+        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
         self.debounceMs = debounceMs
         self.filePatterns = [p.lower() for p in (filePatterns or [])]
         self.recursive = recursive
@@ -62,18 +62,24 @@ class DirectoryWatcher(QObject):
 
     def setRoots(self, roots: List[str]):
         """Update monitored roots and refresh watcher."""
-        self.roots = [p for p in roots if os.path.exists(p)]
+        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
         self.refreshWatchedPaths()
 
     def refreshWatchedPaths(self):
         paths = set()
         for root in self.roots:
-            for dirPath, _, _ in os.walk(root):
-                paths.add(dirPath)
+            if not os.path.exists(root):
+                continue
+            
+            normRoot = os.path.normpath(root)
+            paths.add(normRoot)
+            
+            for dirPath, _, _ in os.walk(normRoot):
+                paths.add(os.path.normpath(dirPath))
                 if not self.recursive:
                     break
 
-        oldPaths = set(self.watcher.files() + self.watcher.directories())
+        oldPaths = set(os.path.normpath(p) for p in (self.watcher.files() + self.watcher.directories()))
         if not paths and not oldPaths:
             return
 
@@ -85,10 +91,11 @@ class DirectoryWatcher(QObject):
             self.watcher.addPaths(toAdd)
 
     def _onFilesystemChanged(self, path: str):
-        self._changedPaths.add(path)
+        self._changedPaths.add(os.path.normpath(path))
         self.debounceTimer.start(self.debounceMs)
 
     def _onDebounceTimeout(self):
+        self.refreshWatchedPaths()
         for p in self._changedPaths:
             self.fileChanged.emit(p)
         self._changedPaths.clear()
