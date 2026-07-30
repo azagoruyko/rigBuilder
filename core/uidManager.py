@@ -57,26 +57,31 @@ class UidManager:
 
         if path in cls._mtimeCache:
             cachedMtime, cachedUid = cls._mtimeCache[path]
-            if cachedMtime == mtime:
+            if cachedMtime == mtime and cachedUid:
                 return cachedUid
 
-        with open(path, "r", encoding="utf-8") as f:
-            l = f.readline()  # read first line
-        r = re.search("uid=\"(\\w*)\"", l)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read(4096)  # Read first 4KB to locate uid attribute
+
+        r = re.search(r'uid="(\w+)"', content)
         uid = r.group(1) if r else ""
 
-        cls._mtimeCache[path] = (mtime, uid)
+        if uid:
+            cls._mtimeCache[path] = (mtime, uid)
         return uid
 
     @classmethod
     def findUids(cls, path: str) -> dict[str, str]:
         """Find all UIDs and their file paths in directory."""
         uids = {}
-        for fpath in sorted(glob.iglob(path + "/*")):
-            if os.path.isdir(fpath):
-                uids.update(cls.findUids(fpath))
-            elif any(fpath.endswith(ext) for ext in MODULE_EXTS):
-                uid = cls.getUidFromFile(fpath)
-                if uid:
-                    uids[uid] = fpath
+        if not os.path.exists(path):
+            return uids
+
+        for root, _, files in os.walk(path):
+            for file in sorted(files):
+                if any(file.endswith(ext) for ext in MODULE_EXTS):
+                    fpath = os.path.join(root, file)
+                    uid = cls.getUidFromFile(fpath)
+                    if uid:
+                        uids[uid] = os.path.normpath(fpath)
         return uids
