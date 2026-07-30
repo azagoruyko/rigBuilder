@@ -33,7 +33,7 @@ from .apiBrowser import ApiBrowser
 from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
 from .docBrowser import DocBrowser, DocGeneratorWorker, activeWorkers
 from .editor import CodeEditorWithNumbersWidget
-from .fileTracker import TrackFileChangesThread, trackFileChangesThreads, DirectoryWatcher
+from .fileTracker import DirectoryWatcher
 from .moduleBrowser import ModuleBrowser
 from .moduleHistoryBrowser import ModuleHistoryBrowser
 from .utils import *
@@ -3165,13 +3165,6 @@ class RigBuilderWindow(QFrame):
         worker.start()
 
     def closeEvent(self, event):
-        # Terminate all file tracking threads before closing
-        for thread in trackFileChangesThreads.values():
-            if thread.isRunning():
-                thread.stop()
-                thread.wait(1000)  # Wait up to 1 second for thread to finish
-        trackFileChangesThreads.clear()
-        
         self.saveAppSettings()
         self.saveToWorkspace()
 

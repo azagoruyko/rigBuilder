@@ -1,54 +1,29 @@
 import os
-import time
 import fnmatch
-from typing import List, Optional, Callable
+from typing import List, Optional
 
 from .qt import *
 
-trackFileChangesThreads = {} # by file path
-
-class TrackFileChangesThread(QThread):
-    fileChanged = Signal(str)
-
-    def __init__(self, filePath: str):
-        super().__init__()
-        self.filePath = filePath
-        self._running = True
-
-    def stop(self):
-        self._running = False
-
-    def run(self):
-        try:
-            lastModified = os.path.getmtime(self.filePath)
-        except Exception:
-            lastModified = 0
-
-        while self._running:
-            try:
-                if not os.path.exists(self.filePath):
-                    time.sleep(1)
-                    continue
-
-                currentModified = os.path.getmtime(self.filePath)
-                if currentModified != lastModified:
-                    self.fileChanged.emit(self.filePath)
-                    lastModified = currentModified
-            except Exception:
-                pass # ignore temporary file access errors
-            
-            time.sleep(1)
 
 class DirectoryWatcher(QObject):
     """Watch directories recursively and emit debounced change events."""
     fileChanged = Signal(str)
 
-    def __init__(self, roots: List[str], *, debounceMs: int = 700, filePatterns: Optional[List[str]] = None, recursive: bool = True, parent: Optional[QObject] = None):
+    def __init__(
+        self,
+        roots: List[str],
+        *,
+        debounceMs: int = 700,
+        filePatterns: Optional[List[str]] = None,
+        recursive: bool = True,
+        parent: Optional[QObject] = None,
+    ):
         super().__init__(parent=parent)
-        self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
         self.debounceMs = debounceMs
         self.filePatterns = [p.lower() for p in (filePatterns or [])]
         self.recursive = recursive
+        self.roots: List[str] = []
+
         self.watcher = QFileSystemWatcher(self)
         self.debounceTimer = QTimer(self)
         self.debounceTimer.setSingleShot(True)
@@ -58,7 +33,7 @@ class DirectoryWatcher(QObject):
         self.watcher.fileChanged.connect(self._onFilesystemChanged)
         self.debounceTimer.timeout.connect(self._onDebounceTimeout)
 
-        self.refreshWatchedPaths()
+        self.setRoots(roots)
 
     def setRoots(self, roots: List[str]):
         """Update monitored roots and refresh watcher."""
@@ -66,16 +41,21 @@ class DirectoryWatcher(QObject):
         self.refreshWatchedPaths()
 
     def refreshWatchedPaths(self):
+        """Re-scan filesystem trees and update QFileSystemWatcher subscriptions."""
         paths = set()
         for root in self.roots:
             if not os.path.exists(root):
                 continue
-            
-            normRoot = os.path.normpath(root)
-            paths.add(normRoot)
-            
-            for dirPath, _, _ in os.walk(normRoot):
-                paths.add(os.path.normpath(dirPath))
+            paths.add(root)
+            for dirPath, _, filenames in os.walk(root):
+                normDir = os.path.normpath(dirPath)
+                paths.add(normDir)
+
+                for filename in filenames:
+                    filePath = os.path.normpath(os.path.join(dirPath, filename))
+                    if self._matchesPatterns(filePath):
+                        paths.add(filePath)
+
                 if not self.recursive:
                     break
 
@@ -96,6 +76,15 @@ class DirectoryWatcher(QObject):
 
     def _onDebounceTimeout(self):
         self.refreshWatchedPaths()
-        for p in self._changedPaths:
-            self.fileChanged.emit(p)
+        for path in list(self._changedPaths):
+            if os.path.isdir(path) or self._matchesPatterns(path):
+                self.fileChanged.emit(path)
         self._changedPaths.clear()
+
+    def _matchesPatterns(self, path: str) -> bool:
+        """Check if path matches configured glob patterns."""
+        if not self.filePatterns:
+            return True
+        filename = os.path.basename(path).lower()
+        pathLower = path.lower()
+        return any(fnmatch.fnmatch(filename, pat) or fnmatch.fnmatch(pathLower, pat) for pat in self.filePatterns)
