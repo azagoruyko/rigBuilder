@@ -8,7 +8,7 @@ import ollama
 from json_repair import repair_json
 
 from ..core.settings import settings
-from ..mcp.mcp_client import MCPClientManager
+from ..mcp_server.client import MCPClientManager
 
 RootDirectory = os.path.dirname(__file__)
 DEFAULT_CONTEXT_LIMIT = 8192

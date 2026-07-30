@@ -2793,11 +2793,7 @@ class RigBuilderWindow(QFrame):
             "mcpServers": {
                 "rigBuilder": {
                     "command": os.path.join(RIG_BUILDER_PATH, ".venv", "Scripts", "python.exe"),
-                    "args": ["-u", os.path.join(RIG_BUILDER_PATH, "mcp", "mcp_server.py")],
-                    "env": {
-                        "FASTMCP_SHOW_SERVER_BANNER": "false",
-                        "FASTMCP_CLIENT_INIT_TIMEOUT": "0"
-                    }
+                    "args": ["-u", os.path.join(RIG_BUILDER_PATH, "mcp_server", "server.py")]
                 }
             }
         }

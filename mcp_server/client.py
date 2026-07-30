@@ -3,14 +3,8 @@ import os
 import threading
 import asyncio
 
-# Isolate sys.path so 'import mcp' resolves to PyPI 'mcp' library in site-packages
-origPath = sys.path[:]
-sys.path = [p for p in sys.path if p not in ('', os.getcwd(), os.path.dirname(os.path.abspath(__file__)))]
-try:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-finally:
-    sys.path = origPath
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 from ..core.logger import logger
 
@@ -44,7 +38,7 @@ class MCPClientManager:
     @classmethod
     async def _workerCoro(cls):
         mcpScriptPath = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "mcp_server.py")
+            os.path.join(os.path.dirname(__file__), "server.py")
         )
 
         serverParams = StdioServerParameters(
@@ -71,7 +65,7 @@ class MCPClientManager:
     def getOllamaTools(cls) -> list:
         """Retrieves registered FastMCP tool functions with full Python signatures for Ollama."""
         try:
-            from .mcp_server import mcp as _mcp_server
+            from .server import mcp as _mcp_server
             comps = getattr(_mcp_server._local_provider, '_components', {})
             return [comp.fn for key, comp in comps.items() if key.startswith('tool:') and hasattr(comp, 'fn')]
         except Exception as e:
