@@ -27,7 +27,6 @@ At its heart, Rig Builder operates on a **graph-based hierarchy of modules**:
 
 ## ✨ Key Features
 
-- **⌨️ Modern Scripting IDE** — Embedded Python IDE with syntax highlighting and code execution across DCCs.
 - **💼 Workspace Management** — Organize your work into isolated projects. Seamlessly switch between different toolsets, rigs, or automated pipelines while maintaining focused module hierarchies and persistent environment settings.
 - **🤖 Agentic AI Chat** — Enhanced Ollama integration with tool-calling capabilities. The AI can now perform semantic searches across modules, write code, add attributes, and much more!
 - **🔍 Semantic Module Indexing** — Intelligent search that understands the functionality of your scripts. Uses vector embeddings to find the right modules using natural language queries.
