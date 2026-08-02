@@ -110,6 +110,28 @@ def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit
                 widgetsData[i]["buttonEnabled"] = False
 
 
+# Safe builtins allowlist for attribute expressions.
+EXPRESSION_BUILTINS = {
+    k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k)
+    for k in (
+        # Type constructors / casting
+        "bool", "int", "float", "str", "bytes", "bytearray",
+        "list", "tuple", "dict", "set", "frozenset", "complex",
+        # Sequence / iteration helpers
+        "len", "range", "enumerate", "zip", "map", "filter",
+        "sorted", "reversed", "min", "max", "sum", "all", "any",
+        # Math / numeric
+        "abs", "round", "pow", "divmod",
+        # String / repr
+        "repr", "format", "chr", "ord", "hex", "oct", "bin", "ascii",
+        # Misc safe utilities
+        "id", "hash", "iter", "next", "slice", "object",
+        "print", "True", "False", "None",
+        "ValueError", "TypeError", "KeyError", "IndexError",
+        "RuntimeError", "AttributeError", "StopIteration", "Exception",
+    )
+}
+
 class Attribute:
     def __init__(
         self,
@@ -283,7 +305,12 @@ class Attribute:
             return
         
         ctx = self._module.context()
-        ctx.update({"data": self._data, "value": self._defaultValue()})
+        ctx.update({
+            "data": self._data, 
+            "value": self._defaultValue(),
+            "module": None, # prevent accessing module here (use ch, chset)
+            "__builtins__": EXPRESSION_BUILTINS,
+        })
 
         try:
             exec(self._expression, ctx)
