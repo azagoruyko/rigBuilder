@@ -139,6 +139,9 @@ class Workspace:
     def activate(self):
         """Core activation: populate runtime Settings from this workspace."""
         # Ensure directories exist
+        if settings.scriptsPath in sys.path: # remove previous workspace scriptsPath
+            sys.path.remove(settings.scriptsPath)
+
         for p in [self.settings.historyPath, self.settings.modulesPath, self.settings.scriptsPath]:
             os.makedirs(p, exist_ok=True)
 
