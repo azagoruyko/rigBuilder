@@ -296,6 +296,8 @@ class Attribute:
         """Find source attribute for connection."""
         if self._module and self._module._parent and self._connect:
             srcAttr = self._module._parent.findAttributeByPath(self._connect)
+            if not srcAttr:
+                raise AttributeResolverError("Cannot resolve connection source '{}'".format(self._connect))
             return srcAttr
 
     def listConnections(self) -> List[Attribute]:
@@ -815,33 +817,19 @@ class Module:
             return self._name
         return self._parent.path() + ("/" + self._name if inclusive else "")
 
-    def findAttributeByPath(self, path: str) -> Attribute:
+    def findAttributeByPath(self, path: str) -> Optional[Attribute]:
         '''
         Return attribute by path, where path is /a/b/c, where c is attr, a/b is a parent relative path
         '''
-        *moduleList, attrName = path.split("/")
+        *modules, attrName = path.split("/")
+        modulePath = "/".join(modules)
+        targetModule = self.findModuleByPath(modulePath)
+        if not targetModule:
+            return None
 
-        currentParent = self
-        for module in moduleList:
-            if not module:
-                continue
-
-            if module == "..":
-                currentParent = currentParent._parent
-                continue
-
-            elif module == ".":
-                continue
-
-            ch = currentParent.findChild(module)
-            if ch:
-                currentParent = ch
-            else:
-                raise AttributeResolverError("Cannot resolve '{}' path".format(path))
-
-        attr = currentParent.findAttribute(attrName)
+        attr = targetModule.findAttribute(attrName)
         if not attr:
-            raise AttributeResolverError("Cannot find '{}' attribute".format(path))
+            return None
         
         return attr
 
@@ -851,10 +839,10 @@ class Module:
             return self
 
         parts = path.split("/")
-        current = self
-
-        if parts[0] == self._name:
+        if parts and parts[0] == self._name:
             parts = parts[1:]
+
+        current = self
 
         for part in parts:
             if not part:

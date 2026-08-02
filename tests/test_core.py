@@ -892,9 +892,8 @@ class TestModulePaths:
         attr = moduleHierarchy.findAttributeByPath("./rootAttr")
         assert attr.name() == "rootAttr"
 
-        # Error on invalid path
-        with pytest.raises(AttributeResolverError):
-            moduleHierarchy.findAttributeByPath("nonexistent/attr")
+        # Invalid path returns None
+        assert moduleHierarchy.findAttributeByPath("nonexistent/attr") is None
 
     def testConvenienceMethods(self, moduleHierarchy):
         """Test ch/chdata/chset convenience methods."""
@@ -917,9 +916,8 @@ class TestModulePaths:
         rootAttr = createAttribute("rootAttr", "input", "float", 10.0)
         root.addAttribute(rootAttr)
 
-        # Try to navigate beyond root (causes AttributeError because parent is None)
-        with pytest.raises(AttributeError):
-            root.findAttributeByPath("../someAttr")
+        # Try to navigate beyond root returns None
+        assert root.findAttributeByPath("../someAttr") is None
 
     def testMultipleParentNavigationInPath(self):
         """Test path with multiple .. navigations."""
