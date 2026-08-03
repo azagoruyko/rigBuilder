@@ -5,18 +5,23 @@ from ..core import Module
 import functools
 
 def executionGate(func):
-    """Decorator to ensure cursor is always restored after execution."""
+    """Decorator that serializes host execution and manages the wait cursor.
+
+    If a call is already in-flight (e.g. because QApplication.processEvents()
+    re-entered the event loop while waiting for a ZMQ reply), the re-entrant
+    call is rejected immediately and returns None.
+    """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        if not self._isRunning:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            self._isRunning = True
+        if self._isRunning:
+            return None  # reject re-entrant call
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self._isRunning = True
         try:
             return func(self, *args, **kwargs)
         finally:
-            if self._isRunning:
-                QApplication.restoreOverrideCursor()
-                self._isRunning = False
+            QApplication.restoreOverrideCursor()
+            self._isRunning = False
     return wrapper
 
 class HostExecutor(QObject):
