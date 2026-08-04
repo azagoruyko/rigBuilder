@@ -7,12 +7,14 @@ This document provides a comprehensive technical guide for AI code editors and g
 ## 1. System Overview & Architecture
 
 Rig Builder is a hierarchical execution graph of **Modules**. Each module contains:
+
 - **Run Code**: Python execution script.
 - **Documentation**: Markdown-based description.
 - **Attributes**: Parameters that define widgets, settings, inputs/outputs, and expressions.
 - **Children**: Nested modules executing in order.
 
 ### Execution Flow
+
 1. **Pull**: When a module starts execution, it recursively pulls data from connection sources.
 2. **Execute Expressions**: Attributes evaluate their custom Python expressions to calculate final values.
 3. **Execute Run Code**: The module's `<run>` Python code is executed.
@@ -25,6 +27,7 @@ Rig Builder is a hierarchical execution graph of **Modules**. Each module contai
 Modules are serialized to XML format. A `.rb` file represents a single root module with its descendants.
 
 ### XML Schema Layout
+
 ```xml
 <module name="module_name" muted="0" uid="optional_uuid_hex_string">
   <run><![CDATA[
@@ -68,6 +71,7 @@ Modules are serialized to XML format. A `.rb` file represents a single root modu
 Every attribute uses a widget template determining how it is configured and displayed. Below are the precise JSON schemas stored inside the `<attr>` CDATA block:
 
 ### `lineEditAndButton` (Text, Int, Float input with button)
+
 ```json
 {
   "value": "",
@@ -81,9 +85,11 @@ Every attribute uses a widget template determining how it is configured and disp
   "default": "value"
 }
 ```
+
 *Note on `validator`: `0` = String/None, `1` = Integer, `2` = Float.*
 
 ### `vector` (N-dimensional float array)
+
 ```json
 {
   "value": [0.0, 0.0, 0.0],
@@ -95,6 +101,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `checkBox` (Boolean toggle)
+
 ```json
 {
   "checked": false,
@@ -103,6 +110,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `comboBox` (String dropdown list)
+
 ```json
 {
   "items": ["option_a", "option_b"],
@@ -112,6 +120,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `listBox` (Item list selection)
+
 ```json
 {
   "items": ["item1", "item2"],
@@ -121,6 +130,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `radioButton` (Exclusive button grid layout)
+
 ```json
 {
   "items": ["Option A", "Option B", "Option C"],
@@ -131,6 +141,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `table` (2D String Grid)
+
 ```json
 {
   "items": [["cell_r0_c0", "cell_r0_c1"]],
@@ -140,6 +151,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `curve` (Bezier spline data evaluation)
+
 ```json
 {
   "cvs": [[0.0, 1.0], [0.5, 0.5], [1.0, 1.0]],
@@ -148,6 +160,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `json` (Generic JSON list/dict editor)
+
 ```json
 {
   "data": [{"key": "value"}],
@@ -158,6 +171,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `fileSelector` (File picker widget)
+
 ```json
 {
   "value": "",
@@ -167,9 +181,11 @@ Every attribute uses a widget template determining how it is configured and disp
   "default": "value"
 }
 ```
+
 *Note on `mode`: `"openFile"`, `"saveFile"`, or `"existingDirectory"`.*
 
 ### `label` (Read-only HTML display)
+
 ```json
 {
   "text": "Your message here",
@@ -178,6 +194,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `text` (Multi-line text editor)
+
 ```json
 {
   "text": "",
@@ -187,6 +204,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `button` (Standalone execution button)
+
 ```json
 {
   "command": "chset(\"/someAttr\", 1)",
@@ -197,6 +215,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `compound` (Complex widget containing nested sub-widgets)
+
 ```json
 {
   "widgets": [
@@ -214,6 +233,7 @@ Every attribute uses a widget template determining how it is configured and disp
 ## 4. Execution Context & The Macro `@` Syntax
 
 ### The `@` Macro Substitution
+
 Inside module run scripts (`<run>`) and attribute expressions (`_expression`), the `@` prefix simplifies accessing attribute values. It is pre-processed before Python evaluation:
 
 1. **`@attr_name`** -> Expands to **`attr_attr_name`**, which evaluates to the **default/primary value** of the attribute.
@@ -221,22 +241,23 @@ Inside module run scripts (`<run>`) and attribute expressions (`_expression`), t
 3. **`@attr_name_data`** -> Expands to **`attr_attr_name_data`**, returning an `AttributeDataAccessor` mapping to the attribute's internal configuration dictionary. Used to get/set non-default JSON keys (e.g. `@my_attr_data["buttonLabel"] = "New Label"`).
 
 ### Context Scope Variable List
+
 When running script code, the following scope is injected:
 
-* `module`: Current execution instance of `core.Module`.
-* `ch(path, key=None)`: Gets an attribute's default value (or specific key value) by relative path.
-* `chset(path, value, key=None)`: Sets an attribute's value (or specific key value) by relative path.
-* `chdata(path)`: Gets a read-only copy of the attribute's data dictionary by relative path.
-* `attr_<attr_name>`: Evaluates to attribute's default value.
-* `attr_set_<attr_name>(val)`: Method to set attribute value.
-* `attr_<attr_name>_data`: `AttributeDataAccessor` for setting specific JSON keys in attribute data.
+- `module`: Current execution instance of `core.Module`.
+- `ch(path, key=None)`: Gets an attribute's default value (or specific key value) by relative path.
+- `chset(path, value, key=None)`: Sets an attribute's value (or specific key value) by relative path.
+- `chdata(path)`: Gets a read-only copy of the attribute's data dictionary by relative path.
 
 ### Relative Pathing Syntax in Connections and `ch()` functions
+
 Paths are constructed using Unix-like relative structures:
-* `/attrName`: Look up attribute `attrName` in the **current** module.
-* `childName/attrName`: Look up attribute `attrName` inside the **child** module named `childName`.
-* `../attrName`: Look up attribute `attrName` inside the **parent** module.
-* `../../childName/attrName`: Navigate two parents up, then down to `childName` module, and retrieve `attrName`.
+
+- `/attr`: Look up attribute `attr` in the **current** module.
+- `/child/attr`: Look up attribute `attr` inside the **child** module.
+- `../attr`: Look up attribute `attr` inside the **parent** module.
+
+**Important**: connections use **parent** module for searching modules, i.e. `/attr` points to parent module's `attr`.
 
 ---
 
@@ -245,25 +266,28 @@ Paths are constructed using Unix-like relative structures:
 Registered via `APIRegistry` and available directly in module execution scope:
 
 ### General & Math Utilities
-* `clamp(val, low, high) -> float`: Clamps numeric value between bounds.
-* `listLerp(lst1, lst2, w) -> list`: Performs linear interpolation between two lists of numbers.
-* `smartConversion(x: str) -> Any`: Attempts to parse a string as JSON, falling back to a raw string on failure.
-* `fromSmartConversion(x) -> str`: Converts Python objects to a JSON string, keeping strings raw.
-* `copyJson(data) -> Any`: Performs a deep copy of JSON-compatible structures.
-* `exit()`: Exits the current module's execution immediately (raises `ExitModuleException`).
-* `error(msg: str)`: Emits an error output and terminates the module execution.
-* `warning(msg: str)`: Emits a warning to output logs without stopping execution.
+
+- `clamp(val, low, high) -> float`: Clamps numeric value between bounds.
+- `listLerp(lst1, lst2, w) -> list`: Performs linear interpolation between two lists of numbers.
+- `smartConversion(x: str) -> Any`: Attempts to parse a string as JSON, falling back to a raw string on failure.
+- `fromSmartConversion(x) -> str`: Converts Python objects to a JSON string, keeping strings raw.
+- `copyJson(data) -> Any`: Performs a deep copy of JSON-compatible structures.
+- `exit()`: Exits the current module's execution immediately (raises `ExitModuleException`).
+- `error(msg: str)`: Emits an error output and terminates the module execution.
+- `warning(msg: str)`: Emits a warning to output logs without stopping execution.
 
 ### Widget Helpers
-* `curve_evaluate(data: dict, param: float) -> list[float]`: Evaluates a Bezier curve attribute at `0-1` parameter.
-* `curve_evaluateFromX(data: dict, x: float) -> list[float]`: Evaluates a Bezier curve attribute at X position.
-* `comboBox_items(data: dict) -> list[str]`: Retrieves items from a combo box.
-* `comboBox_setItems(data: dict, items: list[str])`: Replaces items in a combo box.
+
+- `curve_evaluate(data: dict, param: float) -> list[float]`: Evaluates a Bezier curve attribute at `0-1` parameter.
+- `curve_evaluateFromX(data: dict, x: float) -> list[float]`: Evaluates a Bezier curve attribute at X position.
+- `comboBox_items(data: dict) -> list[str]`: Retrieves items from a combo box.
+- `comboBox_setItems(data: dict, items: list[str])`: Replaces items in a combo box.
 
 ### UI Progress Control
-* `beginProgress(text: str, count: int)`: Initializes progress bar tracker dialog.
-* `stepProgress(value: int, text: str = None)`: Steps the active progress tracker.
-* `endProgress()`: Hides the active progress tracker.
+
+- `beginProgress(text: str, count: int)`: Initializes progress bar tracker dialog.
+- `stepProgress(value: int, text: str = None)`: Steps the active progress tracker.
+- `endProgress()`: Hides the active progress tracker.
 
 ---
 
@@ -272,6 +296,7 @@ Registered via `APIRegistry` and available directly in module execution scope:
 For scripting rig builds programmatically using `rigBuilder.core`:
 
 ### `core.Module`
+
 ```python
 class Module:
     def __init__(self, name="module", runCode="", doc="", children=None, attributes=None, muted=False): ...
@@ -312,6 +337,7 @@ class Module:
 ```
 
 ### `core.Attribute`
+
 ```python
 class Attribute:
     def __init__(self, name="attr", template="lineEditAndButton", category="General", connect="", expression=""): ...
@@ -341,63 +367,4 @@ class Attribute:
     def push(): ...
     def executeExpression(): ...
     def findConnectionSource(self) -> Optional[Attribute]: ...
-```
-
----
-
-## 7. XML Example: Creating a Connected Rig Module Hierarchy
-
-Here is a full XML layout demonstrating parent-child modules, multiple categories of widget templates, custom attribute expressions, cross-module attribute connections, and standard API usages inside `<run>` scripts:
-
-```xml
-<module name="root_character" muted="0" uid="f094f3d47efe4680b27c3d06b05f4ca6">
-  <run><![CDATA[
-# Execute main run logic
-print("Rigging Character Name: ", @characterName)
-
-# Execute child module programmatically if needed
-ch_spine = module.child("spine_builder")
-ch_spine.run()
-
-# Set output value to child input connection
-@set_spineJointCount(@jointCount)
-  ]]></run>
-  <doc><![CDATA[
-## Root Character Builder
-This is the root configuration module for Rig Builder modules.
-- **Character Name**: Name prefix used in maya.
-- **Joint Count**: Number of joints used in spine calculation.
-  ]]></doc>
-  <attributes>
-    <attr name="characterName" template="lineEditAndButton" category="Settings" connect="">
-      <![CDATA[{"value": "Hero", "placeholder": "Enter character name...", "buttonEnabled": false, "default": "value"}]]>
-    </attr>
-    <attr name="jointCount" template="lineEditAndButton" category="Settings" connect="">
-      <![CDATA[{"value": 5, "validator": 1, "buttonEnabled": false, "default": "value"}]]>
-    </attr>
-    <attr name="spineJointCount" template="lineEditAndButton" category="Outputs" connect="">
-      <![CDATA[{"value": 5, "validator": 1, "buttonEnabled": false, "default": "value"}]]>
-    </attr>
-  </attributes>
-  <children>
-    <module name="spine_builder" muted="0" uid="">
-      <run><![CDATA[
-# Spine module logic
-print("Building Spine joints: ", @numJoints)
-for i in range(@numJoints):
-    print("Creating spine joint joint_{}".format(i))
-      ]]></run>
-      <attributes>
-        <!-- This attribute connects to the parent root module output 'spineJointCount' -->
-        <attr name="numJoints" template="lineEditAndButton" category="General" connect="../spineJointCount">
-          <![CDATA[{"value": 5, "validator": 1, "buttonEnabled": false, "default": "value"}]]>
-        </attr>
-        <!-- Expression attribute evaluating calculations automatically -->
-        <attr name="doubleJoints" template="lineEditAndButton" category="Expressions" connect="">
-          <![CDATA[{"value": 10, "validator": 1, "buttonEnabled": false, "default": "value", "_expression": "value = ch(\"/numJoints\") * 2"}]]>
-        </attr>
-      </attributes>
-    </module>
-  </children>
-</module>
 ```
