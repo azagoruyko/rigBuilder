@@ -61,7 +61,7 @@ def copyJson(data):
         return data
 
     else:
-        raise TypeError("Data of '{}' type is not JSON compatible: {}".format(type(data), str(data)))
+        raise TypeError("Data of '{}' type is not JSON compatible".format(type(data)))
 
 def jsonifyContext(context: dict) -> dict:
     """Filter dictionary to include only JSON-serializable values."""
