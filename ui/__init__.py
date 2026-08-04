@@ -1451,11 +1451,6 @@ class ModuleModel(QAbstractItemModel):
         """Handle signal from ModuleTracker when a tracked file changes."""
         self.layoutChanged.emit() # Refresh all
 
-    def refreshReferences(self):
-        """Force-reload all cached reference modules via the tracker."""
-        self.moduleTracker.refresh()
-        self.layoutChanged.emit()
-
     def replaceModule(self, index: QModelIndex, newModule: Module):
         """Replace a module instance at the given index with a new one."""
         oldModule = self.getModule(index)
@@ -1799,8 +1794,7 @@ class ModuleTreeWidget(QTreeView):
     def syncAllModules(self):
         """Full refresh of the entire tree from disk while preserving expansion state."""
         state = self._getTreeState()
-        self.moduleModel.refreshReferences()
-        
+
         undoStack.push(SyncModulesCommand(self.moduleModel, [self.moduleModel.rootModule()]))
         
         self._setTreeState(state)
@@ -2536,7 +2530,6 @@ class RigBuilderWindow(QFrame):
         centerWindow(self)
 
         self.moduleBrowser.modulesAutoReloadWatcher.setRoots([settings.modulesPath])
-        self.moduleBrowser.refreshModules()
 
         self._splitters = {
             "version": 4,

@@ -316,7 +316,6 @@ class ModuleBrowser(QDialog):
         self.sizeGrip.setStyleSheet("background: transparent;")
 
         self._setupAutoReloadWatcher()
-        self.refreshModules()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
