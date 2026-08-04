@@ -879,34 +879,30 @@ class RenameModuleCommand(QUndoCommand):
         self.model.dataChanged.emit(idx, idx)
 
 class AddModuleCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, module: Module, parentIndex: QModelIndex, row: int):
+    def __init__(self, model: ModuleModel, module: Module, parentModule: Optional[Module] = None, row: int = -1):
         super().__init__(f"Add Module: {module.name()}")
         self.model = model
         self.module = module
-        self.parentIndex = QPersistentModelIndex(parentIndex)
+        self.parentModule = parentModule or model.rootModule()
         self.row = row
 
     def redo(self):
-        parentModule = self.model.getModule(QModelIndex(self.parentIndex)) or self.model.rootModule()
-        
         # Ensure unique name within parent
-        existingNames = {ch.name() for ch in parentModule.children() if ch is not self.module}
+        existingNames = {ch.name() for ch in self.parentModule.children() if ch is not self.module}
         self.module.setName(findUniqueName(self.module.name(), existingNames))
 
-        if self.row < 0:
-            self.row = len(parentModule.children())
+        targetRow = self.row if self.row >= 0 else len(self.parentModule.children())
+        parentIdx = self.model.indexForModule(self.parentModule)
         
-        self.model.beginInsertRows(QModelIndex(self.parentIndex), self.row, self.row)
-        parentModule.insertChild(self.row, self.module)
+        self.model.beginInsertRows(parentIdx, targetRow, targetRow)
+        self.parentModule.insertChild(targetRow, self.module)
         self.model.endInsertRows()
 
     def undo(self):
         parentModule = self.module.parent() or self.model.rootModule()
-        try:
-            row = parentModule.children().index(self.module)
-        except ValueError:
-            return # Module already removed or hierarchy out of sync
-            
+        if self.module not in parentModule.children():
+            return
+        row = parentModule.children().index(self.module)
         parentIdx = self.model.indexForModule(parentModule)
         
         self.model.beginRemoveRows(parentIdx, row, row)
@@ -914,34 +910,38 @@ class AddModuleCommand(QUndoCommand):
         self.model.endRemoveRows()
 
 class RemoveModulesCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, indices: List[QModelIndex]):
+    def __init__(self, model: ModuleModel, modules: List[Module]):
         super().__init__("Remove Module(s)")
         self.model = model
-        # Store modules and their positions
         self.items = []
-        for idx in sorted(indices, key=lambda x: x.row(), reverse=True):
-            m = model.getModule(idx)
+        for m in modules:
             p = m.parent() or model.rootModule()
             row = p.children().index(m)
-            self.items.append((m, QPersistentModelIndex(model.indexForModule(p)), row))
+            self.items.append((m, p, row))
+        # Sort descending so bottom rows are removed first without shifting upper row indices
+        self.items.sort(key=lambda x: x[2], reverse=True)
 
     def redo(self):
-        for m, p_idx, row in self.items:
-            self.model.beginRemoveRows(QModelIndex(p_idx), row, row)
-            (m.parent() or self.model.rootModule()).removeChild(m)
-            self.model.endRemoveRows()
+        for m, p, _ in self.items:
+            if m in p.children():
+                row = p.children().index(m)
+                pIdx = self.model.indexForModule(p)
+                self.model.beginRemoveRows(pIdx, row, row)
+                p.removeChild(m)
+                self.model.endRemoveRows()
 
     def undo(self):
-        for m, p_idx, row in reversed(self.items):
-            self.model.beginInsertRows(QModelIndex(p_idx), row, row)
-            (self.model.getModule(QModelIndex(p_idx)) or self.model.rootModule()).insertChild(row, m)
+        for m, p, row in reversed(self.items):
+            pIdx = self.model.indexForModule(p)
+            self.model.beginInsertRows(pIdx, row, row)
+            p.insertChild(row, m)
             self.model.endInsertRows()
 
 class MuteModuleCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, indices: List[QModelIndex]):
+    def __init__(self, model: ModuleModel, modules: List[Module]):
         super().__init__("Mute/Unmute Module(s)")
         self.model = model
-        self.modules = [model.getModule(idx) for idx in indices]
+        self.modules = list(modules)
         self.oldStates = [m.muted() for m in self.modules]
 
     def redo(self):
@@ -957,10 +957,10 @@ class MuteModuleCommand(QUndoCommand):
         self.model.layoutChanged.emit()
 
 class EmbedModuleCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, indices: List[QModelIndex]):
+    def __init__(self, model: ModuleModel, modules: List[Module]):
         super().__init__("Embed Module(s)")
         self.model = model
-        self.modules = [model.getModule(idx) for idx in indices]
+        self.modules = list(modules)
         self.oldUids = [m.uid() for m in self.modules]
 
     def redo(self):
@@ -974,44 +974,62 @@ class EmbedModuleCommand(QUndoCommand):
         self.model.layoutChanged.emit()
 
 class MoveModulesCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, modules: List[Module], targetParentIdx: QModelIndex, targetRow: int):
+    def __init__(self, model: ModuleModel, modules: List[Module], targetParent: Optional[Module] = None, targetRow: int = -1):
         super().__init__("Move Module(s)")
         self.model = model
-        self.targetParentIdx = QPersistentModelIndex(targetParentIdx)
+        self.targetParent = targetParent or model.rootModule()
         self.targetRow = targetRow
-        self.items = [] # (module, oldParentIdx, oldRow)
-        for m in modules:
+        self.modules = list(modules)
+        
+        # Filter out invalid moves (e.g. moving a module into itself or its descendant)
+        self.items = []
+        for m in self.modules:
             p = m.parent() or model.rootModule()
-            row = p.children().index(m)
-            self.items.append((m, QPersistentModelIndex(model.indexForModule(p)), row))
+            if m is not self.targetParent and not self._isDescendant(self.targetParent, m):
+                row = p.children().index(m)
+                self.items.append((m, p, row))
+        self.items.sort(key=lambda item: item[2])
+
+    def _isDescendant(self, node: Module, ancestor: Module) -> bool:
+        curr = node
+        while curr:
+            if curr == ancestor:
+                return True
+            curr = curr.parent()
+        return False
 
     def redo(self):
-        targetParent = self.model.getModule(QModelIndex(self.targetParentIdx)) or self.model.rootModule()
-        currTargetRow = self.targetRow
-        for m, oldParentIdx, oldRow in self.items:
-            oldParent = m.parent() or self.model.rootModule()
-            actualTargetRow = currTargetRow
-            
-            # Adjust row if moving within the same parent
-            if oldParent == targetParent and oldRow < currTargetRow:
-                actualTargetRow -= 1
-                
-            if self.model.beginMoveRows(QModelIndex(oldParentIdx), oldRow, oldRow, QModelIndex(self.targetParentIdx), currTargetRow):
+        if not self.items:
+            return
+
+        self.model.layoutAboutToBeChanged.emit()
+        
+        for m, oldParent, _ in self.items:
+            if m in oldParent.children():
                 oldParent.removeChild(m)
-                targetParent.insertChild(actualTargetRow, m)
-                self.model.endMoveRows()
-                currTargetRow = actualTargetRow + 1 # Next item goes after this one
+
+        targetRow = self.targetRow if 0 <= self.targetRow <= len(self.targetParent.children()) else len(self.targetParent.children())
+        for m, _, _ in self.items:
+            self.targetParent.insertChild(targetRow, m)
+            targetRow += 1
+
+        self.model.layoutChanged.emit()
 
     def undo(self):
-        for m, oldParentIdx, oldRow in reversed(self.items):
-            currParent = m.parent() or self.model.rootModule()
-            currRow = currParent.children().index(m)
-            
-            if self.model.beginMoveRows(self.model.indexForModule(currParent), currRow, currRow, QModelIndex(oldParentIdx), oldRow):
-                currParent.removeChild(m)
-                oldParent = self.model.getModule(QModelIndex(oldParentIdx)) or self.model.rootModule()
-                oldParent.insertChild(oldRow, m)
-                self.model.endMoveRows()
+        if not self.items:
+            return
+
+        self.model.layoutAboutToBeChanged.emit()
+
+        for m, _, _ in self.items:
+            if m in self.targetParent.children():
+                self.targetParent.removeChild(m)
+
+        for m, oldParent, oldRow in self.items:
+            row = min(oldRow, len(oldParent.children()))
+            oldParent.insertChild(row, m)
+
+        self.model.layoutChanged.emit()
                 
 
 class SyncModulesCommand(QUndoCommand):
@@ -1186,16 +1204,11 @@ class ModuleModel(QAbstractItemModel):
         if not self.hasIndex(row, column, parent):
             return QModelIndex()
 
-        if not parent.isValid():
-            parentModule = self._rootModule
-        else:
-            parentModule = parent.internalPointer()
-
+        parentModule = self.getModule(parent) or self._rootModule
         if row < 0 or row >= len(parentModule.children()):
             return QModelIndex()
 
-        childModule = parentModule.children()[row]
-        return self.createIndex(row, column, childModule)
+        return self.createIndex(row, column, parentModule.children()[row])
 
     def parent(self, index):
         if not index.isValid():
@@ -1222,11 +1235,7 @@ class ModuleModel(QAbstractItemModel):
         if parent.column() > 0:
             return 0
 
-        if not parent.isValid():
-            parentModule = self._rootModule
-        else:
-            parentModule = parent.internalPointer()
-
+        parentModule = self.getModule(parent) or self._rootModule
         return len(parentModule.children())
 
     def columnCount(self, parent=QModelIndex()):
@@ -1347,24 +1356,9 @@ class ModuleModel(QAbstractItemModel):
         f = Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
         return f | Qt.ItemIsEditable
 
-    # Helpers for structural changes
-    def addModuleAt(self, module: Module, parentIndex: QModelIndex = QModelIndex(), row: int = -1):
-        undoStack.push(AddModuleCommand(self, module, parentIndex, row))
-        return self.indexForModule(module)
-
-        parentModule = self.getModule(parentIndex) or self._rootModule
-        
-        # Ensure unique name within parent
-        existingNames = {ch.name() for ch in parentModule.children()}
-        module.setName(findUniqueName(module.name(), existingNames))
-
-        if row < 0:
-            row = len(parentModule.children())
-        
-        self.beginInsertRows(parentIndex, row, row)
-        parentModule.insertChild(row, module)
-        self.endInsertRows()
-        return self.index(row, 0, parentIndex)
+    def addModuleAt(self, module: Module, parent: Optional[Module] = None, row: int = -1) -> Module:
+        undoStack.push(AddModuleCommand(self, module, parent, row))
+        return module
 
     def indexForModule(self, module: Module, parent=QModelIndex()) -> QModelIndex:
         """Find the QModelIndex for a given Module instance."""
@@ -1415,9 +1409,10 @@ class ModuleModel(QAbstractItemModel):
 
         undoStack.beginMacro("Drop Module(s)")
 
-        parentModule = self.getModule(parent) or self._rootModule
+        parentModule = self.getModule(parent)
         if row < 0:
-            row = len(parentModule.children())
+            parentContainer = parentModule or self._rootModule
+            row = len(parentContainer.children())
 
         try:
             # External drops (from browser)
@@ -1427,12 +1422,13 @@ class ModuleModel(QAbstractItemModel):
                     if not filePath or not os.path.exists(filePath): continue
                     if any(filePath.endswith(ext) for ext in MODULE_EXTS):
                         m = Module.loadModule(filePath)
-                        self.addModuleAt(m, parent, row); row += 1
+                        self.addModuleAt(m, parentModule, row)
+                        row += 1
                 return True
             # Internal move
             if data.hasFormat("application/x-rigbuilder-module-internal"):
                 if not self._draggedModules: return False
-                undoStack.push(MoveModulesCommand(self, self._draggedModules, parent, row))
+                undoStack.push(MoveModulesCommand(self, self._draggedModules, parentModule, row))
                 self._draggedModules = []
                 return True
         finally:
@@ -1539,9 +1535,13 @@ class ModuleTreeWidget(QTreeView):
         drag.exec(Qt.MoveAction)
 
     def dropEvent(self, event: QDropEvent):
+        draggedModules = list(self.moduleModel._draggedModules)
         if event.source() == self:
             event.setDropAction(Qt.CopyAction) # Prevents Qt from double-removing items
         super().dropEvent(event)
+
+        if draggedModules:
+            self.selectModules(draggedModules)
 
     def drawRow(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
         if self.selectionModel().isSelected(index):
@@ -1580,17 +1580,19 @@ class ModuleTreeWidget(QTreeView):
         return [self.moduleModel.getModule(idx) for idx in self.selectionModel().selectedRows()]
 
     def currentModule(self) -> Optional[Module]:
-        selectedIndices = self.selectionModel().selectedRows()
-        if not selectedIndices:
+        modules = self.selectedModules()
+        if not modules:
             return None
         
         # If current index is among selected, return it.
         # Otherwise return the first selected one.
         curr = self.currentIndex()
         if curr.isValid() and self.selectionModel().isSelected(curr):
-            return self.moduleModel.getModule(curr)
+            m = self.moduleModel.getModule(curr)
+            if m:
+                return m
         
-        return self.moduleModel.getModule(selectedIndices[0])
+        return modules[0]
 
     def _getTreeState(self) -> dict:
         """Collect expansion paths, selection paths, and current index path in a single pass."""
@@ -1674,17 +1676,8 @@ class ModuleTreeWidget(QTreeView):
     def insertModule(self):
         m = Module()
         m.setName("module")
-        
-        # Add to root if nothing selected or current index is invalid
-        parentIdx = self.currentIndex()
-        if not self.selectionModel().hasSelection() or not parentIdx.isValid():
-             parentIdx = QModelIndex()
-        
-        newIdx = self.moduleModel.addModuleAt(m, parentIdx)
-        if parentIdx.isValid():
-            self.setExpanded(parentIdx, True)
-        self.setCurrentIndex(newIdx)
-        self.scrollTo(newIdx)
+        self.moduleModel.addModuleAt(m, self.currentModule())
+        self.selectModule(m)
 
     def importModule(self):
         filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import", settings.modulesPath, "Module files (*.rb *.xml);;All files (*)")
@@ -1693,7 +1686,8 @@ class ModuleTreeWidget(QTreeView):
 
         try:
             m = Module.loadModule(filePath)
-            self.moduleModel.addModuleAt(m)
+            self.moduleModel.addModuleAt(m, self.currentModule())
+            self.selectModule(m)
         except ET.ParseError:
             logger.error(f"'{filePath}': invalid module")
             mainWindow.showLog()
@@ -1711,19 +1705,19 @@ class ModuleTreeWidget(QTreeView):
         m.setName(name)
         m.setRunCode(code)
         
-        newIdx = self.moduleModel.addModuleAt(m)
-        self.setCurrentIndex(newIdx)
+        self.moduleModel.addModuleAt(m, self.currentModule())
+        self.selectModule(m)
 
     def saveModules(self, forceDialog: bool = False, generateNewUids: bool = False):
-        selectedIndices = self.selectionModel().selectedRows()
-        if not selectedIndices:
+        modules = self.selectedModules()
+        if not modules:
             return
 
         saveData = [] # List of (module, outputPath, index)
 
         # 1. Collect target paths and show file dialogs if needed
-        for idx in selectedIndices:
-            module = self.moduleModel.getModule(idx)
+        for module in modules:
+            idx = self.moduleModel.indexForModule(module)
             outputPath = None
             
             if not forceDialog:
@@ -1789,7 +1783,7 @@ class ModuleTreeWidget(QTreeView):
         if QMessageBox.question(mainWindow, "Rig Builder", "Embed modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
             return
 
-        undoStack.push(EmbedModuleCommand(self.moduleModel, self.selectionModel().selectedRows()))
+        undoStack.push(EmbedModuleCommand(self.moduleModel, modules))
 
     def syncAllModules(self):
         """Full refresh of the entire tree from disk while preserving expansion state."""
@@ -1801,8 +1795,8 @@ class ModuleTreeWidget(QTreeView):
 
     def syncSelectedModules(self):
         """Sync selected modules with the files on disk with confirmation."""
-        selectedIndices = self.selectionModel().selectedRows()
-        if not selectedIndices:
+        modules = self.selectedModules()
+        if not modules:
             return
 
         msg = "Sync selected modules with the files on disk?\n\nYou may lose unsaved changes for those modules.\n\nContinue?"
@@ -1810,50 +1804,34 @@ class ModuleTreeWidget(QTreeView):
             return
 
         state = self._getTreeState()
-        
-        modules = []
-        for idx in selectedIndices:
-            module = self.moduleModel.getModule(idx)
-            if module:
-                modules.append(module)
-                
-        if modules:
-            undoStack.push(SyncModulesCommand(self.moduleModel, modules))
+        undoStack.push(SyncModulesCommand(self.moduleModel, modules))
         self._setTreeState(state)
 
     def muteModule(self):
-        selectedIndices = self.selectionModel().selectedRows()
-        if not selectedIndices:
+        modules = self.selectedModules()
+        if not modules:
             return
 
-        undoStack.push(MuteModuleCommand(self.moduleModel, selectedIndices))
+        undoStack.push(MuteModuleCommand(self.moduleModel, modules))
+        
     def duplicateModule(self):
-        # Sort indices by row descending to avoid index shifting issues during insertion
-        rows = sorted(self.selectionModel().selectedRows(0), key=lambda x: x.row(), reverse=True)
-        if not rows:
+        modules = self.selectedModules()
+        if not modules:
             return
 
         undoStack.beginMacro("Duplicate Module(s)")
-
-        newIndices = []
+        duplicated = []
         try:
-            for idx in rows:
-                module = self.moduleModel.getModule(idx)
-                if not module: continue
-                newModule = module.copy()
-                parentIdx = idx.parent()
-                newIdx = self.moduleModel.addModuleAt(newModule, parentIdx, idx.row() + 1)
-                if newIdx.isValid():
-                    newIndices.append(newIdx)
-                    if parentIdx.isValid(): self.setExpanded(parentIdx, True)
+            for m in reversed(modules):
+                copy = m.copy()
+                p = m.parent()
+                row = (p or self.moduleModel.rootModule()).children().index(m) + 1
+                self.moduleModel.addModuleAt(copy, p, row)
+                duplicated.append(copy)
         finally:
             undoStack.endMacro()
 
-        # Select all newly created modules
-        if newIndices:
-            self.selectionModel().clearSelection()
-            for idx in newIndices:
-                self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        self.selectModules(list(reversed(duplicated)))
 
     def copyModules(self):
         """Copy selected modules to clipboard."""
@@ -1879,56 +1857,59 @@ class ModuleTreeWidget(QTreeView):
             QMessageBox.warning(self, "Rig Builder", "Clipboard is empty.")
             return
 
-        parentIdx = self.currentIndex()
-        if not self.selectionModel().hasSelection() or not parentIdx.isValid():
-            parentIdx = QModelIndex()
-            
-        parentModule = self.moduleModel.getModule(parentIdx) or self.moduleModel.rootModule()
-
-        if parentIdx.isValid():
-            self.setExpanded(parentIdx, True)
+        parentModule = self.currentModule()
 
         undoStack.beginMacro("Paste Module(s)")
-
-        pastedIndices = []
+        pastedModules = []
         try:
             for module in self.clipboard:
                 newModule = module.copy()
-                newIdx = self.moduleModel.addModuleAt(newModule, parentIdx)
-                pastedIndices.append(newIdx)
+                self.moduleModel.addModuleAt(newModule, parentModule)
+                pastedModules.append(newModule)
         finally:
             undoStack.endMacro()
         
-        # Select pasted items
-        self.selectionModel().clearSelection()
-        for idx in pastedIndices:
-            self.selectionModel().select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        self.selectModules(pastedModules)
             
     def removeModule(self, *, askConfirmation: bool = True):
-        selectedIndices = self.selectionModel().selectedRows()
-        if not selectedIndices:
+        modules = self.selectedModules()
+        if not modules:
             return
 
         if askConfirmation:
-            modules = self.selectedModules()
             msg = "\n".join([m.name() for m in modules])
             if QMessageBox.question(mainWindow, "Rig Builder", "Remove modules?\n"+msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
                 return
 
-        undoStack.push(RemoveModulesCommand(self.moduleModel, selectedIndices))
+        undoStack.push(RemoveModulesCommand(self.moduleModel, modules))
+
     def addModule(self, module: "Module") -> "Module":
         """Adds top level module."""
         self.moduleModel.addModuleAt(module)
         return module
 
+    def selectModules(self, modules: List[Module]):
+        """Select a list of modules in the tree view, expand their parents, and focus the first one."""
+        validIndices = [self.moduleModel.indexForModule(m) for m in modules if m]
+        validIndices = [idx for idx in validIndices if idx.isValid()]
+        if not validIndices:
+            return
+
+        selection = QItemSelection()
+        for idx in validIndices:
+            p = idx.parent()
+            if p.isValid():
+                self.setExpanded(p, True)
+            selection.select(idx, idx)
+
+        self.selectionModel().select(selection, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+        first = validIndices[0]
+        self.selectionModel().setCurrentIndex(first, QItemSelectionModel.NoUpdate)
+        self.scrollTo(first)
+
     def selectModule(self, module: Module):
         """Find and select a module in the tree view."""
-        if not module:
-             return
-        idx = self.moduleModel.indexForModule(module)
-        if idx.isValid():
-            self.setCurrentIndex(idx)
-            self.scrollTo(idx)
+        self.selectModules([module])
 
 
 class TemplateSelectorDialog(QDialog):
@@ -2759,13 +2740,6 @@ class RigBuilderWindow(QFrame):
 
         return menu
 
-    def addModule(self, module: Module) -> Optional[Module]:
-        """Add a module to the tree and return it."""
-        idx = self.treeWidget.moduleModel.addModuleAt(module)
-        if idx.isValid():
-            return self.treeWidget.moduleModel.getModule(idx)
-        return None
-
     def addModuleBySpec(self, spec: str):
         """Load and select module by spec (UID, relative or full path)."""
         try:
@@ -2840,7 +2814,7 @@ class RigBuilderWindow(QFrame):
 
     def _onModuleAdditionRequested(self, module: Module):
         """Handle module addition from external browsers."""
-        added = self.addModule(module)
+        added = self.treeWidget.addModule(module)
         self.show()
         self.raise_()
         self.activateWindow()
