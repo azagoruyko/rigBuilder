@@ -1295,8 +1295,6 @@ class ModuleModel(QAbstractItemModel):
                 color = QColor(200, 200, 200)
                 if isMuted:
                     color = QColor(100, 100, 100)
-                elif self.isInsideReferenceModule(module):
-                    color = QColor(230, 230, 100) # Yellow for reference modules
                 return color
 
             elif column == 1:
