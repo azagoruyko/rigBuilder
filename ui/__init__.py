@@ -1239,7 +1239,7 @@ class ModuleModel(QAbstractItemModel):
         return len(parentModule.children())
 
     def columnCount(self, parent=QModelIndex()):
-        return 3 # Name, Path, UID
+        return 2 # Name, Path
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -1273,9 +1273,6 @@ class ModuleModel(QAbstractItemModel):
                 else:
                     return ""
 
-            elif column == 2:
-                return module.uid()[:8]
-
         elif role == Qt.EditRole:
             if column == 0:
                 return module.name()
@@ -1299,9 +1296,6 @@ class ModuleModel(QAbstractItemModel):
 
             elif column == 1:
                 return QColor(100, 100, 100) if isMuted else QColor(125, 125, 125)
-
-            elif column == 2:
-                return QColor(100, 100, 150) if isMuted else QColor(125, 125, 170)
 
         elif role == Qt.BackgroundRole:
             if column == 0:
@@ -1344,7 +1338,7 @@ class ModuleModel(QAbstractItemModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return ["Name", "Path", "UID"][section]
+            return ["Name", "Path"][section]
         return None
 
     def flags(self, index):
