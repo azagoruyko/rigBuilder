@@ -64,8 +64,6 @@ class RigBuilderAPI:
         if not parentModule:
             return {"error": f"Parent module not found: {parent_path}"}
             
-        parentIndex = model.indexForModule(parentModule)
-        
         from rigBuilder.core import Module
         from rigBuilder.ui import AddModuleCommand, undoStack
         
@@ -76,7 +74,7 @@ class RigBuilderAPI:
         else:
             new_module = Module(module_name)
             
-        cmd = AddModuleCommand(model, new_module, parentIndex, -1)
+        cmd = AddModuleCommand(model, new_module, parentModule, -1)
         undoStack.push(cmd)
         return {"message": f"Added module {new_module.name()} to {parent_path}"}
 
@@ -100,7 +98,7 @@ class RigBuilderAPI:
             return {"error": f"Invalid index for module: {module_path}"}
             
         from rigBuilder.ui import RemoveModulesCommand, undoStack
-        cmd = RemoveModulesCommand(model, [idx])
+        cmd = RemoveModulesCommand(model, [module])
         undoStack.push(cmd)
         
         return {"message": f"Removed module {module_path}"}
