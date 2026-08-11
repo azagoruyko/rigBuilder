@@ -1,7 +1,6 @@
 import logging
 import sys
 import os
-from logging.handlers import RotatingFileHandler
 from .settings import RIG_BUILDER_USER_PATH
 
 class LogHandler(logging.Handler):
@@ -106,6 +105,6 @@ logger.addHandler(logHandler)
 logFile = os.path.join(RIG_BUILDER_USER_PATH, "log.txt")
 os.makedirs(RIG_BUILDER_USER_PATH, exist_ok=True)
 
-fileHandler = RotatingFileHandler(logFile, mode='w', maxBytes=5 * 1024 * 1024, backupCount=0, encoding='utf-8')
+fileHandler = logging.FileHandler(logFile, mode='w', encoding='utf-8')
 fileHandler.setFormatter(logging.Formatter('%(asctime)s, %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 logger.addHandler(fileHandler)
