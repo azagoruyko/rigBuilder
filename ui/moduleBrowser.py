@@ -277,6 +277,8 @@ class ModuleBrowser(QDialog):
         # Center Panel: Modules List
         self.modulesList = QListWidget()
         self.modulesList.setMinimumWidth(220)
+        self.modulesList.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.modulesList.customContextMenuRequested.connect(self._onModuleContextMenu)
         self.modulesList.itemSelectionChanged.connect(self._onModuleSelectionChanged)
         self.modulesList.itemDoubleClicked.connect(self.addSelectedModule)
         self.splitter.addWidget(self.modulesList)
@@ -569,3 +571,21 @@ class ModuleBrowser(QDialog):
         """Open the modules directory in default file browser."""
         if os.path.exists(settings.modulesPath):
             subprocess.call(f'explorer "{os.path.normpath(settings.modulesPath)}"')
+
+    def showInExplorer(self, path: str):
+        """Open specified file path in Windows Explorer."""
+        if path and os.path.exists(path):
+            subprocess.call(f'explorer /select,"{os.path.normpath(path)}"')
+
+    def _onModuleContextMenu(self, pos: QPoint):
+        """Show context menu for items in the module list."""
+        item = self.modulesList.itemAt(pos)
+        if not item or not item.data(Qt.UserRole):
+            return
+
+        self.modulesList.setCurrentItem(item)
+        menu = QMenu(self)
+        menu.addAction("Show in Explorer", lambda: self.showInExplorer(item.data(Qt.UserRole)))
+        menu.exec(self.modulesList.mapToGlobal(pos))
+
+#
