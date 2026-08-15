@@ -438,6 +438,10 @@ class ModuleBrowser(QDialog):
         selectedCategory = catItem.data(Qt.UserRole) if catItem else None
         searchQuery = self.searchWidget.text().strip().lower()
 
+        # Save current module selection
+        curItem = self.modulesList.currentItem()
+        selectedPath = curItem.data(Qt.UserRole) if curItem else None
+
         modulesMap = self._getAvailableModules()
 
         # 1. Category Filter
@@ -466,14 +470,16 @@ class ModuleBrowser(QDialog):
         self.modulesList.clear()
         for m in modules:
             item = QListWidgetItem()
+            item.setData(Qt.UserRole, m["filepath"])
             card = ModuleCardWidget(m["name"], m["filepath"], score=m["score"])
             item.setSizeHint(card.sizeHint())
             self.modulesList.addItem(item)
             self.modulesList.setItemWidget(item, card)
 
-        if self.modulesList.count() > 0:
-            self.modulesList.setCurrentRow(0)
-        else:
+            if selectedPath and item.data(Qt.UserRole) == selectedPath:
+                self.modulesList.setCurrentItem(item)
+
+        if self.modulesList.count() == 0:
             self.docBrowser.clear()
             self.addButton.setEnabled(False)
 
