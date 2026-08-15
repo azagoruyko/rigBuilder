@@ -177,9 +177,9 @@ class WorkspaceManagerDialog(QDialog):
         self.vscodeEdit.editingFinished.connect(partial(self._onLineEditChanged, "vscode", self.vscodeEdit))
         self.settingsLayout.addRow("VSCode Command:", self.vscodeEdit)
 
-        self.trackHistoryCheck = QCheckBox("Track History")
+        self.trackHistoryCheck = QCheckBox()
         self.trackHistoryCheck.toggled.connect(partial(self._onSettingChanged, "trackHistory"))
-        self.settingsLayout.addRow("", self.trackHistoryCheck)
+        self.settingsLayout.addRow("Track History", self.trackHistoryCheck)
 
         self.aiLanguageEdit = QLineEdit()
         self.aiLanguageEdit.editingFinished.connect(partial(self._onLineEditChanged, "aiLanguage", self.aiLanguageEdit))
