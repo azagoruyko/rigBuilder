@@ -40,10 +40,7 @@ def isOllamaAvailable(ttl: float = 5.0) -> bool:
 with open(os.path.join(RootDirectory, '..', 'docs', 'tech.md'), 'r', encoding='utf-8') as f:
     TECH_DOCS = f.read()
 
-with open(os.path.join(RootDirectory, 'chat_prompt.md'), 'r', encoding='utf-8') as f:
-    CHAT_PROMPT = f.read()
-
-SYSTEM_PROMPT = CHAT_PROMPT + "\n\n" + TECH_DOCS
+SYSTEM_PROMPT = TECH_DOCS
 
 _contextLimitCache = {}
 

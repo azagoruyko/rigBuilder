@@ -2,7 +2,15 @@
 
 This document provides a comprehensive technical guide for AI code editors and generators to build, edit, and manipulate Rig Builder modules (`.rb` or `.xml` format) and workspaces (`.rbws` format).
 
----
+## AI Role
+
+You are the Rig Builder assistant. Rig Builder is a modular environment for creating and running Python-based automation tools across multiple hosts (Maya, Unreal, Blender, Houdini, etc.). Act as a pair-programmer, assist the user with his modules, fix bugs and explain logic.
+
+## Guidelines
+
+- **Target Selected Module**: Modify only the currently selected module in Rig Builder. Do not edit other files or modules without explicit user instructions! Because each module saving in UI also involves history tracking with git.
+- **Editing Hierarchical Modules**: Never edit nested or instantiated modules directly within a parent module file (e.g., `l_limb` inside `Biped`), as direct changes will be overwritten on the next sync. To modify a referenced module, edit the standalone reference module itself (located by its `uid`) after obtaining user confirmation.
+- **Code style**: always follow the workspace (and nearby modules) coding style.
 
 ## 1. System Overview & Architecture
 
@@ -20,7 +28,6 @@ Rig Builder is a hierarchical execution graph of **Modules**. Each module contai
 3. **Execute Run Code**: The module's `<run>` Python code is executed.
 4. **Execute Children**: Child modules execute sequentially (unless muted).
 
----
 
 ## 2. File Format Specification (.rb / .xml)
 
@@ -53,7 +60,7 @@ Modules are serialized to XML format. A `.rb` file represents a single root modu
 | :--- | :--- |
 | `<module>` | Root tag representing a module. |
 | `name` | Unique name of the module among sibling modules. |
-| `muted` | `1` to mute execution (runs child modules but skips its own run code, unless executed directly); `0` to execute. |
+| `muted` | `1` to mute execution (unless executed directly); `0` to execute. |
 | `uid` | 32-character hexadecimal UUID. Generated when saving the file; points to external referenced modules. |
 | `<run>` | CDATA block containing Python run code. |
 | `<doc>` | CDATA block containing Markdown documentation. |
@@ -61,10 +68,9 @@ Modules are serialized to XML format. A `.rb` file represents a single root modu
 | `<attr>` | Individual attribute definition. |
 | `template` | The widget UI template type (e.g. `lineEditAndButton`, `vector`, `checkBox`). |
 | `category` | Tab or section name under which the attribute is categorized in the UI (e.g., `General`, `Expression`). |
-| `connect` | Connection path to a source attribute (e.g., `/myAttr` or `../otherModule/sourceAttr`). |
+| `connect` | Connection path to a source attribute from parent module (e.g., `/parentAttr` or `/neighborModule/neighborAttr`). |
 | `<attr>` CDATA | JSON string defining the widget properties. **Must** contain a `"default"` key mapping to the main value key. |
 
----
 
 ## 3. Widget Templates & JSON Schemas
 
@@ -228,8 +234,6 @@ Every attribute uses a widget template determining how it is configured and disp
 }
 ```
 
----
-
 ## 4. Execution Context & The Macro `@` Syntax
 
 ### The `@` Macro Substitution
@@ -259,8 +263,6 @@ Paths are constructed using Unix-like relative structures:
 
 **Important**: connections use **parent** module for searching modules, i.e. `/attr` points to parent module's `attr`.
 
----
-
 ## 5. Standard Global APIs
 
 Registered via `APIRegistry` and available directly in module execution scope:
@@ -288,8 +290,6 @@ Registered via `APIRegistry` and available directly in module execution scope:
 - `beginProgress(text: str, count: int)`: Initializes progress bar tracker dialog.
 - `stepProgress(value: int, text: str = None)`: Steps the active progress tracker.
 - `endProgress()`: Hides the active progress tracker.
-
----
 
 ## 6. Python Class API (Reference)
 
