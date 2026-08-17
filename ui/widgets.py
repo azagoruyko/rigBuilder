@@ -569,6 +569,7 @@ class LineEditAndButtonTemplateWidget(TemplateWidget):
 
         elif self.validator == 2: # double
             validator = QDoubleValidator()
+            validator.setLocale(QLocale("C"))
             validator.setRange(self.minValue, self.maxValue)
             validator.setDecimals(4)
             self.textWidget.setValidator(validator)
@@ -1150,6 +1151,7 @@ class VectorTemplateWidget(TemplateWidget):
         self.precision = data.get("precision", self.precision)
 
         validator = QDoubleValidator()
+        validator.setLocale(QLocale("C"))
         validator.setDecimals(self.precision)        
         
         values = data.get("value", [])
