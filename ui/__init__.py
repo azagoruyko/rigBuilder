@@ -2144,15 +2144,16 @@ class MyProgressBar(QWidget):
 
     def initialize(self):
         self.queue = []
+        self.hide()
 
     def updateWithState(self, state: dict[str, object]):
-        trimText = lambda text, size: "..." + text[-size+3:]  if len(text) > size else " "*(size-len(text)) + text
+        trimText = lambda text, size: "..." + text[-size+3:] if len(text) > size else " "*(size-len(text)) + text
         self.labelWidget.setText(trimText(state["text"], self.labelSize))
         self.progressBarWidget.setValue(state["value"])
         self.progressBarWidget.setMaximum(state["max"])
 
     def beginProgress(self, text: str, count: int, updatePercent: float = 0.01):
-        q = {"text": text, "max": count, "value": 0, "updatePercent":updatePercent}
+        q = {"text": text, "max": count, "value": 0, "updatePercent": updatePercent}
         self.queue.append(q)
         self.updateWithState(q)
         self.show()
@@ -2169,10 +2170,10 @@ class MyProgressBar(QWidget):
             if text:
                 q["text"] = text
             self.updateWithState(q)
-            QApplication.processEvents()
 
     def endProgress(self):
         if not self.queue:
+            self.hide()
             return
         self.queue.pop()
         if not self.queue:
