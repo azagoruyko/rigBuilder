@@ -16,10 +16,8 @@ class HoudiniServer(HostServer):
 
     def executeOnMainThread(self, taskFunction) -> None:
         def task():
-            try:
-                taskFunction()
-            finally:
-                hou.ui.removeEventLoopCallback(task)
+            hou.ui.removeEventLoopCallback(task)
+            taskFunction()
 
         hou.ui.addEventLoopCallback(task)
 
