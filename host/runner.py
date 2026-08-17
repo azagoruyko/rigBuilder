@@ -40,7 +40,27 @@ def overrideAPI(emitFn, runId):
 
     APIRegistry.override("beginProgress", _beginProgress)
     APIRegistry.override("stepProgress", _stepProgress)
-    APIRegistry.override("endProgress", _endProgress)    
+    APIRegistry.override("endProgress", _endProgress)
+
+
+def _runHostTask(emitFn, runId: str, taskFn):
+    """Run taskFn with stream capture and progress overrides, guaranteeing cleanup in finally."""
+    savedApi = {
+        "beginProgress": APIRegistry.api().get("beginProgress"),
+        "stepProgress": APIRegistry.api().get("stepProgress"),
+        "endProgress": APIRegistry.api().get("endProgress"),
+    }
+
+    overrideAPI(emitFn, runId)
+    capture = _StreamCapture(emitFn, runId)
+    with captureOutput(capture):
+        try:
+            return taskFn()
+        finally:
+            emitFn({"event": "endProgress", "id": runId})
+            for name, func in savedApi.items():
+                if func is not None:
+                    APIRegistry.override(name, func)
 
 
 def _emitError(emitFn, runId: str, msg: str, tb: str = "") -> dict:
@@ -55,8 +75,6 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
 
     *actionFn* receives (module, extraContext) and must return the updated context dict.
     """
-    overrideAPI(emitFn, runId)
-
     try:
         root = Module.fromXml(moduleXml)
     except Exception as e:
@@ -67,13 +85,14 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
         return _emitError(emitFn, runId, f"Module not found at path: {modulePath}")
 
     extraContext = _interactiveContexts.get(contextKey, {})
-    capture = _StreamCapture(emitFn, runId)
 
-    with captureOutput(capture):
-        try:
-            ctx = actionFn(module, extraContext)
-        except Exception as e:
-            return _emitError(emitFn, runId, str(e), getErrorStack())
+    def _task():
+        return actionFn(module, extraContext)
+
+    try:
+        ctx = _runHostTask(emitFn, runId, _task)
+    except Exception as e:
+        return _emitError(emitFn, runId, str(e), getErrorStack())
 
     if contextKey:
         _interactiveContexts[contextKey] = ctx
@@ -115,15 +134,18 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
 
     # Retrieve or create the accumulated interactive context.
     context = _interactiveContexts.get(contextKey, {})
-    capture = _StreamCapture(emitFn, runId)
 
-    with captureOutput(capture):
-        try:
-            result = executeWithResult(code, context)
-            if result is not None:
-                print(repr(result))
-        except Exception as e:
-            return _emitError(emitFn, runId, str(e), getErrorStack())
+    def _task():
+        context.update(APIRegistry.api())
+        result = executeWithResult(code, context)
+        if result is not None:
+            print(repr(result))
+        return result
+
+    try:
+        _runHostTask(emitFn, runId, _task)
+    except Exception as e:
+        return _emitError(emitFn, runId, str(e), getErrorStack())
 
     # Store surviving user variables for the next interactive call.
     if contextKey:

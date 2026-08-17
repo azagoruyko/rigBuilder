@@ -71,6 +71,7 @@ class HostExecutor(QObject):
         if self._isRunning:
             QApplication.restoreOverrideCursor()
             self._isRunning = False
+        self.endProgress.emit()
         self.onConnectionLost.emit(reason)
 
     @executionGate
