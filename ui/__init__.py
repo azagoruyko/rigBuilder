@@ -1490,6 +1490,10 @@ class ModuleTreeWidget(QTreeView):
 
     def paintEvent(self, event: QPaintEvent):
         super().paintEvent(event)
+        
+        if self.moduleModel.rootModule().children():
+            return
+
         painter = QPainter()
         if painter.begin(self.viewport()):
             painter.setPen(QColor("#7a8699"))
