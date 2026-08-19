@@ -1803,6 +1803,32 @@ class ModuleTreeWidget(QTreeView):
         undoStack.push(SyncModulesCommand(self.moduleModel, modules))
         self._setTreeState(state)
 
+    def syncWithSelection(self):
+        """Sync destination module (current/latest clicked) with source module selected in tree."""
+        modules = self.selectedModules()
+        if len(modules) != 2:
+            QMessageBox.warning(mainWindow, "Rig Builder", "Please select exactly 2 modules (Source then Destination).")
+            return
+
+        dest = self.currentModule()
+        srcs = [m for m in modules if m is not dest]
+        if not dest or not srcs:
+            return
+        src = srcs[0]
+
+        if not src.uid() or not dest.uid() or src.uid() != dest.uid():
+            msg = f"Module UIDs must match.\n\nSource '{src.name()}': {src.uid() or '(empty)'}\nDestination '{dest.name()}': {dest.uid() or '(empty)'}"
+            QMessageBox.warning(mainWindow, "Rig Builder", msg)
+            return
+
+        msg = f"Sync destination module '{dest.name()}' with source module '{src.name()}'?"
+        if QMessageBox.question(mainWindow, "Rig Builder", msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+
+        state = self._getTreeState()
+        undoStack.push(SyncModuleWithCommand(self.moduleModel, dest, src))
+        self._setTreeState(state)
+
     def muteModule(self):
         modules = self.selectedModules()
         if not modules:
@@ -2726,6 +2752,7 @@ class RigBuilderWindow(QFrame):
 
         menu.addSeparator()
         menu.addAction("Sync with file", self.treeWidget.syncSelectedModules, "Ctrl+R")
+        menu.addAction("Sync with selection", self.treeWidget.syncWithSelection)
         menu.addAction("Embed", self.treeWidget.embedModule)
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
