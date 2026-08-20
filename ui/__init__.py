@@ -2445,6 +2445,8 @@ class RigBuilderWindow(QFrame):
         
         self.vscodeBtn = QPushButton("🧙‍♂️ Edit in VSCode")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
+        self.vscodeBtn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.vscodeBtn.customContextMenuRequested.connect(self._onVSCodeBtnContextMenu)
 
         self.apiBrowser = ApiBrowser()
 
@@ -2774,13 +2776,13 @@ class RigBuilderWindow(QFrame):
         self.treeWidget.addModule(module)
         self.treeWidget.selectModule(module)
 
-    def editInVSCode(self):
-        if not shutil.which(settings.vscode):
-            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command in the Workspace Manager.".format(settings.vscode)
-            QMessageBox.warning(self,"Editor Error", msg)
-            return
-   
-        mcp_config = {
+    def _onVSCodeBtnContextMenu(self, pos: QPoint):
+        menu = QMenu(self)
+        menu.addAction("Copy MCP Config", self.copyMCPConfig)
+        menu.popup(self.vscodeBtn.mapToGlobal(pos))
+
+    def copyMCPConfig(self):
+        mcpConfig = {
             "mcpServers": {
                 "rigBuilder": {
                     "command": os.path.join(RIG_BUILDER_PATH, ".venv", "Scripts", "python.exe"),
@@ -2789,16 +2791,22 @@ class RigBuilderWindow(QFrame):
             }
         }
             
-        config_str = json.dumps(mcp_config, indent=4)
-        QApplication.clipboard().setText(config_str)
+        configStr = json.dumps(mcpConfig, indent=4)
+        QApplication.clipboard().setText(configStr)
 
         msg = "The Rig Builder MCP configuration has been copied to your clipboard.\n\nPlease manually install it for your editor!\n\nHappy coding!"
-        QMessageBox.information(self, "Edit in VSCode", msg)
+        QMessageBox.information(self, "Rig Builder", msg)
+
+    def editInVSCode(self):
+        if not shutil.which(settings.vscode):
+            msg = "Editor executable not found: {}\n\nPlease install the editor or update the VSCode command in the Workspace Manager.".format(settings.vscode)
+            QMessageBox.warning(self, "Rig Builder", msg)
+            return
 
         try:
             subprocess.Popen([settings.vscode, settings.workspacePath], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
-            QMessageBox.warning(self, "Editor Error", f"Failed to launch editor: {str(e)}")
+            QMessageBox.warning(self, "Rig Builder", f"Failed to launch editor: {str(e)}")
 
     def diffModule(self):
         module = self.treeWidget.currentModule()
