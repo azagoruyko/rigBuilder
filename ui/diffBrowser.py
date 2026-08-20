@@ -124,7 +124,7 @@ class DiffHighlighter(QSyntaxHighlighter):
         matcher = difflib.SequenceMatcher(None, oldText, newText)
 
         # If lines are too different, don't show intra-line highlights (GitHub-style behavior)
-        if matcher.ratio() < 0.5:
+        if matcher.ratio() < 0.9:
             return
 
         m_spans = []
