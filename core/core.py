@@ -774,7 +774,7 @@ class Module:
             if a.isSyncRequired(ra):
                 return True
 
-        # Compare children structure (names and UIDs)
+        # Compare children structure
         if len(self._children) != len(refModule._children):
             return True
 
