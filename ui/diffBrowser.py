@@ -18,12 +18,12 @@ def calculateModulesDiff(modules: List[Module]) -> str:
         filePath = m.referenceFile()
         if filePath and os.path.exists(filePath):
             try:
-                with open(filePath, "r", encoding="utf-8") as f:
-                    oldXml = f.read()
-                newXml = m.toXml()
+                oldModule = Module.loadFromFile(filePath)
+                oldText = oldModule.toText()
+                newText = m.toText()
                 diff = difflib.unified_diff(
-                    oldXml.splitlines(),
-                    newXml.splitlines(),
+                    oldText.splitlines(),
+                    newText.splitlines(),
                     fromfile=filePath,
                     tofile=filePath + " (memory)",
                     lineterm=""
@@ -35,10 +35,10 @@ def calculateModulesDiff(modules: List[Module]) -> str:
                 logger.error(f"Error calculating diff for {m.name()}: {e}")
         else:
             # New module or no file on disk - show all as additions
-            newXml = m.toXml()
+            newText = m.toText()
             diff = difflib.unified_diff(
                 [],
-                newXml.splitlines(),
+                newText.splitlines(),
                 fromfile="/dev/null",
                 tofile=m.name(),
                 lineterm=""

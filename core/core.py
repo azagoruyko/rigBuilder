@@ -4,9 +4,12 @@ import re
 import glob
 import json
 import uuid
+import textwrap
 import xml.etree.ElementTree as ET
+
 from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
-from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson, replacePairs
+from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson, replacePairs, dictToText
+
 from . import widgets
 from .uidManager import UidManager
 
@@ -375,6 +378,22 @@ class Attribute:
         legacy_convertLineEditTemplate(attr)
         return attr
 
+    def toText(self, indent: int = 0) -> str:
+        """Convert attribute to clean human-readable text representation."""
+        lines = [
+            f"attr @{self._name} of {self._template} template",
+            f"connect: {self._connect}" if self._connect else None,
+            f"data:\n{dictToText(self._data, 2)}",
+            f"expression:\n{self._expression}" if self._expression else None,
+            f"category: {self._category}",
+        ]
+
+        text = "\n".join(line for line in lines if line)
+        return textwrap.indent(text, " " * indent) if indent else text
+
+    def __str__(self) -> str:
+        return self.toText()
+
     def syncWith(self, other: Attribute) -> bool:
         """Sync attribute data with another attribute. Returns False if template doesn't match."""
         if self._template != other._template:
@@ -693,6 +712,23 @@ class Module:
                 module.addChild(Module.fromXml(ch))
 
         return module
+
+    def toText(self, indent: int = 0) -> str:
+        """Convert module and its hierarchy to clean human-readable text representation."""
+        lines = [
+            f"module {self._name} with {self._uid or 'no'} uid" + (" (muted)" if self._muted else ""),
+            f"doc:\n{self._doc}" if self._doc else None,
+            f"run:\n{self._runCode}" if self._runCode else None,
+            "attributes:",
+            "\n\n".join(a.toText(indent=2) for a in self._attributes),
+            "children:",
+            "\n\n".join(ch.toText(indent=2) for ch in self._children),
+        ]
+        text = "\n".join(line for line in lines if line)
+        return textwrap.indent(text, " " * indent) if indent else text
+
+    def __str__(self) -> str:
+        return self.toText()
 
     def referenceFile(self) -> Optional[str]:
         """Get reference file path."""

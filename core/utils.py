@@ -2,7 +2,9 @@ import sys
 import os
 import re
 import json
+import textwrap
 import hashlib
+
 import io
 import ast
 import stat
@@ -398,3 +400,67 @@ def displayPath(path: str) -> str:
         path = "../"+"/".join(items[-MaxPathItems:])
 
     return path
+
+def dictToText(d: dict, indent: int = 0) -> str:
+    """Convert dictionary to clean YAML-like human-readable text.
+
+    Example:
+        >>> data = {
+        ...     "dictItem": {
+        ...         "key": "val",
+        ...         "keyList": [
+        ...             "item1",
+        ...             {"itemList": ["other"]}
+        ...         ]
+        ...     }
+        ... }
+        >>> print(dictToText(data))
+        dictItem{}:
+          key: "val"
+          keyList[]:
+            -[0] item1
+            -[1] itemList[]:
+                 -[0] other
+    """
+    def _formatListItem(x, idx: int) -> str:
+        prefix = f"-[{idx}]"
+        if isinstance(x, dict):
+            if not x:
+                return f"{prefix} {{}}"
+            lines = dictToText(x).splitlines()
+            pad = " " * (len(prefix) - 1)
+            return "\n".join([f"{prefix} {lines[0]}"] + [f"{pad}{l}" for l in lines[1:]])
+
+        if isinstance(x, list):
+            if not x:
+                return f"{prefix} []"
+            items = textwrap.indent("\n".join(_formatListItem(sub, i) for i, sub in enumerate(x)), "  ")
+            return f"{prefix}\n{items}"
+
+        if isinstance(x, str) and ("\n" in x or "\r" in x):
+            lines = x.replace("\t", "    ").splitlines()
+            pad = " " * (len(prefix) + 1)
+            return "\n".join([f"{prefix} {lines[0]}"] + [f"{pad}{l}" for l in lines[1:]])
+
+        val = x if isinstance(x, str) else json.dumps(x)
+        return f"{prefix} {val}"
+
+    lines = []
+    for k, v in d.items():
+        if isinstance(v, dict):
+            val = f"\n{dictToText(v, 2)}" if v else " {}"
+            lines.append(f"{k}{{}}:{val}")
+        elif isinstance(v, list):
+            items = textwrap.indent("\n".join(_formatListItem(x, i) for i, x in enumerate(v)), "  ")
+            val = f"\n{items}" if v else " []"
+            lines.append(f"{k}[]:{val}")
+        elif isinstance(v, str) and ("\n" in v or "\r" in v):
+            clean_v = v.replace('\t', '    ')
+            val = f"\n{textwrap.indent(clean_v, '  ')}"
+            lines.append(f"{k}:{val}")
+        else:
+            lines.append(f"{k}: {json.dumps(v)}")
+
+    text = "\n".join(lines)
+    return textwrap.indent(text, " " * indent) if indent else text
+

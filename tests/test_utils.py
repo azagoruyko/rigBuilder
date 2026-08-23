@@ -26,7 +26,9 @@ from rigBuilder.core.utils import (
     detectHostByCode,
     relativePath,
     displayPath,
+    dictToText,
 )
+
 
 
 # ============================================================================
@@ -614,3 +616,24 @@ class TestGetRelativeTimeString:
         result = getRelativeTimeString(mtime)
         import re
         assert re.match(r"\d{4}/\d{2}/\d{2}", result)
+
+def testDictToText():
+    """Test converting dictionary to clean YAML-like human-readable text."""
+    data = {
+        "key": "val",
+        "multiline": "line 1\nline 2",
+        "nested": {"a": 1, "b": True},
+        "items": ["item1", {"itemList": ["other"]}],
+        "empty_list": [],
+    }
+    text = dictToText(data)
+    assert 'key: "val"' in text
+    assert 'multiline:' in text
+    assert '  line 1' in text
+    assert '  line 2' in text
+    assert 'nested{}:' in text
+    assert '  a: 1' in text
+    assert 'items[]:\n  -[0] item1\n  -[1] itemList[]:\n       -[0] "other"' in text or 'items[]:\n  -[0] item1\n  -[1] itemList[]:\n       -[0] other' in text
+    assert 'empty_list[]: []' in text
+
+

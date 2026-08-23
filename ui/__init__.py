@@ -2822,14 +2822,14 @@ class RigBuilderWindow(QFrame):
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(refPath))
             return
 
-        currentXml = module.toXml()
-        originalXml = Module.loadModule(refPath).toXml()
+        currentText = module.toText()
+        originalText = Module.loadModule(refPath).toText()
 
-        if originalXml == currentXml:
+        if originalText == currentText:
             QMessageBox.information(self, "Rig Builder", "No changes detected.")
             return
 
-        DiffBrowserDialog(originalXml, currentXml, refPath, "Current", parent=self).exec()
+        DiffBrowserDialog(originalText, currentText, refPath, "Current", parent=self).exec()
                     
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
