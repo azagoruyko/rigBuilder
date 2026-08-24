@@ -346,12 +346,12 @@ class Attribute:
             return connections
         return _listConnections(self._module.root())           
 
-    def toXml(self, *, keepConnection: bool = True) -> str:
+    def toXml(self) -> str:
         """Convert attribute to XML string representation."""
         attrs = [("name", self._name),
                  ("template", self._template),
                  ("category", self._category),
-                 ("connect", self._connect if keepConnection else "")]
+                 ("connect", self._connect)]
 
         attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
 
@@ -654,7 +654,7 @@ class Module:
         attr = self.findAttributeByPath(path)
         attr.set(value, key)       
 
-    def toXml(self, *, keepConnections: bool = True) -> str:
+    def toXml(self) -> str:
         """Convert module to XML string representation."""
         attrs = [("name", self._name),
                  ("muted", int(self._muted)),
@@ -675,12 +675,12 @@ class Module:
 
         if self._attributes:
             template.append("<attributes>")
-            template += [a.toXml(keepConnection=keepConnections) for a in self._attributes]
+            template += [a.toXml() for a in self._attributes]
             template.append("</attributes>")
 
         if self._children:
             template.append("<children>")
-            template += [ch.toXml(keepConnections=True) for ch in self._children] # keep inner connections
+            template += [ch.toXml() for ch in self._children]
             template.append("</children>")
 
         template.append("</module>")
@@ -835,9 +835,16 @@ class Module:
         """Save module to file."""
         if not self._uid or newUid:
             self._uid = uuid.uuid4().hex
+
+        # set specific settings while saving
+        m = self.copy()
+        m._muted = False
+        m._name = os.path.splitext(os.path.basename(fileName))[0]
+        for a in m._attributes: # clear connections for this module
+            a._connect = ""
         
         with open(os.path.realpath(fileName), "w", encoding="utf-8") as f:  # resolve links
-            f.write(self.toXml(keepConnections=False))  # don't keep outer connections
+            f.write(m.toXml())
 
         UidManager.sync()
 
@@ -846,7 +853,10 @@ class Module:
         """Load module from XML file."""
         with open(fileName, "r", encoding="utf-8") as f:
             m = Module.fromXml(f.read())
-        m._muted = False
+        
+        # set specific settings while loading
+        m._muted = False # ignore mute for root module
+        m._name = os.path.splitext(os.path.basename(fileName))[0]
         return m
 
     @staticmethod

@@ -447,14 +447,11 @@ class TestAttributeXML:
         assert restored.localData() == simpleAttribute.localData()
 
     def testXmlConnectionControl(self, simpleAttribute):
-        """Test XML serialization with/without connection."""
+        """Test XML serialization with connection."""
         simpleAttribute.setConnect("/parent/attr")
 
-        xmlWith = simpleAttribute.toXml(keepConnection=True)
+        xmlWith = simpleAttribute.toXml()
         assert 'connect="/parent/attr"' in xmlWith
-
-        xmlWithout = simpleAttribute.toXml(keepConnection=False)
-        assert 'connect=""' in xmlWithout
 
     def testLegacyLineEditConversion(self):
         """Test that legacy lineEdit template is converted to lineEditAndButton."""

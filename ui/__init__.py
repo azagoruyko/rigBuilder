@@ -250,8 +250,8 @@ class AttributesGroupWidget(QWidget):
                     undoStack.push(EditAttributeCommand(
                         self.tabWidget, 
                         attr, 
-                        attr.toXml(keepConnection=True), 
-                        newAttr.toXml(keepConnection=True), 
+                        attr.toXml(), 
+                        newAttr.toXml(), 
                         f"Rename '{attr.name()}' to '{uniqueName}'"
                     ))
 
@@ -437,8 +437,8 @@ class AttributesGroupWidget(QWidget):
         undoStack.push(EditAttributeCommand(
             self.tabWidget, 
             attr, 
-            attr.toXml(keepConnection=True), 
-            newAttr.toXml(keepConnection=True), 
+            attr.toXml(), 
+            newAttr.toXml(), 
             f"Connect '{attr.name()}'"
         ))
 
@@ -448,8 +448,8 @@ class AttributesGroupWidget(QWidget):
         undoStack.push(EditAttributeCommand(
             self.tabWidget, 
             attr, 
-            attr.toXml(keepConnection=True), 
-            newAttr.toXml(keepConnection=True), 
+            attr.toXml(), 
+            newAttr.toXml(), 
             f"Disconnect '{attr.name()}'"
         ))
 
@@ -459,8 +459,8 @@ class AttributesGroupWidget(QWidget):
         undoStack.push(EditAttributeCommand(
             self.tabWidget, 
             attr, 
-            attr.toXml(keepConnection=True), 
-            newAttr.toXml(keepConnection=True), 
+            attr.toXml(), 
+            newAttr.toXml(), 
             f"Clear expression '{attr.name()}'"
         ))
 
@@ -471,8 +471,8 @@ class AttributesGroupWidget(QWidget):
         undoStack.push(EditAttributeCommand(
             self.tabWidget, 
             attr, 
-            attr.toXml(keepConnection=True), 
-            newAttr.toXml(keepConnection=True), 
+            attr.toXml(), 
+            newAttr.toXml(), 
             f"Reset '{attr.name()}'"
         ))
 
@@ -507,8 +507,8 @@ class AttributesGroupWidget(QWidget):
             undoStack.push(EditAttributeCommand(
                 self.tabWidget, 
                 w.attr, 
-                w.attr.toXml(keepConnection=True), 
-                newAttr.toXml(keepConnection=True), 
+                w.attr.toXml(), 
+                newAttr.toXml(), 
                 f"Edit data '{w.attr.name()}'"
             ))
 
@@ -523,8 +523,8 @@ class AttributesGroupWidget(QWidget):
             undoStack.push(EditAttributeCommand(
                 self.tabWidget, 
                 attr, 
-                attr.toXml(keepConnection=True), 
-                newAttr.toXml(keepConnection=True), 
+                attr.toXml(), 
+                newAttr.toXml(), 
                 f"Edit expression '{attr.name()}'"
             ))
 
@@ -569,8 +569,8 @@ class AttributesGroupWidget(QWidget):
         undoStack.push(EditAttributeCommand(
             self.tabWidget,
             attr,
-            attr.toXml(keepConnection=True),
-            newAttr.toXml(keepConnection=True),
+            attr.toXml(),
+            newAttr.toXml(),
             f"Move '{attr.name()}' to '{category}'"
         ))
 
@@ -648,8 +648,8 @@ class AttributesTabWidget(QTabWidget):
                     undoStack.push(EditAttributeCommand(
                         self, 
                         a, 
-                        a.toXml(keepConnection=True), 
-                        newAttr.toXml(keepConnection=True), 
+                        a.toXml(), 
+                        newAttr.toXml(), 
                         f"Move attribute '{a.name()}' to '{uniqueName}'"
                     ))
             undoStack.endMacro()
@@ -744,7 +744,7 @@ class AttributesTabWidget(QTabWidget):
             if v != attr.get():
                 newAttr = attr.copy()
                 newAttr.set(v)
-                undoStack.push(EditAttributeCommand(self, attr, attr.toXml(keepConnection=True), newAttr.toXml(keepConnection=True), f"Replace in '{attr.name()}'"))
+                undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Replace in '{attr.name()}'"))
         undoStack.endMacro()
 
     def updateTabs(self):
@@ -1039,7 +1039,7 @@ class SyncModulesCommand(QUndoCommand):
         self.modules = modules
         
         # Save old state to be able to fully restore
-        self.oldStates = [m.toXml(keepConnections=True) for m in modules]
+        self.oldStates = [m.toXml() for m in modules]
 
     def redo(self):
         self.model.beginResetModel()
@@ -1065,7 +1065,7 @@ class SyncModuleWithCommand(QUndoCommand):
         self.referenceModule = referenceModule
         
         # Save old state to be able to fully restore
-        self.oldState = module.toXml(keepConnections=True)
+        self.oldState = module.toXml()
 
     def redo(self):
         self.model.beginResetModel()
