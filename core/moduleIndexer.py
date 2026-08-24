@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Any
@@ -46,24 +47,25 @@ class ModuleIndexer:
             print(f"Error saving index cache: {e}")
 
     def _extractIndexableText(self, filePath: str) -> str:
-        """Extract name, docs, and attributes labels for indexing using core.Module."""
-        try:
-            m = core.Module.loadFromFile(filePath)
-            name = m.name()
-            doc = m.doc()
+        """Extract module name, category, and first documentation section for vector indexing."""
+        m = core.Module.loadFromFile(filePath)
+        doc = (m.doc() or "").strip()
 
-            # Get the first paragraph or generic description for context
-            summary = doc.split("\n\n")[0] if "\n\n" in doc else doc
+        category = "Root"
+        if settings.modulesPath and filePath.startswith(settings.modulesPath):
+            relDir = os.path.dirname(os.path.relpath(filePath, settings.modulesPath)).replace("\\", "/")
+            if relDir and relDir != ".":
+                category = relDir
 
-            # Extract attribute names/labels to help with keyword matching
-            attr_text = ", ".join([a.name() for a in m.attributes() if a.name()])
-            
-            # Construct a rich payload for embedding
-            return f"Module: {name}. Summary: {summary}. Keywords: {attr_text}. Full help: {doc}"
-        except Exception as e:
-            print(f"Error extracting text from {filePath}: {e}")
-            return ""
+        # Extract first section (preamble or text under first header)
+        sections = re.split(r'\n(?=#{1,6}\s+)', doc)
+        firstSection = re.sub(r'^#{1,6}\s+.*\n?', '', sections[0]) if sections else ""
 
+        # Clean code blocks, formatting symbols, and extra whitespace
+        firstSection = re.sub(r'```[\s\S]*?```', '', firstSection)
+        cleanSummary = re.sub(r'\s+', ' ', re.sub(r'[*_`#]', '', firstSection)).strip()
+
+        return f"Module: {m.name()}. Category: {category}. Summary: {cleanSummary}"
 
     async def indexModules(self, folder: str):
         """
