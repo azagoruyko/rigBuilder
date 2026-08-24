@@ -25,20 +25,17 @@ class DocGeneratorWorker(QThread):
 
     def run(self):
         async def _internal():
-            summary = ""
-            # Step 1: Generate doc for the current module code if available
+            parts = []
             if self.code:
-                summary = await ai.run("code_description", self.code)
-            
-            # Step 2: If we have children docs, synthesize them with the module's summary
+                parts.append(f"Module Code:\n{self.code}")
             if self.childrenDocs:
-                if summary:
-                    combinedText = f"Module Summary:\n{summary}\n\nChildren Modules Documentation:\n{self.childrenDocs}"
-                else:
-                    combinedText = f"Children Modules Documentation:\n{self.childrenDocs}"
-                
-                summary = await ai.run("doc_generator", combinedText)
-            
+                parts.append(f"Children Modules Documentation:\n{self.childrenDocs}")
+
+            combinedText = "\n\n".join(parts)
+            if not combinedText:
+                return ""
+
+            summary = await ai.run("doc_generator", combinedText)
             return summary
 
         try:

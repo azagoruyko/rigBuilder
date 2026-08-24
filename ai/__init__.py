@@ -1,5 +1,4 @@
 from typing import Union
-from . import code_description
 from . import diff_description
 from . import diff_summary
 from . import summarizer
@@ -11,19 +10,17 @@ async def run(command: str, inputText: str) -> Union[str, dict]:
     Unified entry point for AI commands.
     
     Args:
-        command: The command name (e.g., 'code_description', 'diff_summary', etc.)
+        command: The command name (e.g., 'doc_generator', 'diff_summary', etc.)
         inputText: The input text to process.
         
     Returns:
         Union[str, dict]: The result of the AI command.
     """
     commands = {
-        "code_description": code_description.run,
         "diff_description": diff_description.run,
         "diff_summary": diff_summary.run,
         "summarizer": summarizer.run,
         "doc_generator": doc_generator.run,
-
     }
     
     if command not in commands:
