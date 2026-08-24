@@ -990,7 +990,7 @@ class TestModuleFileOperations:
 
         # Load
         loaded = Module.loadFromFile(filePath)
-        assert loaded.name() == simpleModule.name()
+        assert loaded.name() == "test_module"
         assert len(loaded.attributes()) == len(simpleModule.attributes())
 
     def testSaveWithNewUid(self, simpleModule, tempDir):
@@ -1002,7 +1002,23 @@ class TestModuleFileOperations:
         simpleModule.saveToFile(filePath, newUid=True)
         assert simpleModule.uid() != oldUid
 
-    # No longer needed: public/private separation removed
+    def testSaveAndLoadAppliedSettings(self, simpleModule, tempDir):
+        """Test that saveToFile and loadFromFile apply specific settings (muted=False, name=filename, attribute connections cleared)."""
+        simpleModule.mute()
+        attr = simpleModule.findAttribute("input")
+        attr.setConnect("/some/other/path")
+
+        filePath = os.path.join(tempDir, "custom_name.xml")
+        simpleModule.saveToFile(filePath)
+
+        # Loading from file should reset muted to False and set name to file stem
+        loaded = Module.loadFromFile(filePath)
+        assert loaded.muted() is False
+        assert loaded.name() == "custom_name"
+
+        # Connections on saved module's attributes should be cleared in the saved file
+        loadedAttr = loaded.findAttribute("input")
+        assert loadedAttr.connect() == ""
 
     def testLoadModuleByPath(self, simpleModule, tempDir):
         """Test loading module by various path formats."""
@@ -1011,7 +1027,7 @@ class TestModuleFileOperations:
 
         # Load by path
         loaded = Module.loadModule(filePath)
-        assert loaded.name() == simpleModule.name()
+        assert loaded.name() == "test"
 
         # Get UID from file
         uid = UidManager.getUidFromFile(filePath)
@@ -1619,7 +1635,7 @@ class TestIntegration:
         module.addChild(child)
 
         # Save
-        filePath = os.path.join(tempDir, "integration.xml")
+        filePath = os.path.join(tempDir, "integration_test.xml")
         module.saveToFile(filePath)
 
         # Load
