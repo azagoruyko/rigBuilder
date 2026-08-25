@@ -747,12 +747,20 @@ class AttributesTabWidget(QTabWidget):
                 undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Replace in '{attr.name()}'"))
         undoStack.endMacro()
 
-    def updateTabs(self):
+    def updateTabs(self, force: bool = False):
         categories = []
         if self.module:
             for a in self.module.attributes():
                 if a.category() not in categories:
                     categories.append(a.category())
+
+        currentCategories = [self.tabText(i) for i in range(self.count())]
+
+        if not force and currentCategories == categories:
+            scroll = self.currentWidget()
+            if scroll and scroll.widget():
+                scroll.widget().updateAttributes()
+            return
 
         currentTabText = self.tabText(self.currentIndex())
 
@@ -2877,7 +2885,7 @@ class RigBuilderWindow(QFrame):
         self.docBrowser.setDoc(module.doc() if module else "")
 
         self.attributesTabWidget.module = module
-        self.attributesTabWidget.updateTabs()
+        self.attributesTabWidget.updateTabs(force=True)
         self.codeEditorWidget.module = module
         self.codeEditorWidget.updateState()
 
