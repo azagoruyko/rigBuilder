@@ -335,7 +335,10 @@ class Attribute:
                 if ch is not self._module: # not self
                     for attr in ch._attributes:
                         if attr._connect:
-                            a = attr.findConnectionSource()
+                            try:
+                                a = attr.findConnectionSource()
+                            except AttributeResolverError:
+                                continue
                             if a is self:
                                 connections.append(attr)
 
