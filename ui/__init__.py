@@ -747,7 +747,7 @@ class AttributesTabWidget(QTabWidget):
                 undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Replace in '{attr.name()}'"))
         undoStack.endMacro()
 
-    def updateTabs(self, force: bool = False):
+    def updateTabs(self):
         categories = []
         if self.module:
             for a in self.module.attributes():
@@ -756,7 +756,7 @@ class AttributesTabWidget(QTabWidget):
 
         currentCategories = [self.tabText(i) for i in range(self.count())]
 
-        if not force and currentCategories == categories:
+        if currentCategories == categories:
             scroll = self.currentWidget()
             if scroll and scroll.widget():
                 scroll.widget().updateAttributes()
@@ -773,15 +773,11 @@ class AttributesTabWidget(QTabWidget):
         if not self.module:
             return
 
-        for cat in categories:
+        for i, cat in enumerate(categories):
             w = self.makeTabWidget(cat)
             self.addTab(w, cat)
-
-        # Restore current tab index
-        for i in range(self.count()):
-            if self.tabText(i) == currentTabText:
+            if cat == currentTabText:
                 self.setCurrentIndex(i)
-                break
 
     def makeTabWidget(self, cat: str) -> QWidget:
         widget = AttributesGroupWidget(self, cat)
@@ -2887,7 +2883,7 @@ class RigBuilderWindow(QFrame):
         self.docBrowser.setDoc(module.doc() if module else "")
 
         self.attributesTabWidget.module = module
-        self.attributesTabWidget.updateTabs(force=True)
+        self.attributesTabWidget.updateTabs()
         self.codeEditorWidget.module = module
         self.codeEditorWidget.updateState()
 
