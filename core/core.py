@@ -198,8 +198,7 @@ class Attribute:
     
     def setCategory(self, category: str):
         """Set attribute category."""
-        if category != self._category:
-            self._category = category
+        self._category = category
     
     def template(self) -> str:
         """Get attribute widget template type."""
@@ -217,8 +216,7 @@ class Attribute:
     
     def setConnect(self, connect: str):
         """Set attribute connection path."""
-        if connect != self._connect:
-            self._connect = connect
+        self._connect = connect
     
     def expression(self) -> str:
         """Get attribute Python expression."""
@@ -226,8 +224,7 @@ class Attribute:
     
     def setExpression(self, expression: str):
         """Set attribute Python expression."""
-        if expression != self._expression:
-            self._expression = expression
+        self._expression = expression
     
     def module(self) -> Optional[Module]:
         """Get parent module that owns this attribute."""
