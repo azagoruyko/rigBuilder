@@ -17,22 +17,19 @@ def calculateModulesDiff(modules: List[Module]) -> str:
     for m in modules:
         filePath = m.referenceFile()
         if filePath and os.path.exists(filePath):
-            try:
-                oldModule = Module.loadFromFile(filePath)
-                oldText = oldModule.toText()
-                newText = m.toText()
-                diff = difflib.unified_diff(
-                    oldText.splitlines(),
-                    newText.splitlines(),
-                    fromfile=filePath,
-                    tofile=filePath + " (memory)",
-                    lineterm=""
-                )
-                diffText = "\n".join(diff)
-                if diffText:
-                    diffTexts.append(diffText)
-            except Exception as e:
-                logger.error(f"Error calculating diff for {m.name()}: {e}")
+            oldModule = Module.loadModule(filePath) # load and sync
+            oldText = oldModule.toText()
+            newText = m.toText()
+            diff = difflib.unified_diff(
+                oldText.splitlines(),
+                newText.splitlines(),
+                fromfile=filePath,
+                tofile=filePath + " (memory)",
+                lineterm=""
+            )
+            diffText = "\n".join(diff)
+            if diffText:
+                diffTexts.append(diffText)
         else:
             # New module or no file on disk - show all as additions
             newText = m.toText()
