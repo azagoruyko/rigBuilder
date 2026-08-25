@@ -834,7 +834,7 @@ class ModuleTracker(QObject):
                 self._watcher.addPath(path)
                 
         except Exception as e:
-            mainWindow.logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
+            logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
             self._cache[uid] = None
 
     def _onFileChanged(self, path: str):
