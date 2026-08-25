@@ -2004,16 +2004,18 @@ class CodeEditorWidget(CodeEditorWithNumbersWidget):
         self.module.setRunCode(self.editorWidget.toPlainText())
 
     def updateState(self):
+        if not self.module:
+            self.editorWidget.clear()
+            return
+
         self.editorWidget.ignoreStates = True
         self._skipSaving = True
-        self.editorWidget.setText(self.module.runCode() if self.module else "")
+        self.editorWidget.setTextUndoable(self.module.runCode())
         self._skipSaving = False
         self.editorWidget.ignoreStates = False
 
-        self.editorWidget.document().clearUndoRedoStacks()
-
-        if not self.module:
-            return
+        if self.editorWidget.preset != self.module.path():
+            self.editorWidget.document().clearUndoRedoStacks()
 
         self.generateCompletionWords()
 

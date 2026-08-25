@@ -842,6 +842,20 @@ class CodeEditorWidget(QTextEdit):
         else:
             super().keyPressEvent(event)
 
+    def setTextUndoable(self, text):
+        if self.toPlainText() == text:
+            return
+
+        cursor = QTextCursor(self.document())
+        cursor.beginEditBlock()
+
+        cursor.select(QTextCursor.Document)
+        cursor.removeSelectedText()
+        cursor.insertText(text)
+
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)            
+
     def decreaseIndent(self):
         cursor = self.textCursor()
         start, end = cursor.selectionStart(), cursor.selectionEnd()
