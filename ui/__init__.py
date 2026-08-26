@@ -615,7 +615,12 @@ class AttributeModel(QAbstractItemModel):
         if not index.isValid():
             return Qt.ItemIsDropEnabled
 
-        return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
+        baseFlags = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsDragEnabled
+        ptr = index.internalPointer()
+        if isinstance(ptr, str):  # Categories accept drops onto them
+            return baseFlags | Qt.ItemIsDropEnabled
+
+        return baseFlags
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
@@ -668,52 +673,44 @@ class AttributeModel(QAbstractItemModel):
             return False
 
         try:
-            raw = json.loads(data.data(self.MIME_TYPE).data().decode())
+            payload = json.loads(data.data(self.MIME_TYPE).data().decode())
         except (ValueError, UnicodeDecodeError):
             return False
 
-        payload = {"attrs": raw} if isinstance(raw, list) else (raw if isinstance(raw, dict) else {})
-        draggedCategories = payload.get("categories", payload.get("groups", []))
+        draggedCategories = payload.get("categories", [])
         srcPositions = payload.get("attrs", [])
-        allAttrs = self._module.attributes()
 
-        # Handle category reordering
         if draggedCategories:
-            currentCats = [cat for cat, _ in self._categories]
-            targetCat = self.categoryForIndex(parent)
-            if targetCat is None:
-                targetAttr = self.attrForIndex(parent)
-                if targetAttr is not None:
-                    targetCat = targetAttr.category()
+            return self._dropCategories(draggedCategories, parent, row)
 
-            newCats = [c for c in currentCats if c not in draggedCategories]
-            if targetCat and targetCat in newCats:
-                targetIdx = newCats.index(targetCat)
-                for i, g in enumerate(draggedCategories):
-                    newCats.insert(targetIdx + i, g)
-            elif 0 <= row < len(newCats):
-                for i, g in enumerate(draggedCategories):
-                    newCats.insert(row + i, g)
-            else:
-                newCats.extend(draggedCategories)
+        if srcPositions:
+            return self._dropAttributes(srcPositions, parent, row)
 
-            if newCats == currentCats:
-                return True
+        return False
 
-            newAttrs = []
-            for c in newCats:
-                newAttrs.extend([a for a in allAttrs if a.category() == c])
+    def _dropCategories(self, draggedCats: List[str], parent: QModelIndex, row: int) -> bool:
+        currentCats = [cat for cat, _ in self._categories]
+        remaining = [c for c in currentCats if c not in draggedCats]
 
-            for a in allAttrs:
-                if a not in newAttrs:
-                    newAttrs.append(a)
+        targetCat = self.categoryForIndex(parent) or (self.attrForIndex(parent).category() if self.attrForIndex(parent) else None)
+        if targetCat and targetCat in remaining:
+            insertIdx = remaining.index(targetCat)
+        elif 0 <= row < len(remaining):
+            insertIdx = row
+        else:
+            insertIdx = len(remaining)
 
-            if newAttrs != allAttrs:
-                undoStack.push(MoveAttributesCommand(self._tabWidget, self._module, allAttrs[:], newAttrs))
-
+        newCats = remaining[:insertIdx] + draggedCats + remaining[insertIdx:]
+        if newCats == currentCats:
             return True
 
-        # Handle attribute reordering
+        allAttrs = self._module.attributes()
+        newAttrs = [a for c in newCats for a in allAttrs if a.category() == c]
+        undoStack.push(MoveAttributesCommand(self._tabWidget, self._module, allAttrs[:], newAttrs))
+        return True
+
+    def _dropAttributes(self, srcPositions: List[int], parent: QModelIndex, row: int) -> bool:
+        allAttrs = self._module.attributes()
         srcAttrs = [allAttrs[p] for p in srcPositions if 0 <= p < len(allAttrs)]
         if not srcAttrs:
             return False
@@ -721,26 +718,24 @@ class AttributeModel(QAbstractItemModel):
         targetAttr = self.attrForIndex(parent)
         targetCat = self.categoryForIndex(parent)
 
-        if targetAttr is not None:
-            insertPos = allAttrs.index(targetAttr)
+        if targetAttr:
             targetCategory = targetAttr.category()
-        elif targetCat is not None:
-            catAttrs = [a for a in allAttrs if a.category() == targetCat]
-            insertPos = allAttrs.index(catAttrs[-1]) + 1 if catAttrs else len(allAttrs)
+            insertPos = allAttrs.index(targetAttr)
+        elif targetCat:
             targetCategory = targetCat
+            catAttrs = [a for a in allAttrs if a.category() == targetCat]
+            insertPos = allAttrs.index(catAttrs[row]) if 0 <= row < len(catAttrs) else len(allAttrs)
         elif 0 <= row < len(self._categories):
-            cat, catAttrs = self._categories[row]
+            targetCategory, catAttrs = self._categories[row]
             insertPos = allAttrs.index(catAttrs[0]) if catAttrs else len(allAttrs)
-            targetCategory = cat
         else:
-            insertPos = len(allAttrs)
             targetCategory = allAttrs[-1].category() if allAttrs else "General"
+            insertPos = len(allAttrs)
 
         newOrder = [a for a in allAttrs if a not in srcAttrs]
         adjustedInsert = insertPos - sum(1 for a in srcAttrs if allAttrs.index(a) < insertPos)
         adjustedInsert = max(0, min(adjustedInsert, len(newOrder)))
-        for i, a in enumerate(srcAttrs):
-            newOrder.insert(adjustedInsert + i, a)
+        newOrder[adjustedInsert:adjustedInsert] = srcAttrs
 
         if newOrder == allAttrs:
             return True
@@ -935,6 +930,7 @@ class AttributesTreeView(QTreeView):
 
             if modifiedAttrs:
                 self.moduleChanged.emit(module)
+                self._attrModel.layoutChanged.emit()
 
             for ci, (_, attrs) in enumerate(self._attrModel._categories):
                 categoryIdx = self._attrModel.index(ci, 0, QModelIndex())
@@ -1068,32 +1064,19 @@ class AttributesTreeView(QTreeView):
 
         menu.exec(globalPos)
 
-    def _targetLocation(self, index: Optional[QModelIndex] = None) -> Tuple[str, Optional[int]]:
-        """Returns (category_name, insertion_index) based on specified index, current selection, or default."""
-        idx = index if (index is not None and index.isValid()) else self.currentIndex()
+    def _targetLocation(self, index: Optional[QModelIndex] = None) -> Tuple[str, int]:
+        """Returns (category_name, insertion_index) for adding/pasting attributes."""
+        idx = index if (index and index.isValid()) else self.currentIndex()
         allAttrs = self._module.attributes() if self._module else []
 
-        if idx.isValid():
-            cat = self._attrModel.categoryForIndex(idx)
-            if cat is not None:
-                catAttrs = [a for a in allAttrs if a.category() == cat]
-                insertIdx = (allAttrs.index(catAttrs[-1]) + 1) if catAttrs else len(allAttrs)
-                return cat, insertIdx
+        attr = self._attrModel.attrForIndex(idx)
+        if attr and attr in allAttrs:
+            return attr.category(), allAttrs.index(attr) + 1
 
-            attr = self._attrModel.attrForIndex(idx)
-            if attr is not None and attr in allAttrs:
-                return attr.category(), allAttrs.index(attr) + 1
-
-        for s_idx in self.selectedIndexes():
-            cat = self._attrModel.categoryForIndex(s_idx)
-            if cat is not None:
-                catAttrs = [a for a in allAttrs if a.category() == cat]
-                insertIdx = (allAttrs.index(catAttrs[-1]) + 1) if catAttrs else len(allAttrs)
-                return cat, insertIdx
-
-            attr = self._attrModel.attrForIndex(s_idx)
-            if attr is not None and attr in allAttrs:
-                return attr.category(), allAttrs.index(attr) + 1
+        cat = self._attrModel.categoryForIndex(idx)
+        if cat:
+            catAttrs = [a for a in allAttrs if a.category() == cat]
+            return cat, (allAttrs.index(catAttrs[-1]) + 1) if catAttrs else len(allAttrs)
 
         fallbackCat = self._attrModel._categories[0][0] if self._attrModel._categories else "General"
         return fallbackCat, len(allAttrs)
