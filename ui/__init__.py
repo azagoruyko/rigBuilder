@@ -768,6 +768,16 @@ class AttributeModel(QAbstractItemModel):
         self._categories = list(cat_map.items())
 
 
+class AttributesHeaderView(QHeaderView):
+    """Header view for AttributesTreeView Collapse button."""
+
+    def __init__(self, parent: "AttributesTreeView"):
+        super().__init__(Qt.Horizontal, parent)
+        self.collapseBtn = QPushButton("⊟", self, toolTip="Collapse All")
+        self.collapseBtn.setFocusPolicy(Qt.NoFocus)
+        self.collapseBtn.clicked.connect(parent.collapseAllCategories)
+
+
 class AttributesTreeView(QTreeView):
     """
     2-column tree view for module attributes.
@@ -786,6 +796,8 @@ class AttributesTreeView(QTreeView):
         self._attrModel = AttributeModel(self)
         self._attrModel._tabWidget = self
         self.setModel(self._attrModel)
+
+        self.setHeader(AttributesHeaderView(self))
 
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -822,6 +834,16 @@ class AttributesTreeView(QTreeView):
             act = QAction(name, self, shortcut=shortcut, triggered=slot)
             act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
             self.addAction(act)
+
+    def expandAllCategories(self):
+        self.expandAll()
+        if self._module and self._module in self._collapsedCategories:
+            self._collapsedCategories[self._module].clear()
+
+    def collapseAllCategories(self):
+        self.collapseAll()
+        if self._module:
+            self._collapsedCategories[self._module] = {cat for cat, _ in self._attrModel._categories}
 
     def _onItemExpanded(self, index: QModelIndex):
         cat = self._attrModel.categoryForIndex(index)
