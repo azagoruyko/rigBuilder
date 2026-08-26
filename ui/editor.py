@@ -904,33 +904,87 @@ class CodeEditorWidget(QTextEdit):
 
     def moveLine(self, direction):
         cursor = self.textCursor()
+        doc = self.document()
+        numBlocks = doc.blockCount()
+        hasSelection = cursor.hasSelection()
 
-        text = cursor.block().text()
-        pos = cursor.positionInBlock()
-
-        cursor.beginEditBlock()
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
-        cursor.removeSelectedText()
+        if hasSelection:
+            startLine, endLine = self.selectedLineRange(cursor)
+        else:
+            startLine = endLine = cursor.blockNumber()
 
         if direction == "up":
-            cursor.deletePreviousChar()
-            cursor.movePosition(QTextCursor.StartOfBlock)
-            cursor.insertText(text)
-            cursor.insertBlock()
-            cursor.movePosition(QTextCursor.Up)
-
+            if startLine <= 0:
+                return
+            minLine = startLine - 1
+            maxLine = endLine
+            delta = -1
         elif direction == "down":
-            cursor.deleteChar()
-            cursor.movePosition(QTextCursor.EndOfBlock)
-            cursor.insertBlock()
-            cursor.insertText(text)
+            if endLine >= numBlocks - 1:
+                return
+            minLine = startLine
+            maxLine = endLine + 1
+            delta = 1
+        else:
+            return
 
-        cursor.endEditBlock()        
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        cursor.movePosition(QTextCursor.Right, n=pos)
+        lines = [doc.findBlockByNumber(i).text() for i in range(minLine, maxLine + 1)]
+        if direction == "up":
+            reordered = lines[1:] + [lines[0]]
+        else:
+            reordered = [lines[-1]] + lines[:-1]
 
-        self.setTextCursor(cursor)
+        startBlock = doc.findBlockByNumber(minLine)
+        endBlock = doc.findBlockByNumber(maxLine)
+        startPos = startBlock.position()
+
+        if maxLine < numBlocks - 1:
+            nextBlock = doc.findBlockByNumber(maxLine + 1)
+            endPos = nextBlock.position()
+            replacementText = "\n".join(reordered) + "\n"
+        else:
+            endPos = endBlock.position() + len(endBlock.text())
+            replacementText = "\n".join(reordered)
+
+        anchorPos = cursor.anchor()
+        curPos = cursor.position()
+
+        anchorBlock = doc.findBlock(anchorPos)
+        anchorBlockNum = anchorBlock.blockNumber()
+        anchorCol = anchorPos - anchorBlock.position()
+
+        curPosBlock = doc.findBlock(curPos)
+        curPosBlockNum = curPosBlock.blockNumber()
+        curPosCol = curPos - curPosBlock.position()
+
+        editCursor = QTextCursor(doc)
+        editCursor.beginEditBlock()
+        editCursor.setPosition(startPos)
+        editCursor.setPosition(endPos, QTextCursor.KeepAnchor)
+        editCursor.insertText(replacementText)
+        editCursor.endEditBlock()
+
+        newAnchorBlockNum = clamp(anchorBlockNum + delta, 0, doc.blockCount() - 1)
+        newPosBlockNum = clamp(curPosBlockNum + delta, 0, doc.blockCount() - 1)
+
+        newAnchorBlock = doc.findBlockByNumber(newAnchorBlockNum)
+        newPosBlock = doc.findBlockByNumber(newPosBlockNum)
+
+        if anchorBlockNum + delta >= numBlocks:
+            newAnchorPos = newAnchorBlock.position() + len(newAnchorBlock.text())
+        else:
+            newAnchorPos = newAnchorBlock.position() + min(anchorCol, len(newAnchorBlock.text()))
+
+        if curPosBlockNum + delta >= numBlocks:
+            newCurPos = newPosBlock.position() + len(newPosBlock.text())
+        else:
+            newCurPos = newPosBlock.position() + min(curPosCol, len(newPosBlock.text()))
+
+        newCursor = QTextCursor(doc)
+        newCursor.setPosition(newAnchorPos)
+        if hasSelection:
+            newCursor.setPosition(newCurPos, QTextCursor.KeepAnchor)
+        self.setTextCursor(newCursor)
 
     def centerLine(self):
         cursorY = self.cursorRect().top()
@@ -1027,9 +1081,10 @@ class CodeEditorWidget(QTextEdit):
         el = doc.findBlock(se).blockNumber()
         startLine = min(sl, el)
         endLine = max(sl, el)
-        cursor.setPosition(se)
-        if cursor.columnNumber() == 0:
-            endLine -= 1
+        if se > ss:
+            endBlock = doc.findBlock(se)
+            if se == endBlock.position() and endLine > startLine:
+                endLine -= 1
         return startLine, endLine
 
     def gotoLine(self, line=-1):
