@@ -26,7 +26,7 @@ from ..host.servers import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
 from ..core.settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
 from ..core.utils import *
 from ..core.widgets import getAttributeFromValue, DEFAULT_WIDGETS_DATA
-from .widgets import TemplateWidgets, EditTextDialog, EditJsonDialog, TemplateWidget
+from .widgets import TemplateWidgets, EditTextDialog, EditJsonDialog, TemplateWidget, AttributePreviewPopup
 from ..core.workspace import Workspace
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowser
@@ -43,752 +43,32 @@ from .workspaceManager import WorkspaceWidget, getWorkspace
 undoStack = QUndoStack()
 
 
-class AttributeFormLabel(QLabel):
-    def __init__(self, attr: Attribute, row: int, parent: AttributesGroupWidget):
-        super().__init__(attr.name(), parent)
-        self.parentView = parent
-        self.row = row
-        self.attr = attr
-        self.dragStartPosition = None
 
-        self.setStyleSheet("QLabel { margin-left: 15px; }")
-        self.setContextMenuPolicy(Qt.CustomContextMenu)        
-        self.setCursor(Qt.OpenHandCursor)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MiddleButton:
-            self.dragStartPosition = event.position().toPoint()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if not (event.buttons() & Qt.MiddleButton):
-            return
-        if self.dragStartPosition is None:
-            return
-        if (event.position().toPoint() - self.dragStartPosition).manhattanLength() < QApplication.startDragDistance():
-            return
-
-        drag = QDrag(self)
-        mimeData = QMimeData()
-        mimeData.setData("application/x-rigbuilder-attr-row", str(self.row).encode("utf-8"))
-        drag.setMimeData(mimeData)
-
-        # Draw a visual feedback of the label
-        pixmap = self.grab()
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(event.position().toPoint())
-
-        self.parentView.startDrag(self.row)
-        drag.exec(Qt.MoveAction)
-        self.parentView.endDrag()
-
-    def mouseDoubleClickEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.parentView.onLabelDoubleClicked(self.attr, event)
-            event.accept()
-        else:
-            super().mouseDoubleClickEvent(event)
 
 def updateTemplateWidgetStyle(widget: TemplateWidget):
-    style = ""
-    tooltip = []
-    if widget.attr.connect():
-        tooltip.append("Connect: " + widget.attr.connect())
-    if widget.attr.expression():
-        tooltip.append("Expression:\n" + widget.attr.expression())
+    attr = widget.attr
+    conn = attr.connect()
+    expr = attr.expression()
 
-    if widget.attr.connect() and not widget.attr.expression():
+    tooltip = []
+    if conn:
+        tooltip.append("Connect: " + conn)
+    if expr:
+        tooltip.append("Expression:\n" + expr)
+
+    if conn and not expr:
         style = "TemplateWidget { padding: 2px; border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
-    elif widget.attr.expression() and not widget.attr.connect():
+    elif expr and not conn:
         style = "TemplateWidget { padding: 2px; border: 1px solid rgba(123, 104, 238, 0.8); border-radius: 4px; }"
-    elif widget.attr.expression() and widget.attr.connect():
+    elif expr and conn:
         style = "TemplateWidget { padding: 2px; border: 1px solid rgba(180, 50, 180, 0.7); border-radius: 4px; }"
+    else:
+        style = ""
 
     widget.setStyleSheet(style)
     widget.setToolTip("\n".join(tooltip))
 
-class AttributesGroupWidget(QWidget):
-    Clipboard = None
-    moduleChanged = Signal(object)
-    moduleCodeExecutionRequested = Signal(str)
 
-    def __init__(self, tabWidget: AttributesTabWidget, category: str, parent=None):
-        super().__init__(parent)
-        self.tabWidget = tabWidget
-        self.category = category
-        self._widgets = {} # maps attr -> (label_widget, template_widget)
-        self._dragging = False
-        self._dropRow = -1
-
-        self.mainLayout = QVBoxLayout(self)
-        self.mainLayout.setContentsMargins(0, 0, 0, 0)
-        
-        self.layout = QFormLayout()
-        self.layout.setContentsMargins(0, 10, 0, 10)
-        self.layout.setSpacing(10)
-        self.layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        
-        self.mainLayout.addLayout(self.layout)
-        self.mainLayout.addStretch()
-        
-        self.setAcceptDrops(True)
-
-    def module(self) -> Module:
-        return self.tabWidget.module    
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if self._dropRow != -1:
-            painter = QPainter(self)
-            rowCount = self.layout.rowCount()
-            if rowCount == 0:
-                painter.end()
-                return
-                
-            y = 0
-            if self._dropRow < rowCount:
-                lblItem = self.layout.itemAt(self._dropRow, QFormLayout.LabelRole)
-                lbl = lblItem.widget() if lblItem else None
-                if lbl:
-                    y = lbl.y() - 5
-            else:
-                lblItem = self.layout.itemAt(rowCount - 1, QFormLayout.LabelRole)
-                lbl = lblItem.widget() if lblItem else None
-                if lbl:
-                    y = lbl.y() + lbl.height() + 5
-                    
-            if y > 0:
-                pen = QPen(QColor("#8a95a5"), 2)
-                painter.setPen(pen)
-                painter.setBrush(QBrush(QColor("#8a95a5")))
-                painter.drawEllipse(5, y - 4, 8, 8)
-                painter.drawLine(13, y, self.width(), y)
-            painter.end()
-
-    def updateAttributes(self):
-        if self._dragging:
-            return
-
-        for label, widget in self._widgets.values():
-            label.deleteLater()
-            widget.deleteLater()
-        self._widgets.clear()
-
-        while self.layout.rowCount() > 0:
-            self.layout.takeRow(0)
-
-        if not self.module():
-            return
-
-        currentAttrs = [a for a in self.module().attributes() if a.category() == self.category]
-        for row, attr in enumerate(currentAttrs):
-            label, templateWidget = self.createAttributeWidgets(attr, row)
-            self._widgets[attr] = (label, templateWidget)
-            self.layout.addRow(label, templateWidget)
-
-    def createAttributeWidgets(self, attr, row):
-        label = AttributeFormLabel(attr, row, self)
-        label.customContextMenuRequested.connect(partial(self.showAttributeContextMenu, attr, label))
-
-        templateWidget = TemplateWidgets[attr.template()]()
-        templateWidget.attr = attr
-        templateWidget.templateWidget = templateWidget
-
-        try:
-            templateWidget.setJsonData(attr.data())
-        except Exception as e:
-            logger.error(f"{attr.module().name()}.{attr.name()}: {str(e)}")
-
-        updateTemplateWidgetStyle(templateWidget)
-
-        templateWidget.somethingChanged.connect(partial(self.onWidgetChanged, templateWidget))
-        templateWidget.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
-
-        return label, templateWidget
-
-    def onWidgetChanged(self, widget: TemplateWidget):
-        try:
-            self.updateAttributeFromTemplateWidget(widget)
-        except Exception as e:
-            logger.error(f"{widget.attr.module().name()}.{widget.attr.name()}: {str(e)}")
-
-    def updateAttributeFromTemplateWidget(self, widget: TemplateWidget):
-        widgetData = widget.getJsonData()
-        if widget.attr.localData() == widgetData:
-            return
-
-        widget.attr.setData(widgetData)
-
-        module = widget.attr.module()
-
-        previousData = {id(a): a.localData() for a in module.attributes()}
-        modifiedAttrs = set()
-        for otherAttr in module.attributes():
-            otherAttr.pull()
-
-            if otherAttr.localData() != previousData[id(otherAttr)]:
-                modifiedAttrs.add(otherAttr)
-
-        if modifiedAttrs:
-            self.moduleChanged.emit(module)
-
-        for otherAttr, (_, otherWidget) in self._widgets.items():  # update widgets whose data changed
-            if otherAttr in modifiedAttrs:
-                otherWidget.setJsonData(otherAttr.data())
-
-    def onLabelDoubleClicked(self, attr, event):
-        if event.button() == Qt.LeftButton:
-            newName, ok = QInputDialog.getText(self, "Rename Attribute", "New name:", QLineEdit.Normal, attr.name())
-            if ok:
-                newName = replaceSpecialChars(newName.strip())
-                if newName != attr.name():
-                    uniqueName = findUniqueName(newName, [a.name() for a in attr.module().attributes()])
-                    
-                    newAttr = attr.copy()
-                    newAttr.setName(uniqueName)
-                    
-                    undoStack.push(EditAttributeCommand(
-                        self.tabWidget, 
-                        attr, 
-                        attr.toXml(), 
-                        newAttr.toXml(), 
-                        f"Rename '{attr.name()}' to '{uniqueName}'"
-                    ))
-
-    def startDrag(self, row):
-        self._dragging = True
-        self._dragRow = row
-        
-        lblItem = self.layout.itemAt(row, QFormLayout.LabelRole)
-        fldItem = self.layout.itemAt(row, QFormLayout.FieldRole)
-        self._draggedLabel = lblItem.widget() if lblItem else None
-        self._draggedField = fldItem.widget() if fldItem else None
-        
-        if self._draggedLabel:
-            self._draggedLabel.setStyleSheet("QLabel { color: #3e7bd6; font-weight: bold; margin-left: 15px; }")
-            
-        if self._draggedField:
-            opacityEffect = QGraphicsOpacityEffect(self._draggedField)
-            opacityEffect.setOpacity(0.5)
-            self._draggedField.setGraphicsEffect(opacityEffect)
-
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasFormat("application/x-rigbuilder-attr-row"):
-            event.acceptProposedAction()
-
-    def dragMoveEvent(self, event: QDragMoveEvent):
-        if event.mimeData().hasFormat("application/x-rigbuilder-attr-row"):
-            localPos = event.position().toPoint()
-            dropRow = self.dropRowAtY(localPos.y())
-            if dropRow != -1 and dropRow != self._dropRow:
-                self._dropRow = dropRow
-                self.update()
-            event.acceptProposedAction()
-
-    def dropEvent(self, event: QDropEvent):
-        if event.mimeData().hasFormat("application/x-rigbuilder-attr-row"):
-            try:
-                sourceRow = int(event.mimeData().data("application/x-rigbuilder-attr-row").data().decode("utf-8"))
-            except (ValueError, UnicodeDecodeError):
-                return
-            
-            targetRow = self._dropRow
-            self._dropRow = -1
-            self.update()
-            
-            # Clear dragging flags and styles before triggering refresh
-            self._dragging = False
-            self.endDrag()
-            
-            if targetRow != -1 and targetRow != sourceRow and targetRow != sourceRow + 1:
-                initialOrder = self.module().attributes()[:]
-                currentAttrs = [a for a in self.module().attributes() if a.category() == self.category]
-                
-                srcAttr = currentAttrs[sourceRow]
-                srcIndexInModule = initialOrder.index(srcAttr)
-                
-                adjustedTargetRow = targetRow - 1 if targetRow > sourceRow else targetRow
-                targetAttr = currentAttrs[adjustedTargetRow]
-                
-                finalOrder = initialOrder[:]
-                finalOrder.pop(srcIndexInModule)
-                
-                targetIndexInNewOrder = finalOrder.index(targetAttr)
-                insertIndex = targetIndexInNewOrder + 1 if targetRow > sourceRow else targetIndexInNewOrder
-                
-                finalOrder.insert(insertIndex, srcAttr)
-                
-                if initialOrder != finalOrder:
-                    undoStack.push(MoveAttributesCommand(self.tabWidget, self.module(), initialOrder, finalOrder))
-                else:
-                    self.updateAttributes()
-            else:
-                self.updateAttributes()
-
-            event.acceptProposedAction()
-
-    def dragLeaveEvent(self, event: QDragLeaveEvent):
-        self._dropRow = -1
-        self.update()
-
-    def endDrag(self):
-        self._dragging = False
-        
-        if self._draggedLabel:
-            self._draggedLabel.setStyleSheet("QLabel { margin-left: 15px; }")
-            
-        if self._draggedField:
-            self._draggedField.setGraphicsEffect(None)
-
-    def dropRowAtY(self, y: int) -> int:
-        rowCount = self.layout.rowCount()
-        for r in range(rowCount):
-            item = self.layout.itemAt(r, QFormLayout.LabelRole)
-            w = item.widget() if item else None
-            if w and y < w.y() + w.height() / 2:
-                return r
-        return rowCount
-
-    def showAttributeContextMenu(self, attr, label, pos):
-        globalPos = label.mapToGlobal(pos)
-        menu = QMenu()
-        titleAction = menu.addAction(f"📝 {attr.name() or '(Unnamed)'}")
-        titleAction.setEnabled(False)
-        menu.addSeparator()
-
-        if attr.module() and attr.module().parent():
-            makeConnectionMenu = menu.addMenu("Connect")
-            for a in attr.module().parent().attributes():
-                if a.template() == attr.template() and a.name():
-                    makeConnectionMenu.addAction(a.name(), partial(self.connectAttr, attr, "/"+a.name()))
-
-            for ch in attr.module().parent().children():
-                if ch is not attr.module():
-                    self.connectionMenu(makeConnectionMenu, attr, ch)
-
-        if attr.connect():
-            menu.addAction("Break connection", partial(self.disconnectAttr, attr))
-
-        menu.addSeparator()
-        menu.addAction("Edit data", partial(self.editData, attr, self._widgets[attr][1]))
-        menu.addSeparator()
-        menu.addAction("Edit expression", partial(self.editExpression, attr, self._widgets[attr][1]))
-
-        if attr.expression():
-            def evaluateExpression():
-                w = self._widgets[attr][1]
-                with blockedWidgetContext(w) as widget:
-                    widget.setJsonData(attr.data())
-
-            menu.addAction("Evaluate expression", evaluateExpression)
-            menu.addAction("Clear expression", partial(self.clearExpression, attr))
-
-        menu.addAction("Reset", partial(self.resetAttr, attr))
-        menu.addAction("Expose", partial(self.exposeAttr, attr))
-
-        presetsMenu = menu.addMenu("Presets")
-        presetsMenu.addAction("Manage Presets...", lambda: PresetEditorDialog(parent=self).exec())
-        presetsMenu.addAction("Save as Preset...", partial(self.saveAsPreset, attr))
-        
-        presets = WidgetPresetManager.presets()
-        compatiblePresets = {name: data for name, data in presets.items() if data.get("template") == attr.template()}
-        if compatiblePresets:
-            presetsMenu.addSeparator()
-            for name, data in sorted(compatiblePresets.items()):
-                presetsMenu.addAction(name, partial(self.applyPreset, attr, self._widgets[attr][1], data["data"]))
-
-        menu.addSeparator()
-
-        moveToMenu = menu.addMenu("Move To")
-        moveToMenu.addAction("New Tab", partial(self.moveAttrToNewTab, attr))
-        moveToMenu.addSeparator()
-        
-        categories = []
-        for a in attr.module().attributes():
-            if a.category() not in categories:
-                categories.append(a.category())
-            
-        for tabName in categories:
-            if tabName != attr.category():
-                moveToMenu.addAction(tabName, partial(self.moveAttrToCategory, attr, tabName))
-
-        menu.addAction("Copy", partial(self.copyAttribute, attr))
-        menu.addAction("Cut", partial(self.cutAttribute, attr))
-        menu.addAction("Remove", partial(self.removeAttribute, attr))
-
-        menu.exec(globalPos)
-
-    def connectionMenu(self, menu: QMenu, attr, module: Module, path: str = "/"):
-        subMenu = QMenu(module.name(), self)
-
-        for a in module.attributes():
-            if a.template() == attr.template() and a.name():
-                subMenu.addAction(a.name(), partial(self.connectAttr, attr, path+module.name()+"/"+a.name()))
-
-        for ch in module.children():
-            self.connectionMenu(subMenu, attr, ch, path+module.name()+"/")
-
-        if subMenu.actions():
-            menu.addMenu(subMenu)
-
-    def connectAttr(self, attr, connect: str):
-        newAttr = attr.copy()
-        newAttr.setConnect(connect)
-        undoStack.push(EditAttributeCommand(
-            self.tabWidget, 
-            attr, 
-            attr.toXml(), 
-            newAttr.toXml(), 
-            f"Connect '{attr.name()}'"
-        ))
-
-    def disconnectAttr(self, attr):
-        newAttr = attr.copy()
-        newAttr.setConnect("")
-        undoStack.push(EditAttributeCommand(
-            self.tabWidget, 
-            attr, 
-            attr.toXml(), 
-            newAttr.toXml(), 
-            f"Disconnect '{attr.name()}'"
-        ))
-
-    def clearExpression(self, attr):
-        newAttr = attr.copy()
-        newAttr.setExpression("")
-        undoStack.push(EditAttributeCommand(
-            self.tabWidget, 
-            attr, 
-            attr.toXml(), 
-            newAttr.toXml(), 
-            f"Clear expression '{attr.name()}'"
-        ))
-
-    def resetAttr(self, attr):
-        newAttr = attr.copy()
-        newAttr.setConnect("")
-        newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[attr.template()]))
-        undoStack.push(EditAttributeCommand(
-            self.tabWidget, 
-            attr, 
-            attr.toXml(), 
-            newAttr.toXml(), 
-            f"Reset '{attr.name()}'"
-        ))
-
-    def exposeAttr(self, attr):
-        parentModule = attr.module().parent()
-
-        if parentModule == attr.module().root():
-            QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: no parent module")
-            return
-
-        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        prefix = attr.module().name() + "_" if doUsePrefix else ""
-
-        newName = prefix + attr.name()
-        if parentModule.findAttribute(newName):
-            QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: attribute with name '{}' already exists".format(newName))
-            return
-
-        expAttr = attr.copy()
-        parentModule.addAttribute(expAttr)
-        expAttr.setName(newName)
-        self.connectAttr(attr, "/"+expAttr.name())
-        self.tabWidget.moduleChanged.emit(parentModule)
-
-    def editData(self, attr, templateWidget):
-        templateWidget.attr = attr
-        templateWidget.templateWidget = templateWidget
-
-        def save(w, data):
-            newAttr = w.attr.copy()
-            newAttr.setLocalData(data[0])
-            undoStack.push(EditAttributeCommand(
-                self.tabWidget, 
-                w.attr, 
-                w.attr.toXml(), 
-                newAttr.toXml(), 
-                f"Edit data '{w.attr.name()}'"
-            ))
-
-        w = EditJsonDialog(attr.localData(), title="Edit data", parent=self)
-        w.saved.connect(partial(save, templateWidget))
-        w.show()
-
-    def editExpression(self, attr, templateWidget):
-        def save(text: str):
-            newAttr = attr.copy()
-            newAttr.setExpression(text)
-            undoStack.push(EditAttributeCommand(
-                self.tabWidget, 
-                attr, 
-                attr.toXml(), 
-                newAttr.toXml(), 
-                f"Edit expression '{attr.name()}'"
-            ))
-
-        if not attr.module():
-            return
-
-        w = EditTextDialog(
-            attr.expression(), 
-            title="Edit expression for '{}'".format(attr.name()), 
-            placeholder='# Example: value = ch("../someAttr") + 1 or data["items"] = [1,2,3]', 
-            words=set(attr.module().context().keys()), 
-            python=True,
-            parent=self)
-
-        w.saved.connect(save)
-        w.show()
-
-    def saveAsPreset(self, attr):
-        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, attr.name())
-        if ok and name:
-            WidgetPresetManager.savePreset(name, attr.template(), attr.localData())
-
-    def applyPreset(self, attr, templateWidget, data: dict):
-        attr.setData(data)
-        with blockedWidgetContext(templateWidget) as w:
-            w.setJsonData(attr.data())
-
-    def copyAttribute(self, attr):
-        AttributesGroupWidget.Clipboard = attr.copy()
-
-    def cutAttribute(self, attr):
-        AttributesGroupWidget.Clipboard = attr.copy()
-        undoStack.push(RemoveAttributeCommand(self.tabWidget, attr))
-
-    def removeAttribute(self, attr):
-        if QMessageBox.question(self, "Rig Builder", f"Remove '{attr.name()}' attribute?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            undoStack.push(RemoveAttributeCommand(self.tabWidget, attr))
-
-    def moveAttrToCategory(self, attr, category: str):
-        newAttr = attr.copy()
-        newAttr.setCategory(category)
-        undoStack.push(EditAttributeCommand(
-            self.tabWidget,
-            attr,
-            attr.toXml(),
-            newAttr.toXml(),
-            f"Move '{attr.name()}' to '{category}'"
-        ))
-
-    def moveAttrToNewTab(self, attr):
-        existingTabs = [self.tabWidget.tabText(i) for i in range(self.tabWidget.count())]
-        self.moveAttrToCategory(attr, findUniqueName("NewTab", existingTabs))
-
-
-class AttributesTabWidget(QTabWidget):
-    moduleChanged = Signal(object) # Module
-    moduleCodeExecutionRequested = Signal(str)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.module = None
-
-        self.setMovable(True)
-        self.tabBar().setCursor(Qt.PointingHandCursor)
-        self.tabBar().setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tabBar().customContextMenuRequested.connect(self._onTabContextMenu)
-        self.tabBar().tabMoved.connect(self._onTabMoved)
-        self.tabBar().tabBarDoubleClicked.connect(self._onRenameTab)
-
-        self.searchAndReplaceDialog = SearchReplaceDialog(["In all tabs"], parent=self)
-        self.searchAndReplaceDialog.onReplace.connect(self._onReplace)
-
-        self.currentChanged.connect(self._onCurrentChanged)
-
-    def _onCurrentChanged(self, idx):
-        if idx == -1:
-            return
-
-        w = self.widget(idx)
-        w.widget().updateAttributes()
-
-    def _onTabContextMenu(self, pos: QPoint):
-        idx = self.tabBar().tabAt(pos)
-        menu = QMenu(self)
-        
-        menu.addAction("New", self._onNewTab)
-        if idx != -1:
-            menu.addSeparator()
-            menu.addAction("Remove", partial(self._onRemoveTab, idx))
-            
-        menu.popup(self.tabBar().mapToGlobal(pos))
-
-    def _onNewTab(self):
-        name, ok = QInputDialog.getText(self, "Rig Builder", "New tab name:", QLineEdit.Normal, "NewTab")
-        if ok and name:
-            existingTabs = [self.tabText(i) for i in range(self.count())]
-            uniqueName = findUniqueName(name, existingTabs)
-
-            scroll = self.makeTabWidget(uniqueName)
-            self.addTab(scroll, uniqueName)
-            self.setCurrentIndex(self.count() - 1)        
-
-    def _onRenameTab(self, idx: int):
-        oldName = self.tabText(idx)
-        newName, ok = QInputDialog.getText(self, "Rig Builder", "New name", QLineEdit.Normal, oldName)
-        if ok and newName:
-            newName = replaceSpecialChars(newName)
-            
-            if newName == oldName:
-                return
-                
-            existingTabs = [self.tabText(i) for i in range(self.count())]
-            uniqueName = findUniqueName(newName, existingTabs)
-
-            undoStack.beginMacro(f"Rename Tab '{oldName}'")
-            for a in self.module.attributes():
-                if a.category() == oldName:
-                    newAttr = a.copy()
-                    newAttr.setCategory(uniqueName)
-                    undoStack.push(EditAttributeCommand(
-                        self, 
-                        a, 
-                        a.toXml(), 
-                        newAttr.toXml(), 
-                        f"Move attribute '{a.name()}' to '{uniqueName}'"
-                    ))
-            undoStack.endMacro()
-
-    def _onRemoveTab(self, idx: int):
-        if QMessageBox.question(self, "Rig Builder", f"Remove '{self.tabText(idx)}' tab?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
-            category = self.tabText(idx)
-            toRemove = [a for a in self.module.attributes() if a.category() == category]
-            
-            undoStack.beginMacro(f"Remove Tab '{category}'")
-            for a in toRemove:
-                undoStack.push(RemoveAttributeCommand(self, a))
-            undoStack.endMacro()
-
-    def _onTabMoved(self, from_idx: int, to_idx: int):
-        visualCategories = [self.tabText(i) for i in range(self.count())]
-        newAttrs = []
-        for cat in visualCategories:
-            newAttrs.extend([a for a in self.module.attributes() if a.category() == cat])
-        for a in self.module.attributes():
-            if a not in newAttrs:
-                newAttrs.append(a)
-
-        oldOrder = self.module.attributes()
-        undoStack.push(MoveAttributesCommand(self, self.module, oldOrder, newAttrs))
-
-    def contextMenuEvent(self, event: QContextMenuEvent):
-        menu = QMenu(self)
-
-        if self.module:
-            addAttrMenu = menu.addMenu("Add attribute")
-            addAttrMenu.addAction("Browse...", self.addTemplateAttribute)
-            addAttrMenu.addSeparator()
-            for templateName in sorted(TemplateWidgets.keys()):
-                addAttrMenu.addAction(templateName, partial(self._onQuickAddAttribute, templateName))
-
-            if AttributesGroupWidget.Clipboard:
-                menu.addAction(f"Paste attribute ({AttributesGroupWidget.Clipboard.template()})", self._onPasteAttribute)
-
-            menu.addSeparator()
-            menu.addAction("Replace in values", self.searchAndReplaceDialog.exec)
-
-        menu.popup(event.globalPos())
-
-    def _onPasteAttribute(self):
-        if not AttributesGroupWidget.Clipboard:
-            return
-            
-        newAttr = AttributesGroupWidget.Clipboard.copy()
-        newAttr.setCategory(self.tabText(self.currentIndex()))
-        
-        newName = newAttr.name()
-        if newName:
-            newName = findUniqueName(newAttr.name(), [a.name() for a in self.module.attributes()])
-        newAttr.setName(newName)
-        
-        undoStack.push(AddAttributeCommand(self, self.module, newAttr))
-
-    def addTemplateAttribute(self):
-        selector = TemplateSelectorDialog(parent=self)
-        selector.selectedTemplate.connect(self._onQuickAddAttribute)
-        selector.exec()
-
-    def _onQuickAddAttribute(self, template: str):
-        name = findUniqueName("attr", [a.name() for a in self.module.attributes()])
-
-        category = self.tabText(self.currentIndex()) if self.count() > 0 else "General"
-        newAttr = Attribute(name=name, template=template, category=category)
-        
-        if template in DEFAULT_WIDGETS_DATA:
-            newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[template]))
-
-        undoStack.push(AddAttributeCommand(self, self.module, newAttr))
-
-    def _onReplace(self, old: str, new: str, opts: dict[str, bool]):
-        def replaceStringInData(data: object, old: str, new: str) -> object:
-            try:
-                return json.loads(json.dumps(data).replace(old,new))
-            except ValueError:
-                return data
-
-        if opts.get("In all tabs"):
-            attributes = self.module.attributes()
-        else:
-            category = self.tabText(self.currentIndex())
-            attributes = [a for a in self.module.attributes() if a.category() == category]
-
-        undoStack.beginMacro("Search and Replace in values")
-
-        for attr in attributes:
-            v = replaceStringInData(attr.get(), old, new)
-            if v != attr.get():
-                newAttr = attr.copy()
-                newAttr.set(v)
-                undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Replace in '{attr.name()}'"))
-        undoStack.endMacro()
-
-    def updateTabs(self):
-        categories = []
-        if self.module:
-            for a in self.module.attributes():
-                if a.category() not in categories:
-                    categories.append(a.category())
-
-        currentCategories = [self.tabText(i) for i in range(self.count())]
-
-        if currentCategories == categories:
-            scroll = self.currentWidget()
-            if scroll and scroll.widget():
-                scroll.widget().updateAttributes()
-            return
-
-        currentTabText = self.tabText(self.currentIndex())
-
-        # Clear existing tabs
-        while self.count():
-            w = self.widget(0)
-            self.removeTab(0)
-            w.deleteLater()
-
-        if not self.module:
-            return
-
-        for i, cat in enumerate(categories):
-            w = self.makeTabWidget(cat)
-            self.addTab(w, cat)
-            if cat == currentTabText:
-                self.setCurrentIndex(i)
-
-    def makeTabWidget(self, cat: str) -> QWidget:
-        widget = AttributesGroupWidget(self, cat)
-        widget.moduleChanged.connect(self.moduleChanged.emit)
-        widget.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
-        
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setWidget(widget)
-        return scroll
 
 class ModuleTracker(QObject):
     """
@@ -1087,98 +367,1004 @@ class SyncModuleWithCommand(QUndoCommand):
         self.model.endResetModel()
 
 class AddAttributeCommand(QUndoCommand):
-    def __init__(self, tabWidget: AttributesTabWidget, module: Module, attr: Attribute):
+    def __init__(self, view: "AttributesTreeView", module: Module, attr: Attribute, index: Optional[int] = None):
         super().__init__(f"Add attribute '{attr.name()}'")
+        self.view = view
         self.module = module
         self.attr = attr
-        self.tabWidget = tabWidget
+        self.index = index
 
     def redo(self):
-        self.module.addAttribute(self.attr)
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        if self.index is not None:
+            self.module.insertAttribute(self.index, self.attr)
+        else:
+            self.module.addAttribute(self.attr)
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
 
     def undo(self):
         self.module.removeAttribute(self.attr)
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
+
 
 class RemoveAttributeCommand(QUndoCommand):
-    def __init__(self, tabWidget: AttributesTabWidget, attr: Attribute):
+    def __init__(self, view: "AttributesTreeView", attr: Attribute):
         super().__init__(f"Remove attribute '{attr.name()}'")
+        self.view = view
         self.module = attr.module()
         self.attr = attr
         self.index = self.module.attributes().index(attr)
-        self.tabWidget = tabWidget
 
     def redo(self):
         self.module.removeAttribute(self.attr)
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
 
     def undo(self):
         self.module.insertAttribute(self.index, self.attr)
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
+
 
 class EditAttributeCommand(QUndoCommand):
-    def __init__(self, tabWidget: AttributesTabWidget, attr: Attribute, oldState: str, newState: str, text: str):
+    def __init__(self, view: "AttributesTreeView", attr: Attribute, oldState: str, newState: str, text: str):
         super().__init__(text)
+        self.view = view
         self.attr = attr
         self.module = attr.module()
         self.oldState = oldState
         self.newState = newState
-        self.tabWidget = tabWidget
+
+    def _apply(self, xml_state: str):
+        src = Attribute.fromXml(xml_state)
+        if self.attr.name() != src.name():
+            self.attr.setName(src.name())
+        self.attr.setCategory(src.category())
+        self.attr.setTemplate(src.template())
+        self.attr.setConnect(src.connect())
+        self.attr.setExpression(src.expression())
+        self.attr.setLocalData(src.localData())
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
 
     def redo(self):
-        newAttr = Attribute.fromXml(self.newState)
-        if self.attr.name() != newAttr.name():
-            self.attr.setName(newAttr.name())
-        self.attr.setCategory(newAttr.category())
-        self.attr.setTemplate(newAttr.template())
-        self.attr.setConnect(newAttr.connect())
-        self.attr.setExpression(newAttr.expression())
-        self.attr.setLocalData(newAttr.localData())
-        
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self._apply(self.newState)
 
     def undo(self):
-        oldAttr = Attribute.fromXml(self.oldState)
-        if self.attr.name() != oldAttr.name():
-            self.attr.setName(oldAttr.name())
-        self.attr.setCategory(oldAttr.category())
-        self.attr.setTemplate(oldAttr.template())
-        self.attr.setConnect(oldAttr.connect())
-        self.attr.setExpression(oldAttr.expression())
-        self.attr.setLocalData(oldAttr.localData())
-        
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self._apply(self.oldState)
+
 
 class MoveAttributesCommand(QUndoCommand):
-    def __init__(self, tabWidget: AttributesTabWidget, module: Module, oldOrder: list, newOrder: list):
+    def __init__(self, view: "AttributesTreeView", module: Module, oldOrder: list, newOrder: list):
         super().__init__("Reorder attributes")
+        self.view = view
         self.module = module
         self.oldOrder = oldOrder
         self.newOrder = newOrder
-        self.tabWidget = tabWidget
+
+    def _apply(self, order: list):
+        if self.module.attributes() != order:
+            self.module.removeAttributes()
+            for a in order:
+                self.module.addAttribute(a)
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
 
     def redo(self):
-        if self.module.attributes() != self.newOrder:
-            self.module.removeAttributes()
-            for a in self.newOrder:
-                self.module.addAttribute(a)
-                
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self._apply(self.newOrder)
 
     def undo(self):
-        self.module.removeAttributes()
-        for a in self.oldOrder:
-            self.module.addAttribute(a)
-        self.tabWidget.updateTabs()
-        self.tabWidget.moduleChanged.emit(self.module)
+        self._apply(self.oldOrder)
+
+
+class AttributeModel(QAbstractItemModel):
+    """
+    Tree model for module attributes: Categories -> Attributes.
+    Column 0: Name (editable) | Column 1: Widget (live TemplateWidget via setIndexWidget).
+    """
+
+    MIME_TYPE = "application/x-rigbuilder-attr-indices"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._module: Optional[Module] = None
+        self._categories: List[Tuple[str, List]] = []
+
+    def setModule(self, module: Optional[Module]):
+        self.beginResetModel()
+        self._module = module
+        self._rebuild()
+        self.endResetModel()
+
+    def refresh(self):
+        self.beginResetModel()
+        self._rebuild()
+        self.endResetModel()
+
+    def attrForIndex(self, index: QModelIndex) -> Optional[Attribute]:
+        ptr = index.internalPointer() if index.isValid() else None
+        return ptr if isinstance(ptr, Attribute) else None
+
+    def categoryForIndex(self, index: QModelIndex) -> Optional[str]:
+        ptr = index.internalPointer() if index.isValid() else None
+        return ptr if isinstance(ptr, str) else None
+
+    # ── QAbstractItemModel Interface ──────────────────────────────────────
+
+    def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+
+        if not parent.isValid():
+            return self.createIndex(row, column, self._categories[row][0])
+
+        return self.createIndex(row, column, self._categories[parent.row()][1][row])
+
+    def parent(self, index: QModelIndex):
+        if not index.isValid():
+            return QModelIndex()
+
+        ptr = index.internalPointer()
+        if isinstance(ptr, str):
+            return QModelIndex()
+
+        for ci, (_, attrs) in enumerate(self._categories):
+            if ptr in attrs:
+                return self.createIndex(ci, 0, self._categories[ci][0])
+
+        return QModelIndex()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()):
+        if not parent.isValid():
+            return len(self._categories)
+
+        if isinstance(parent.internalPointer(), str):
+            return len(self._categories[parent.row()][1])
+
+        return 0
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()):
+        return 2
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if not index.isValid():
+            return None
+
+        ptr = index.internalPointer()
+        col = index.column()
+
+        # Category Header
+        if isinstance(ptr, str):
+            if role in (Qt.DisplayRole, Qt.EditRole) and col == 0:
+                return ptr
+
+            if role == Qt.ForegroundRole:
+                return QColor("#8a95a5")
+
+            if role == Qt.FontRole:
+                f = QFont()
+                f.setBold(True)
+                return f
+
+            if role == Qt.BackgroundRole:
+                return QColor("#2a2d35")
+
+            return None
+
+        # Attribute Row
+        attr = ptr
+        if role in (Qt.DisplayRole, Qt.EditRole) and col == 0:
+            return attr.name()
+
+        if role == Qt.ForegroundRole and col == 0:
+            return QColor(200, 200, 200)
+
+        if role == Qt.ToolTipRole and col == 0:
+            parts = []
+            if attr.connect():
+                parts.append("Connect: " + attr.connect())
+
+            if attr.expression():
+                parts.append("Expression:\n" + attr.expression())
+
+            return "\n".join(parts) or None
+
+        if role == Qt.SizeHintRole:
+            return QSize(0, 28)
+
+        return None
+
+    def setData(self, index: QModelIndex, value, role: int = Qt.EditRole):
+        if role != Qt.EditRole or index.column() != 0:
+            return False
+
+        cat = self.categoryForIndex(index)
+        if cat is not None:
+            newCat = replaceSpecialChars(str(value).strip())
+            if not newCat or newCat == cat:
+                return False
+
+            attrs = [a for a in self._module.attributes() if a.category() == cat]
+            if not attrs:
+                return False
+
+            undoStack.beginMacro(f"Rename category '{cat}' to '{newCat}'")
+            for a in attrs:
+                na = a.copy()
+                na.setCategory(newCat)
+                undoStack.push(EditAttributeCommand(self._tabWidget, a, a.toXml(), na.toXml(), f"Move '{a.name()}' to '{newCat}'"))
+            undoStack.endMacro()
+            return True
+
+        attr = self.attrForIndex(index)
+        if attr is None:
+            return False
+
+        newName = replaceSpecialChars(str(value).strip())
+        if not newName or newName == attr.name():
+            return False
+
+        uniqueName = findUniqueName(newName, [a.name() for a in attr.module().attributes()])
+        newAttr = attr.copy()
+        newAttr.setName(uniqueName)
+        undoStack.push(EditAttributeCommand(self._tabWidget, attr, attr.toXml(), newAttr.toXml(), f"Rename '{attr.name()}' to '{uniqueName}'"))
+        return True
+
+    def flags(self, index: QModelIndex):
+        if not index.isValid():
+            return Qt.ItemIsDropEnabled
+
+        return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
+
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return ["Name", "Widget"][section]
+
+        return None
+
+    # ── Drag & Drop ───────────────────────────────────────────────────────
+
+    def mimeTypes(self):
+        return [self.MIME_TYPE]
+
+    def mimeData(self, indexes):
+        allAttrs = self._module.attributes() if self._module else []
+        draggedCategories = []
+        attrPositions = []
+        for idx in indexes:
+            if idx.column() != 0:
+                continue
+
+            cat = self.categoryForIndex(idx)
+            if cat is not None and cat not in draggedCategories:
+                draggedCategories.append(cat)
+
+            a = self.attrForIndex(idx)
+            if a is not None and a in allAttrs:
+                pos = allAttrs.index(a)
+                if pos not in attrPositions:
+                    attrPositions.append(pos)
+
+        payload = {}
+        if draggedCategories:
+            payload["categories"] = draggedCategories
+
+        if attrPositions:
+            payload["attrs"] = attrPositions
+
+        mime = QMimeData()
+        mime.setData(self.MIME_TYPE, json.dumps(payload).encode())
+        return mime
+
+    def supportedDropActions(self):
+        return Qt.MoveAction
+
+    def canDropMimeData(self, data, action, row, column, parent):
+        return data.hasFormat(self.MIME_TYPE)
+
+    def dropMimeData(self, data, action, row, column, parent):
+        if not data.hasFormat(self.MIME_TYPE) or not self._module:
+            return False
+
+        try:
+            raw = json.loads(data.data(self.MIME_TYPE).data().decode())
+        except (ValueError, UnicodeDecodeError):
+            return False
+
+        payload = {"attrs": raw} if isinstance(raw, list) else (raw if isinstance(raw, dict) else {})
+        draggedCategories = payload.get("categories", payload.get("groups", []))
+        srcPositions = payload.get("attrs", [])
+        allAttrs = self._module.attributes()
+
+        # Handle category reordering
+        if draggedCategories:
+            currentCats = [cat for cat, _ in self._categories]
+            targetCat = self.categoryForIndex(parent)
+            if targetCat is None:
+                targetAttr = self.attrForIndex(parent)
+                if targetAttr is not None:
+                    targetCat = targetAttr.category()
+
+            newCats = [c for c in currentCats if c not in draggedCategories]
+            if targetCat and targetCat in newCats:
+                targetIdx = newCats.index(targetCat)
+                for i, g in enumerate(draggedCategories):
+                    newCats.insert(targetIdx + i, g)
+            elif 0 <= row < len(newCats):
+                for i, g in enumerate(draggedCategories):
+                    newCats.insert(row + i, g)
+            else:
+                newCats.extend(draggedCategories)
+
+            if newCats == currentCats:
+                return True
+
+            newAttrs = []
+            for c in newCats:
+                newAttrs.extend([a for a in allAttrs if a.category() == c])
+
+            for a in allAttrs:
+                if a not in newAttrs:
+                    newAttrs.append(a)
+
+            if newAttrs != allAttrs:
+                undoStack.push(MoveAttributesCommand(self._tabWidget, self._module, allAttrs[:], newAttrs))
+
+            return True
+
+        # Handle attribute reordering
+        srcAttrs = [allAttrs[p] for p in srcPositions if 0 <= p < len(allAttrs)]
+        if not srcAttrs:
+            return False
+
+        targetAttr = self.attrForIndex(parent)
+        targetCat = self.categoryForIndex(parent)
+
+        if targetAttr is not None:
+            insertPos = allAttrs.index(targetAttr)
+            targetCategory = targetAttr.category()
+        elif targetCat is not None:
+            catAttrs = [a for a in allAttrs if a.category() == targetCat]
+            insertPos = allAttrs.index(catAttrs[-1]) + 1 if catAttrs else len(allAttrs)
+            targetCategory = targetCat
+        elif 0 <= row < len(self._categories):
+            cat, catAttrs = self._categories[row]
+            insertPos = allAttrs.index(catAttrs[0]) if catAttrs else len(allAttrs)
+            targetCategory = cat
+        else:
+            insertPos = len(allAttrs)
+            targetCategory = allAttrs[-1].category() if allAttrs else "General"
+
+        newOrder = [a for a in allAttrs if a not in srcAttrs]
+        adjustedInsert = insertPos - sum(1 for a in srcAttrs if allAttrs.index(a) < insertPos)
+        adjustedInsert = max(0, min(adjustedInsert, len(newOrder)))
+        for i, a in enumerate(srcAttrs):
+            newOrder.insert(adjustedInsert + i, a)
+
+        if newOrder == allAttrs:
+            return True
+
+        undoStack.beginMacro("Move attributes")
+        for a in srcAttrs:
+            if a.category() != targetCategory:
+                na = a.copy()
+                na.setCategory(targetCategory)
+                undoStack.push(EditAttributeCommand(self._tabWidget, a, a.toXml(), na.toXml(), f"Move '{a.name()}' to '{targetCategory}'"))
+
+        undoStack.push(MoveAttributesCommand(self._tabWidget, self._module, allAttrs[:], newOrder))
+        undoStack.endMacro()
+        return True
+
+    def _rebuild(self):
+        self._categories = []
+        if not self._module:
+            return
+
+        cat_map: dict[str, list] = {}
+        for a in self._module.attributes():
+            cat_map.setdefault(a.category(), []).append(a)
+
+        self._categories = list(cat_map.items())
+
+
+class AttributesTreeView(QTreeView):
+    """
+    2-column tree view for module attributes.
+    Column 0 = editable attribute name.
+    Column 1 = live TemplateWidget embedded via setIndexWidget().
+    """
+
+    moduleChanged = Signal(object)
+    moduleCodeExecutionRequested = Signal(str)
+
+    Clipboard: List[Attribute] = []
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._module: Optional[Module] = None
+        self._attrModel = AttributeModel(self)
+        self._attrModel._tabWidget = self
+        self.setModel(self._attrModel)
+
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropOverwriteMode(False)
+        self.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        self.setIndentation(12)
+        self.setUniformRowHeights(False)
+        self.setAnimated(True)
+
+        self.header().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.header().setStretchLastSection(True)
+        self.header().resizeSection(0, 160)
+
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._onContextMenu)
+        self._attrModel.modelReset.connect(self._onModelReset)
+        self.expanded.connect(self._onItemExpanded)
+        self.collapsed.connect(self._onItemCollapsed)
+        self._collapsedCategories: dict[Module, set[str]] = {}
+        self._attrPreviewPopup = AttributePreviewPopup()
+
+        for name, slot, shortcut in [
+            ("Duplicate", self.duplicateSelected, "Ctrl+D"),
+            ("Copy", self.copySelected, "Ctrl+C"),
+            ("Cut", self.cutSelected, "Ctrl+X"),
+            ("Paste", self.pasteSelected, "Ctrl+V"),
+            ("Remove", self.removeSelected, "Delete"),
+        ]:
+            act = QAction(name, self, shortcut=shortcut, triggered=slot)
+            act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+            self.addAction(act)
+
+    def _onItemExpanded(self, index: QModelIndex):
+        cat = self._attrModel.categoryForIndex(index)
+        if cat and self._module:
+            if self._module in self._collapsedCategories:
+                self._collapsedCategories[self._module].discard(cat)
+
+    def _onItemCollapsed(self, index: QModelIndex):
+        cat = self._attrModel.categoryForIndex(index)
+        if cat and self._module:
+            self._collapsedCategories.setdefault(self._module, set()).add(cat)
+
+    def ensureCategoryExpanded(self, cat: str):
+        if self._module and cat:
+            if self._module in self._collapsedCategories:
+                self._collapsedCategories[self._module].discard(cat)
+
+    def setModule(self, module: Optional[Module]):
+        self._module = module
+        self._attrModel.setModule(module)
+
+    def updateTabs(self):
+        self._saveExpandState()
+        self._attrModel.refresh()
+
+    def _saveExpandState(self):
+        if not self._module:
+            return
+        collapsed = set()
+        for ci, (cat, _) in enumerate(self._attrModel._categories):
+            idx = self._attrModel.index(ci, 0, QModelIndex())
+            if not self.isExpanded(idx):
+                collapsed.add(cat)
+        self._collapsedCategories[self._module] = collapsed
+
+    def _restoreExpandState(self):
+        if not self._module:
+            return
+        collapsed = self._collapsedCategories.get(self._module, set())
+        for ci, (cat, _) in enumerate(self._attrModel._categories):
+            idx = self._attrModel.index(ci, 0, QModelIndex())
+            self.setExpanded(idx, cat not in collapsed)
+
+    def _onModelReset(self):
+        self._embedWidgets()
+        self._restoreExpandState()
+
+    def _embedWidgets(self):
+        if not self._module:
+            return
+
+        for ci, (_, attrs) in enumerate(self._attrModel._categories):
+            categoryIdx = self._attrModel.index(ci, 0, QModelIndex())
+            for ai, attr in enumerate(attrs):
+                attrIdx1 = self._attrModel.index(ai, 1, categoryIdx)
+                widget = self._makeTemplateWidget(attr)
+                if widget:
+                    self.setIndexWidget(attrIdx1, widget)
+
+    def _makeTemplateWidget(self, attr) -> Optional[TemplateWidget]:
+        tw = TemplateWidgets[attr.template()]()
+        tw.attr = attr
+        tw.templateWidget = tw
+        try:
+            tw.setJsonData(attr.data())
+        except Exception as e:
+            logger.error(f"{attr.module().name()}.{attr.name()}: {e}")
+
+        updateTemplateWidgetStyle(tw)
+        tw.somethingChanged.connect(partial(self._onWidgetChanged, tw))
+        tw.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
+        return tw
+
+    def _onWidgetChanged(self, widget: TemplateWidget):
+        try:
+            widgetData = widget.getJsonData()
+            if widget.attr.localData() == widgetData:
+                return
+
+            widget.attr.setData(widgetData)
+            module = widget.attr.module()
+
+            previousData = {id(a): a.localData() for a in module.attributes()}
+            modifiedAttrs = set()
+            for a in module.attributes():
+                a.pull()
+                if a.localData() != previousData[id(a)]:
+                    modifiedAttrs.add(a)
+
+            if modifiedAttrs:
+                self.moduleChanged.emit(module)
+
+            for ci, (_, attrs) in enumerate(self._attrModel._categories):
+                categoryIdx = self._attrModel.index(ci, 0, QModelIndex())
+                for ai, a in enumerate(attrs):
+                    if a in modifiedAttrs:
+                        w = self.indexWidget(self._attrModel.index(ai, 1, categoryIdx))
+                        if w:
+                            with blockedWidgetContext(w) as bw:
+                                bw.setJsonData(a.data())
+        except Exception as e:
+            logger.error(f"{widget.attr.module().name()}.{widget.attr.name()}: {e}")
+
+    def _onContextMenu(self, pos: QPoint):
+        index = self.indexAt(pos)
+        attr = self._attrModel.attrForIndex(index)
+        cat = self._attrModel.categoryForIndex(index)
+        globalPos = self.viewport().mapToGlobal(pos)
+        menu = QMenu(self)
+
+        undoAction = undoStack.createUndoAction(self, "Undo")
+        undoAction.setShortcut(QKeySequence.Undo)
+        menu.addAction(undoAction)
+
+        redoAction = undoStack.createRedoAction(self, "Redo")
+        redoAction.setShortcut(QKeySequence.Redo)
+        menu.addAction(redoAction)
+
+        menu.addSeparator()
+
+        if self._module:
+            addAttrMenu = menu.addMenu("Add attribute")
+
+            addAttrMenu.hovered.connect(lambda a: self._attrPreviewPopup.showPreview(a.data(), addAttrMenu, a) if a.data() else self._attrPreviewPopup.hide())
+            addAttrMenu.aboutToHide.connect(self._attrPreviewPopup.hide)
+            menu.aboutToHide.connect(self._attrPreviewPopup.hide)
+
+            for templateName in sorted(TemplateWidgets.keys()):
+                act = addAttrMenu.addAction(templateName, partial(self._onQuickAdd, templateName))
+                act.setData(templateName)
+
+            if AttributesTreeView.Clipboard:
+                clipCount = len(AttributesTreeView.Clipboard)
+                pasteText = f"Paste ({AttributesTreeView.Clipboard[0].template()})" if clipCount == 1 else f"Paste ({clipCount} attributes)"
+                menu.addAction(
+                    pasteText,
+                    partial(self.pasteAttributes, *self._targetLocation(index)),
+                    "Ctrl+V"
+                )
+
+        if cat:
+            currentCats = [c for c, _ in self._attrModel._categories]
+            catIdx = currentCats.index(cat) if cat in currentCats else -1
+            menu.addSeparator()
+            if catIdx > 0:
+                menu.addAction("Move Up", partial(self.moveCategory, cat, -1))
+
+            if 0 <= catIdx < len(currentCats) - 1:
+                menu.addAction("Move Down", partial(self.moveCategory, cat, 1))
+
+            menu.addSeparator()
+            menu.addAction("Remove", partial(self.removeCategory, cat))
+
+        if attr:
+            menu.addSeparator()
+            selectedAttrs = self.selectedAttributes() or [attr]
+            if len(selectedAttrs) > 1:
+                moveToMenu = menu.addMenu("Move To")
+                moveToMenu.addAction("New Category", partial(self.moveAttributesToNewCategory, selectedAttrs))
+                moveToMenu.addSeparator()
+                for c, _ in self._attrModel._categories:
+                    moveToMenu.addAction(c, partial(self.moveAttributesToCategory, selectedAttrs, c))
+
+                menu.addSeparator()
+                menu.addAction(f"Duplicate {len(selectedAttrs)} attributes", partial(self.duplicateAttributes, selectedAttrs), "Ctrl+D")
+                menu.addAction(f"Copy {len(selectedAttrs)} attributes", partial(self.copyAttributes, selectedAttrs), "Ctrl+C")
+                menu.addAction(f"Cut {len(selectedAttrs)} attributes", partial(self.cutAttributes, selectedAttrs), "Ctrl+X")
+                menu.addAction(f"Remove {len(selectedAttrs)} attributes", partial(self.removeAttributes, selectedAttrs), "Delete")
+            else:
+                attrWidget = self.indexWidget(self._attrModel.index(index.row(), 1, index.parent()))
+                if attr.module() and attr.module().parent():
+                    makeConnMenu = menu.addMenu("Connect")
+                    for a in attr.module().parent().attributes():
+                        if a.template() == attr.template() and a.name():
+                            makeConnMenu.addAction(a.name(), partial(self._connectAttr, attr, "/" + a.name()))
+
+                    for ch in attr.module().parent().children():
+                        if ch is not attr.module():
+                            self._buildConnectionMenu(makeConnMenu, attr, ch)
+
+                if attr.connect():
+                    menu.addAction("Break connection", partial(self._disconnectAttr, attr))
+
+                menu.addSeparator()
+                if attrWidget:
+                    menu.addAction("Edit data", partial(self._editData, attr, attrWidget))
+
+                menu.addSeparator()
+                menu.addAction("Edit expression", partial(self._editExpression, attr))
+                if attr.expression():
+                    if attrWidget:
+                        menu.addAction("Evaluate expression", partial(self._evaluateExpression, attr, attrWidget))
+
+                    menu.addAction("Clear expression", partial(self._clearExpression, attr))
+
+                menu.addAction("Reset", partial(self._resetAttr, attr))
+                menu.addAction("Expose", partial(self._exposeAttr, attr))
+
+                presetsMenu = menu.addMenu("Presets")
+                presetsMenu.addAction("Manage Presets...", lambda: PresetEditorDialog(parent=self).exec())
+                presetsMenu.addAction("Save as Preset...", partial(self._saveAsPreset, attr))
+                presets = WidgetPresetManager.presets()
+                compatiblePresets = {n: d for n, d in presets.items() if d.get("template") == attr.template()}
+                if compatiblePresets:
+                    presetsMenu.addSeparator()
+                    for name, d in sorted(compatiblePresets.items()):
+                        presetsMenu.addAction(name, partial(self._applyPreset, attr, attrWidget, d["data"]))
+
+                menu.addSeparator()
+                moveToMenu = menu.addMenu("Move To")
+                moveToMenu.addAction("New Category", partial(self.moveAttributesToNewCategory, [attr]))
+                moveToMenu.addSeparator()
+                for c, _ in self._attrModel._categories:
+                    if c != attr.category():
+                        moveToMenu.addAction(c, partial(self.moveAttributesToCategory, [attr], c))
+
+                menu.addSeparator()
+                menu.addAction("Duplicate", partial(self.duplicateAttributes, [attr]), "Ctrl+D")
+                menu.addAction("Copy", partial(self.copyAttributes, [attr]), "Ctrl+C")
+                menu.addAction("Cut", partial(self.cutAttributes, [attr]), "Ctrl+X")
+                menu.addAction("Remove", partial(self.removeAttributes, [attr]), "Delete")
+
+        menu.exec(globalPos)
+
+    def _targetLocation(self, index: Optional[QModelIndex] = None) -> Tuple[str, Optional[int]]:
+        """Returns (category_name, insertion_index) based on specified index, current selection, or default."""
+        idx = index if (index is not None and index.isValid()) else self.currentIndex()
+        allAttrs = self._module.attributes() if self._module else []
+
+        if idx.isValid():
+            cat = self._attrModel.categoryForIndex(idx)
+            if cat is not None:
+                catAttrs = [a for a in allAttrs if a.category() == cat]
+                insertIdx = (allAttrs.index(catAttrs[-1]) + 1) if catAttrs else len(allAttrs)
+                return cat, insertIdx
+
+            attr = self._attrModel.attrForIndex(idx)
+            if attr is not None and attr in allAttrs:
+                return attr.category(), allAttrs.index(attr) + 1
+
+        for s_idx in self.selectedIndexes():
+            cat = self._attrModel.categoryForIndex(s_idx)
+            if cat is not None:
+                catAttrs = [a for a in allAttrs if a.category() == cat]
+                insertIdx = (allAttrs.index(catAttrs[-1]) + 1) if catAttrs else len(allAttrs)
+                return cat, insertIdx
+
+            attr = self._attrModel.attrForIndex(s_idx)
+            if attr is not None and attr in allAttrs:
+                return attr.category(), allAttrs.index(attr) + 1
+
+        fallbackCat = self._attrModel._categories[0][0] if self._attrModel._categories else "General"
+        return fallbackCat, len(allAttrs)
+
+    def selectedAttributes(self) -> List[Attribute]:
+        seen = set()
+        attrs = []
+        for idx in self.selectedIndexes():
+            if idx.column() == 0:
+                a = self._attrModel.attrForIndex(idx)
+                if a and id(a) not in seen:
+                    seen.add(id(a))
+                    attrs.append(a)
+
+        return attrs
+
+    def _onQuickAdd(self, template: str):
+        name = findUniqueName("attr", [a.name() for a in self._module.attributes()])
+        cat, insertIdx = self._targetLocation()
+        newAttr = Attribute(name=name, template=template, category=cat)
+        if template in DEFAULT_WIDGETS_DATA:
+            newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[template]))
+
+        undoStack.push(AddAttributeCommand(self, self._module, newAttr, index=insertIdx))
+
+    def _connectAttr(self, attr, connect: str):
+        newAttr = attr.copy()
+        newAttr.setConnect(connect)
+        undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Connect '{attr.name()}'"))
+
+    def _disconnectAttr(self, attr):
+        newAttr = attr.copy()
+        newAttr.setConnect("")
+        undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Disconnect '{attr.name()}'"))
+
+    def _buildConnectionMenu(self, menu: QMenu, attr, module: Module, path: str = "/"):
+        sub = QMenu(module.name(), self)
+        for a in module.attributes():
+            if a.template() == attr.template() and a.name():
+                sub.addAction(a.name(), partial(self._connectAttr, attr, path + module.name() + "/" + a.name()))
+
+        for ch in module.children():
+            self._buildConnectionMenu(sub, attr, ch, path + module.name() + "/")
+
+        if sub.actions():
+            menu.addMenu(sub)
+
+    def _editData(self, attr, templateWidget):
+        def save(w, data):
+            newAttr = w.attr.copy()
+            newAttr.setLocalData(data[0])
+            undoStack.push(EditAttributeCommand(self, w.attr, w.attr.toXml(), newAttr.toXml(), f"Edit data '{w.attr.name()}'"))
+
+        w = EditJsonDialog(attr.localData(), title="Edit data", parent=self)
+        w.saved.connect(partial(save, templateWidget))
+        w.show()
+
+    def _editExpression(self, attr):
+        if not attr.module():
+            return
+
+        def save(text: str):
+            newAttr = attr.copy()
+            newAttr.setExpression(text)
+            undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Edit expression '{attr.name()}'"))
+
+        w = EditTextDialog(
+            attr.expression(),
+            title=f"Edit expression for '{attr.name()}'",
+            placeholder='# Example: value = ch("../someAttr") + 1',
+            words=set(attr.module().context().keys()),
+            python=True,
+            parent=self
+        )
+        w.saved.connect(save)
+        w.show()
+
+    def _evaluateExpression(self, attr, attrWidget):
+        with blockedWidgetContext(attrWidget) as w:
+            w.setJsonData(attr.data())
+
+    def _clearExpression(self, attr):
+        newAttr = attr.copy()
+        newAttr.setExpression("")
+        undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Clear expression '{attr.name()}'"))
+
+    def _resetAttr(self, attr):
+        newAttr = attr.copy()
+        newAttr.setConnect("")
+        newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[attr.template()]))
+        undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Reset '{attr.name()}'"))
+
+    def _exposeAttr(self, attr):
+        parentModule = attr.module().parent()
+        if parentModule == attr.module().root():
+            QMessageBox.warning(self, "Rig Builder", "Can't expose attribute to parent: no parent module")
+            return
+
+        doUsePrefix = QMessageBox.question(self, "Rig Builder", "Use prefix for the exposed attribute name?",
+                                           QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        prefix = attr.module().name() + "_" if doUsePrefix else ""
+        newName = prefix + attr.name()
+        if parentModule.findAttribute(newName):
+            QMessageBox.warning(self, "Rig Builder", f"Can't expose: '{newName}' already exists")
+            return
+
+        expAttr = attr.copy()
+        parentModule.addAttribute(expAttr)
+        expAttr.setName(newName)
+        self._connectAttr(attr, "/" + expAttr.name())
+        self.moduleChanged.emit(parentModule)
+
+    def _saveAsPreset(self, attr):
+        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:", QLineEdit.Normal, attr.name())
+        if ok and name:
+            WidgetPresetManager.savePreset(name, attr.template(), attr.localData())
+
+    def _applyPreset(self, attr, templateWidget, data: dict):
+        attr.setData(data)
+        if templateWidget:
+            with blockedWidgetContext(templateWidget) as w:
+                w.setJsonData(attr.data())
+
+    def moveCategory(self, cat: str, delta: int):
+        if not self._module:
+            return
+
+        currentCats = [c for c, _ in self._attrModel._categories]
+        if cat not in currentCats:
+            return
+
+        idx = currentCats.index(cat)
+        newIdx = idx + delta
+        if 0 <= newIdx < len(currentCats):
+            currentCats.pop(idx)
+            currentCats.insert(newIdx, cat)
+            allAttrs = self._module.attributes()
+            newAttrs = []
+            for c in currentCats:
+                newAttrs.extend([a for a in allAttrs if a.category() == c])
+
+            for a in allAttrs:
+                if a not in newAttrs:
+                    newAttrs.append(a)
+
+            if newAttrs != allAttrs:
+                undoStack.push(MoveAttributesCommand(self, self._module, allAttrs[:], newAttrs))
+
+    def removeCategory(self, cat: str):
+        if not self._module:
+            return
+
+        attrs = [a for a in self._module.attributes() if a.category() == cat]
+        if not attrs:
+            return
+
+        if QMessageBox.question(self, "Rig Builder", f"Remove category '{cat}' and all its {len(attrs)} attributes?",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            undoStack.beginMacro(f"Remove category '{cat}'")
+            for a in attrs:
+                undoStack.push(RemoveAttributeCommand(self, a))
+
+            undoStack.endMacro()
+
+    def moveAttributesToCategory(self, attrs: List[Attribute], category: str):
+        undoStack.beginMacro(f"Move attribute{'s' if len(attrs) > 1 else ''} to '{category}'")
+        for attr in attrs:
+            if attr.category() != category:
+                newAttr = attr.copy()
+                newAttr.setCategory(category)
+                undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Move '{attr.name()}' to '{category}'"))
+
+        undoStack.endMacro()
+
+    def moveAttributesToNewCategory(self, attrs: List[Attribute]):
+        existingCats = [c for c, _ in self._attrModel._categories]
+        self.moveAttributesToCategory(attrs, findUniqueName("NewCategory", existingCats))
+
+    def copyAttributes(self, attrs: List[Attribute]):
+        AttributesTreeView.Clipboard = [a.copy() for a in attrs]
+
+    def cutAttributes(self, attrs: List[Attribute]):
+        if not self._module or not attrs:
+            return
+
+        AttributesTreeView.Clipboard = [a.copy() for a in attrs]
+        undoStack.beginMacro(f"Cut attribute{'s' if len(attrs) > 1 else ''}")
+        for a in attrs:
+            undoStack.push(RemoveAttributeCommand(self, a))
+
+        undoStack.endMacro()
+
+    def copyAttribute(self, attr: Attribute):
+        self.copyAttributes([attr])
+
+    def cutAttribute(self, attr: Attribute):
+        self.cutAttributes([attr])
+
+    def pasteAttributes(self, targetCategory: Optional[str] = None, insertIndex: Optional[int] = None):
+        if not AttributesTreeView.Clipboard or not self._module:
+            return
+
+        if targetCategory is None:
+            targetCategory, insertIndex = self._targetLocation()
+
+        undoStack.beginMacro(f"Paste attribute{'s' if len(AttributesTreeView.Clipboard) > 1 else ''}")
+        existingNames = [a.name() for a in self._module.attributes()]
+        for i, clipAttr in enumerate(AttributesTreeView.Clipboard):
+            newAttr = clipAttr.copy()
+            newAttr.setCategory(targetCategory)
+            newName = findUniqueName(newAttr.name(), existingNames)
+            existingNames.append(newName)
+            newAttr.setName(newName)
+            idx = (insertIndex + i) if insertIndex is not None else None
+            undoStack.push(AddAttributeCommand(self, self._module, newAttr, index=idx))
+
+        undoStack.endMacro()
+
+    def pasteAttribute(self, targetCategory: Optional[str] = None, insertIndex: Optional[int] = None):
+        self.pasteAttributes(targetCategory, insertIndex)
+
+    def duplicateAttributes(self, attrs: List[Attribute]):
+        if not self._module or not attrs:
+            return
+
+        undoStack.beginMacro(f"Duplicate attribute{'s' if len(attrs) > 1 else ''}")
+        existingNames = [a.name() for a in self._module.attributes()]
+        for attr in attrs:
+            dup = attr.copy()
+            newName = findUniqueName(attr.name(), existingNames)
+            existingNames.append(newName)
+            dup.setName(newName)
+            try:
+                insertIdx = self._module.attributes().index(attr) + 1
+            except ValueError:
+                insertIdx = None
+
+            undoStack.push(AddAttributeCommand(self, self._module, dup, index=insertIdx))
+
+        undoStack.endMacro()
+
+    def removeAttributes(self, attrs: List[Attribute]):
+        names = ", ".join(f"'{a.name()}'" for a in attrs)
+        if QMessageBox.question(self, "Rig Builder", f"Remove {names}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+            undoStack.beginMacro("Remove attributes")
+            for a in attrs:
+                undoStack.push(RemoveAttributeCommand(self, a))
+
+            undoStack.endMacro()
+
+    def duplicateSelected(self):
+        selected = self.selectedAttributes()
+        if selected:
+            self.duplicateAttributes(selected)
+
+    def copySelected(self):
+        selected = self.selectedAttributes()
+        if selected:
+            self.copyAttributes(selected)
+
+    def cutSelected(self):
+        selected = self.selectedAttributes()
+        if selected:
+            self.cutAttributes(selected)
+
+    def pasteSelected(self):
+        if AttributesTreeView.Clipboard:
+            self.pasteAttributes()
+
+    def removeSelected(self):
+        selected = self.selectedAttributes()
+        if selected:
+            self.removeAttributes(selected)
+
+    # ------------------------------------------------------------------
+    # Painting – empty state hint
+    # ------------------------------------------------------------------
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._module and self._module.attributes():
+            return
+        painter = QPainter()
+        if painter.begin(self.viewport()):
+            painter.setPen(QColor("#7a8699"))
+            font = self.font()
+            font.setItalic(True)
+            painter.setFont(font)
+            vr = self.viewport().rect()
+            painter.drawText(QRect(vr.x(), vr.y(), vr.width(), vr.height() - 5),
+                             Qt.AlignBottom | Qt.AlignHCenter,
+                             "Right-click to add attributes")
+            painter.end()
 
 
 class ModuleModel(QAbstractItemModel):
@@ -1938,52 +2124,6 @@ class ModuleTreeWidget(QTreeView):
         self.selectModules([module])
 
 
-class TemplateSelectorDialog(QDialog):
-    selectedTemplate = Signal(str)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.setWindowTitle("Template Selector")
-        self.setGeometry(0, 0, 700, 500)
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        scrollWidget = QWidget()
-        scrollArea = QScrollArea()
-        scrollArea.setWidget(scrollWidget)
-        scrollArea.setWidgetResizable(True)
-
-        self.gridLayout = QGridLayout()
-        scrollWidget.setLayout(self.gridLayout)
-
-        self.gridLayout.setDefaultPositioning(3, Qt.Horizontal)
-        self.gridLayout.setColumnStretch(1, 1)
-
-        layout.addWidget(scrollArea)
-
-        self.refreshTemplates()
-        centerWindow(self)
-
-    def selectTemplate(self, t: str):
-        self.selectedTemplate.emit(t)
-        self.done(0)
-
-    def refreshTemplates(self):
-        """Rebuild template grid."""
-        clearLayout(self.gridLayout)
-
-        for t in sorted(TemplateWidgets.keys()):
-            self.gridLayout.addWidget(QLabel(t))
-            w  = TemplateWidgets[t]()
-            w.setJsonData(w.getDefaultData())
-            self.gridLayout.addWidget(w)
-
-            selectBtn = QPushButton("✅ Select")
-            selectBtn.clicked.connect(partial(self.selectTemplate, t))
-            self.gridLayout.addWidget(selectBtn)
-
 class CodeEditorWidget(CodeEditorWithNumbersWidget):
     def __init__(self, module: Optional[Module] = None, **kwargs):
         super().__init__(**kwargs)
@@ -2456,10 +2596,10 @@ class RigBuilderWindow(QFrame):
 
         self.apiBrowser = ApiBrowser()
 
-        self.attributesTabWidget = AttributesTabWidget()
-        self.attributesTabWidget.moduleChanged.connect(self._onModuleChanged)
-        self.attributesTabWidget.moduleCodeExecutionRequested.connect(self._onModuleExecutionRequested)
-        self.attributesTabWidget.setEnabled(False)
+        self.attributesTreeView = AttributesTreeView()
+        self.attributesTreeView.moduleChanged.connect(self._onModuleChanged)
+        self.attributesTreeView.moduleCodeExecutionRequested.connect(self._onModuleExecutionRequested)
+        self.attributesTreeView.setEnabled(False)
 
         self.runBtn = QPushButton("🚀 Run")
         self.runBtn.setToolTip("Execute selected module inside the current host.")
@@ -2504,7 +2644,7 @@ class RigBuilderWindow(QFrame):
         treeWithBtnWidget.layout().addWidget(self.runBtn)
 
         centerSplitter = WideSplitter(Qt.Vertical)
-        centerSplitter.addWidget(self.attributesTabWidget)
+        centerSplitter.addWidget(self.attributesTreeView)
         centerSplitter.addWidget(self.codeEditorWidget)
         centerSplitter.setSizes([500, 300])
 
@@ -2872,22 +3012,21 @@ class RigBuilderWindow(QFrame):
 
         module = self.treeWidget.currentModule()
         en = module is not None
-        
-        self.runBtn.setEnabled(en) 
+
+        self.runBtn.setEnabled(en)
         self.docBrowser.setEnabled(en)
-        self.attributesTabWidget.setEnabled(en)
+        self.attributesTreeView.setEnabled(en)
         self.codeEditorWidget.setEnabled(en)
 
         self.moduleHistoryBrowser.filterEdit.setText(module.uid() if module else "")
-
         self.docBrowser.setDoc(module.doc() if module else "")
 
-        self.attributesTabWidget.module = module
-        self.attributesTabWidget.updateTabs()
+        self.attributesTreeView.setModule(module)
         self.codeEditorWidget.module = module
         self.codeEditorWidget.updateState()
 
     def showLog(self):
+
         self.logWidget.ensureCursorVisible()
 
     def flushUndo(self):

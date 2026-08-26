@@ -1763,7 +1763,57 @@ class CompoundTemplateWidget(TemplateWidget):
 
         layout.addStretch()
 
-TemplateWidgets = {}
-for sub in TemplateWidget.__subclasses__():
-    if sub.template != "":
-        TemplateWidgets[sub.template] = sub
+def getTemplateSnapshot(templateName: str, width: int = 240) -> QPixmap:
+    """Capture or retrieve a cached QPixmap snapshot of a template widget."""
+    if templateName not in _templateSnapshotCache:
+        cls = TemplateWidgets.get(templateName)
+        if not cls:
+            return QPixmap()
+        try:
+            w = cls()
+            w.setJsonData(w.getDefaultData())
+            w.setFixedWidth(width)
+            w.adjustSize()
+            _templateSnapshotCache[templateName] = w.grab()
+        except Exception:
+            _templateSnapshotCache[templateName] = QPixmap()
+    return _templateSnapshotCache[templateName]
+
+class AttributePreviewPopup(QLabel):
+    """Floating preview popup showing a snapshot of an attribute template widget on hover."""
+
+    def __init__(self):
+        super().__init__(None, Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput | Qt.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setStyleSheet("background-color: #252526; border: 1px solid #454545; border-radius: 4px; padding: 4px;")
+        self.setAlignment(Qt.AlignCenter)
+
+    def showPreview(self, templateName: str, menu: QMenu, action: QAction):
+        pixmap = getTemplateSnapshot(templateName)
+        if pixmap.isNull():
+            self.hide()
+            return
+
+        self.setPixmap(pixmap)
+        self.adjustSize()
+
+        actionPos = menu.mapToGlobal(menu.actionGeometry(action).topLeft())
+        targetX = menu.mapToGlobal(QPoint(menu.width(), 0)).x() + 4
+        targetY = actionPos.y() - 2
+
+        screen = QGuiApplication.screenAt(actionPos) or QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            if targetX + self.width() > geo.right():
+                targetX = menu.mapToGlobal(QPoint(0, 0)).x() - self.width() - 4
+            targetY = max(geo.top(), min(targetY, geo.bottom() - self.height() - 4))
+
+        self.move(targetX, targetY)
+        self.show()
+
+
+TemplateWidgets = {sub.template: sub for sub in TemplateWidget.__subclasses__() if sub.template != ""}
+
+_templateSnapshotCache: dict[str, QPixmap] = {}
