@@ -470,6 +470,26 @@ class AttributeModel(QAbstractItemModel):
         super().__init__(parent)
         self._module: Optional[Module] = None
         self._categories: List[Tuple[str, List]] = []
+        self.moduleTracker = ModuleTracker(self)
+        self.moduleTracker.moduleChanged.connect(self._onModuleChanged)
+
+    def _onModuleChanged(self, uid: str):
+        if self._module and self._module.uid() == uid:
+            self.layoutChanged.emit() 
+
+    def refModule(self) -> Optional[Module]:
+        if self._module and self._module.uid():
+            return self.moduleTracker.getModule(self._module.uid())
+
+    def isAttrSyncRequired(self, attr: Attribute) -> bool:
+        ref = self.refModule()
+        if not ref:
+            return False
+        refAttr = ref.findAttribute(attr.name())
+        return not refAttr or attr.isSyncRequired(refAttr)
+
+    def isCategorySyncRequired(self, category: str) -> bool:
+        return any(self.isAttrSyncRequired(a) for a in self._module.attributes() if a.category() == category) if self._module else False
 
     def setModule(self, module: Optional[Module]):
         self.beginResetModel()
@@ -536,7 +556,11 @@ class AttributeModel(QAbstractItemModel):
 
         # Category Header
         if isinstance(ptr, str):
-            if role in (Qt.DisplayRole, Qt.EditRole) and col == 0:
+            if role == Qt.DisplayRole and col == 0:
+                suffix = "*" if self.isCategorySyncRequired(ptr) else ""
+                return ptr + suffix
+
+            if role == Qt.EditRole and col == 0:
                 return ptr
 
             if role == Qt.ForegroundRole:
@@ -554,7 +578,11 @@ class AttributeModel(QAbstractItemModel):
 
         # Attribute Row
         attr = ptr
-        if role in (Qt.DisplayRole, Qt.EditRole) and col == 0:
+        if role == Qt.DisplayRole and col == 0:
+            suffix = "*" if self.isAttrSyncRequired(attr) else ""
+            return attr.name() + suffix
+
+        if role == Qt.EditRole and col == 0:
             return attr.name()
 
         if role == Qt.ForegroundRole and col == 0:
