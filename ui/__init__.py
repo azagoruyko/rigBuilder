@@ -43,8 +43,6 @@ from .workspaceManager import WorkspaceWidget, getWorkspace
 undoStack = QUndoStack()
 
 
-
-
 def updateTemplateWidgetStyle(widget: TemplateWidget):
     attr = widget.attr
     conn = attr.connect()
@@ -67,7 +65,6 @@ def updateTemplateWidgetStyle(widget: TemplateWidget):
 
     widget.setStyleSheet(style)
     widget.setToolTip("\n".join(tooltip))
-
 
 
 class ModuleTracker(QObject):
