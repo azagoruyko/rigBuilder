@@ -853,6 +853,7 @@ class AttributesTreeView(QTreeView):
             ("Cut", self.cutSelected, "Ctrl+X"),
             ("Paste", self.pasteSelected, "Ctrl+V"),
             ("Remove", self.removeSelected, "Delete"),
+            ("Diff vs File", self.diffAttribute, "Alt+D"),
         ]:
             act = QAction(name, self, shortcut=shortcut, triggered=slot)
             act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
@@ -1065,6 +1066,7 @@ class AttributesTreeView(QTreeView):
 
                 menu.addAction("Reset", partial(self._resetAttr, attr))
                 menu.addAction("Expose", partial(self._exposeAttr, attr))
+                menu.addAction("Diff vs File", self.diffAttribute, "Alt+D")
 
                 presetsMenu = menu.addMenu("Presets")
                 presetsMenu.addAction("Manage Presets...", lambda: PresetEditorDialog(parent=self).exec())
@@ -1378,6 +1380,31 @@ class AttributesTreeView(QTreeView):
         selected = self.selectedAttributes()
         if selected:
             self.removeAttributes(selected)
+
+    def diffAttribute(self):
+        selected = self.selectedAttributes()
+        if not selected:
+            return
+        attr = selected[0]
+
+        refPath = attr.module().referenceFile()
+        if not refPath:
+            QMessageBox.warning(self, "Rig Builder", "This module has no reference file.")
+            return
+
+        if not os.path.exists(refPath):
+            QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(refPath))
+            return
+
+        currentText = attr.toText()
+        refAttr = Module.loadModule(refPath).findAttribute(attr.name())
+        originalText = refAttr.toText() if refAttr else ""
+
+        if originalText == currentText:
+            QMessageBox.information(self, "Rig Builder", "No changes detected.")
+            return
+
+        DiffBrowserDialog(originalText, currentText, refPath, "Current", parent=self).exec()
 
     # ------------------------------------------------------------------
     # Painting – empty state hint
