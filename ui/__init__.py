@@ -2640,9 +2640,9 @@ class RigBuilderWindow(QFrame):
         self.codeEditorWidget.setEnabled(False)
 
         for label, func, hotkey in [
-            ("Execute", self._onExecuteCode, "Ctrl+Enter")]:            
+            ("Execute", self._onExecuteCode, ["Ctrl+Enter", "Ctrl+Return"])]:
             action = QAction(label, self.codeEditorWidget.editorWidget)
-            action.setShortcut(hotkey)
+            action.setShortcuts(hotkey)
             action.triggered.connect(lambda *_, f=func: f())
             self.codeEditorWidget.editorWidget.addCustomAction(action)
         
