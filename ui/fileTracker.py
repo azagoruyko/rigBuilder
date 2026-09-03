@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import os
 import fnmatch
-from typing import List, Optional
+from typing import Optional
 
 from .qt import *
 
@@ -11,10 +13,10 @@ class DirectoryWatcher(QObject):
 
     def __init__(
         self,
-        roots: List[str],
+        roots: list[str],
         *,
         debounceMs: int = 700,
-        filePatterns: Optional[List[str]] = None,
+        filePatterns: Optional[list[str]] = None,
         recursive: bool = True,
         parent: Optional[QObject] = None,
     ):
@@ -22,7 +24,7 @@ class DirectoryWatcher(QObject):
         self.debounceMs = debounceMs
         self.filePatterns = [p.lower() for p in (filePatterns or [])]
         self.recursive = recursive
-        self.roots: List[str] = []
+        self.roots = []
 
         self.watcher = QFileSystemWatcher(self)
         self.debounceTimer = QTimer(self)
@@ -35,7 +37,7 @@ class DirectoryWatcher(QObject):
 
         self.setRoots(roots)
 
-    def setRoots(self, roots: List[str]):
+    def setRoots(self, roots: list[str]):
         """Update monitored roots and refresh watcher."""
         self.roots = [os.path.normpath(p) for p in roots if os.path.exists(p)]
         self.refreshWatchedPaths()

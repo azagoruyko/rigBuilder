@@ -5,6 +5,7 @@ Run once inside Houdini (e.g. from a startup script or shelf tool):
     from rigBuilder.host.servers.houdini import HoudiniServer
     HoudiniServer(51605).start()
 """
+from __future__ import annotations
 
 import hou
 

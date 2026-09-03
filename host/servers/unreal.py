@@ -5,6 +5,7 @@ Run inside Unreal (e.g. from Python Script Editor):
     from rigBuilder.host.servers.unreal import UnrealServer
     UnrealServer(51605).start()
 """
+from __future__ import annotations
 
 import queue
 import traceback

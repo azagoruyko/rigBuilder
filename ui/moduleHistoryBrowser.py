@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 from xml.sax.saxutils import escape
 
 from .qt import *
@@ -67,7 +67,7 @@ def recordModuleSave(module: Module, commitMessage: str) -> bool:
 
 # --- Squash ---
 
-def squashHistory() -> Tuple[bool, str]:
+def squashHistory() -> tuple[bool, str]:
     """
     Squash entire history into a single commit using an orphan branch. The repo
     will have one commit with the current tree. Returns (success, errorMessage).
@@ -104,7 +104,7 @@ def squashHistory() -> Tuple[bool, str]:
 def getModuleHistoryEntries(
     limit: int = COMMITS_LIMIT,
     uid: Optional[str] = None,
-) -> List[dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Return history entries from git log; optional filter by UID."""
     repo = getHistoryRepo()
 

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import os
 import re
 import json
 import xml.etree.ElementTree as ET
-from typing import List, Tuple, Dict, Any
+from typing import Any
 
 from . import core
 from .uidManager import UidManager
@@ -15,8 +17,8 @@ class ModuleIndexer:
     Handles indexing of modules and semantic search using vector embeddings.
     """
     def __init__(self, filePath: str = ""):
-        self.filePath: str = filePath
-        self.cache: Dict[str, Any] = {"modules": {}, "model": ""}
+        self.filePath = filePath
+        self.cache = {"modules": {}, "model": ""}
 
     def refresh(self):
         """Reload the cache from the current index file."""
@@ -24,7 +26,7 @@ class ModuleIndexer:
             return
         self.cache = self._loadCache()
 
-    def _loadCache(self) -> Dict[str, Any]:
+    def _loadCache(self) -> dict[str, Any]:
         """Load the index cache from disk."""
         if not self.filePath or not os.path.exists(self.filePath):
             return {"modules": {}, "model": ""}
@@ -136,7 +138,7 @@ class ModuleIndexer:
             self._saveCache()
             print("Semantic index updated.")
 
-    async def search(self, query: str, k: int = 5) -> List[Tuple[str, float]]:
+    async def search(self, query: str, k: int = 5) -> list[tuple[str, float]]:
         """
         Search modules by natural language query.
         Returns a list of (module_path, similarity_score) tuples.

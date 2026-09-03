@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import glob
@@ -5,8 +7,8 @@ from .settings import settings, MODULE_EXTS
 from typing import Optional
 
 class UidManager:
-    _uids: dict[str, str] = {} # uid: path
-    _mtimeCache: dict[str, tuple[float, str]] = {} # path: (mtime, uid)
+    _uids = {} # uid: path
+    _mtimeCache = {} # path: (mtime, uid)
 
     @classmethod
     def sync(cls):

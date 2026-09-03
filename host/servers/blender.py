@@ -5,6 +5,7 @@ Run once inside Blender (e.g. from a startup script):
     from rigBuilder.host.servers.blender import BlenderServer
     BlenderServer(51605).start()
 """
+from __future__ import annotations
 
 import os
 import bpy

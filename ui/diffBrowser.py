@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import os
 import difflib
 import asyncio
-from typing import List
 from ..core import Module
 from .qt import *
 from .utils import centerWindow
@@ -11,7 +12,7 @@ from ..ai import engine
 
 activeWorkers = []
 
-def calculateModulesDiff(modules: List[Module]) -> str:
+def calculateModulesDiff(modules: list[Module]) -> str:
     """Calculate unified diffs for a list of modules against their disk state."""
     diffTexts = []
     for m in modules:

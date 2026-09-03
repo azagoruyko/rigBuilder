@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import math
 import os
-from typing import Any, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 from .utils import *
 
 DEFAULT_WIDGETS_DATA = {

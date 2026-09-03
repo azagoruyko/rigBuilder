@@ -1816,4 +1816,4 @@ class AttributePreviewPopup(QLabel):
 
 TemplateWidgets = {sub.template: sub for sub in TemplateWidget.__subclasses__() if sub.template != ""}
 
-_templateSnapshotCache: dict[str, QPixmap] = {}
+_templateSnapshotCache = {}

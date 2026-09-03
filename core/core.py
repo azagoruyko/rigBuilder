@@ -7,7 +7,7 @@ import uuid
 import textwrap
 import xml.etree.ElementTree as ET
 
-from typing import List, Optional, Union, Any, Callable, TYPE_CHECKING
+from typing import Optional, Union, Any, Callable, TYPE_CHECKING
 from .utils import copyJson, clamp, smartConversion, fromSmartConversion, saveJson, loadJson, replacePairs, dictToText
 
 from . import widgets
@@ -66,7 +66,7 @@ class APIRegistryMeta(type):
 class APIRegistry(metaclass=APIRegistryMeta):
     """Registry for functions and objects available to modules at runtime."""
 
-    _objects: DictExt[str, Any] = {}
+    _objects = {}
 
     @staticmethod
     def clear():
@@ -327,9 +327,9 @@ class Attribute:
                 raise AttributeResolverError("Cannot resolve connection source '{}'".format(self._connect))
             return srcAttr
 
-    def listConnections(self) -> List[Attribute]:
+    def listConnections(self) -> list[Attribute]:
         """List all attributes that connect to this attribute."""
-        def _listConnections(currentModule: Module) -> List[Attribute]:
+        def _listConnections(currentModule: Module) -> list[Attribute]:
             connections = []
             for ch in currentModule._children:
                 if ch is not self._module: # not self
@@ -480,8 +480,8 @@ class Module:
         name: str = "module",
         runCode: str = "",
         doc: str = "",
-        children: Optional[List[Module]] = None,
-        attributes: Optional[List[Attribute]] = None,
+        children: Optional[list[Module]] = None,
+        attributes: Optional[list[Attribute]] = None,
         muted: bool = False
     ):
         self._name = name
@@ -565,7 +565,7 @@ class Module:
         """Get root module in hierarchy."""
         return self._parent.root() if self._parent else self
 
-    def children(self) -> List[Module]:
+    def children(self) -> list[Module]:
         """Get list of child modules."""
         return list(self._children)
 
@@ -609,7 +609,7 @@ class Module:
             if ch._name == name:
                 return ch
 
-    def attributes(self) -> List[Attribute]:
+    def attributes(self) -> list[Attribute]:
         """Get list of module attributes."""
         return list(self._attributes)
 
@@ -872,7 +872,7 @@ class Module:
         return module
 
     @staticmethod
-    def listModules(path: str) -> List[str]:
+    def listModules(path: str) -> list[str]:
         """List all module files in directory recursively."""
         files = []
         for f in sorted(glob.iglob(os.path.join(path, "*"))):

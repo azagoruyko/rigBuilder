@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 import os
 import re
@@ -11,7 +13,7 @@ import stat
 import shutil
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from datetime import datetime, timedelta
-from typing import List, Any
+from typing import Any
 
 def clamp(val: float, low: float, high: float) -> float:
     """Clamp value between low and high bounds."""

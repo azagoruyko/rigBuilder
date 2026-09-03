@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import threading
 from functools import partial
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 from .qt import *
 from ..core.settings import (
@@ -16,7 +16,7 @@ from ..core.utils import replaceSpecialChars
 from ..core.connectionManager import connectionManager
 from ..core.gitrepo import GitRepo
 
-_workspaceCache: dict[str, Workspace] = {}
+_workspaceCache = {}
 
 COMMUNITY_REPO = "https://github.com/azagoruyko/rigBuilder-community"
 COMMUNITY_NAME = "community"

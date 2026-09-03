@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import xml.etree.ElementTree as ET
-from typing import Optional, List, Tuple
+from typing import Optional
 import markdown
 import asyncio
 
@@ -17,7 +17,7 @@ from ..core.logger import logger
 from .fileTracker import DirectoryWatcher
 from ..core.moduleIndexer import ModuleIndexer
 
-_docCache: dict[str, Tuple[float, str]] = {}  # path: (mtime, content)
+_docCache = {}  # path: (mtime, content)
 
 
 def getDocFromFile(path: str) -> str:
@@ -218,9 +218,9 @@ class ModuleBrowser(QDialog):
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.indexer = ModuleIndexer()
-        self.semanticResults: List[Tuple[str, float]] = []
-        self._indexWorker: Optional[QThread] = None
-        self._currentSearchWorker: Optional[SearchWorker] = None
+        self.semanticResults = []
+        self._indexWorker = None
+        self._currentSearchWorker = None
         self._activeThreads = set()
 
         # Dialog main layout
@@ -542,7 +542,7 @@ class ModuleBrowser(QDialog):
         self.semanticResults = []
         self._rebuildModulesList()
 
-    def _onSemanticSearchFinished(self, query: str, results: List[Tuple[str, float]]):
+    def _onSemanticSearchFinished(self, query: str, results: list[tuple[str, float]]):
         """Handle results from the semantic search thread."""
         if query != self.searchWidget.text().strip():
             return

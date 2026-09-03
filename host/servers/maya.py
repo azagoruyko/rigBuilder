@@ -5,6 +5,8 @@ Run once inside Maya (e.g. from userSetup.py or Script Editor):
     from rigBuilder.host.servers.maya import MayaServer
     MayaServer(51605).start()
 """
+from __future__ import annotations
+
 import os
 import maya.utils
 import maya.cmds as cmds

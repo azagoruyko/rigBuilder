@@ -11,7 +11,7 @@ import logging
 import textwrap
 import xml.etree.ElementTree as ET
 from functools import partial
-from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
+from typing import Callable, Optional, Union, Any, TYPE_CHECKING
 
 from .. import __version__
 from ..core import workspace
@@ -76,7 +76,7 @@ class ModuleTracker(QObject):
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
-        self._cache: dict[str, Module] = {}
+        self._cache = {} # uid: Module
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._onFileChanged)
 
@@ -191,7 +191,7 @@ class AddModuleCommand(QUndoCommand):
         self.model.endRemoveRows()
 
 class RemoveModulesCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, modules: List[Module]):
+    def __init__(self, model: ModuleModel, modules: list[Module]):
         super().__init__("Remove Module(s)")
         self.model = model
         self.items = []
@@ -219,7 +219,7 @@ class RemoveModulesCommand(QUndoCommand):
             self.model.endInsertRows()
 
 class MuteModuleCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, modules: List[Module]):
+    def __init__(self, model: ModuleModel, modules: list[Module]):
         super().__init__("Mute/Unmute Module(s)")
         self.model = model
         self.modules = list(modules)
@@ -238,7 +238,7 @@ class MuteModuleCommand(QUndoCommand):
         self.model.layoutChanged.emit()
 
 class EmbedModuleCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, modules: List[Module]):
+    def __init__(self, model: ModuleModel, modules: list[Module]):
         super().__init__("Embed Module(s)")
         self.model = model
         self.modules = list(modules)
@@ -255,7 +255,7 @@ class EmbedModuleCommand(QUndoCommand):
         self.model.layoutChanged.emit()
 
 class MoveModulesCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, modules: List[Module], targetParent: Optional[Module] = None, targetRow: int = -1):
+    def __init__(self, model: ModuleModel, modules: list[Module], targetParent: Optional[Module] = None, targetRow: int = -1):
         super().__init__("Move Module(s)")
         self.model = model
         self.targetParent = targetParent or model.rootModule()
@@ -314,7 +314,7 @@ class MoveModulesCommand(QUndoCommand):
                 
 
 class SyncModulesCommand(QUndoCommand):
-    def __init__(self, model: ModuleModel, modules: List[Module]):
+    def __init__(self, model: ModuleModel, modules: list[Module]):
         super().__init__("Sync Module(s)")
         self.model = model
         self.modules = modules
@@ -465,8 +465,8 @@ class AttributeModel(QAbstractItemModel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._module: Optional[Module] = None
-        self._categories: List[Tuple[str, List]] = []
+        self._module = None
+        self._categories = [] # [(category_name, [attributes])]
         self.moduleTracker = ModuleTracker(self)
         self.moduleTracker.moduleChanged.connect(self._onModuleChanged)
 
@@ -713,7 +713,7 @@ class AttributeModel(QAbstractItemModel):
 
         return False
 
-    def _dropCategories(self, draggedCats: List[str], parent: QModelIndex, row: int) -> bool:
+    def _dropCategories(self, draggedCats: list[str], parent: QModelIndex, row: int) -> bool:
         currentCats = [cat for cat, _ in self._categories]
         remaining = [c for c in currentCats if c not in draggedCats]
 
@@ -734,7 +734,7 @@ class AttributeModel(QAbstractItemModel):
         undoStack.push(MoveAttributesCommand(self._tabWidget, self._module, allAttrs[:], newAttrs))
         return True
 
-    def _dropAttributes(self, srcPositions: List[int], parent: QModelIndex, row: int) -> bool:
+    def _dropAttributes(self, srcPositions: list[int], parent: QModelIndex, row: int) -> bool:
         allAttrs = self._module.attributes()
         srcAttrs = [allAttrs[p] for p in srcPositions if 0 <= p < len(allAttrs)]
         if not srcAttrs:
@@ -781,7 +781,7 @@ class AttributeModel(QAbstractItemModel):
         if not self._module:
             return
 
-        cat_map: dict[str, list] = {}
+        cat_map = {}
         for a in self._module.attributes():
             cat_map.setdefault(a.category(), []).append(a)
 
@@ -808,11 +808,11 @@ class AttributesTreeView(QTreeView):
     moduleChanged = Signal(object)
     moduleCodeExecutionRequested = Signal(str)
 
-    Clipboard: List[Attribute] = []
+    Clipboard = []
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._module: Optional[Module] = None
+        self._module = None
         self._attrModel = AttributeModel(self)
         self._attrModel._tabWidget = self
         self.setModel(self._attrModel)
@@ -841,7 +841,7 @@ class AttributesTreeView(QTreeView):
         self._attrModel.modelReset.connect(self._onModelReset)
         self.expanded.connect(self._onItemExpanded)
         self.collapsed.connect(self._onItemCollapsed)
-        self._collapsedCategories: dict[Module, set[str]] = {}
+        self._collapsedCategories = {} # Module: set[category_name]
         self._attrPreviewPopup = AttributePreviewPopup()
 
         for name, slot, shortcut in [
@@ -1091,7 +1091,7 @@ class AttributesTreeView(QTreeView):
 
         menu.exec(globalPos)
 
-    def _targetLocation(self, index: Optional[QModelIndex] = None) -> Tuple[str, int]:
+    def _targetLocation(self, index: Optional[QModelIndex] = None) -> tuple[str, int]:
         """Returns (category_name, insertion_index) for adding/pasting attributes."""
         idx = index if (index and index.isValid()) else self.currentIndex()
         allAttrs = self._module.attributes() if self._module else []
@@ -1108,7 +1108,7 @@ class AttributesTreeView(QTreeView):
         fallbackCat = self._attrModel._categories[0][0] if self._attrModel._categories else "General"
         return fallbackCat, len(allAttrs)
 
-    def selectedAttributes(self) -> List[Attribute]:
+    def selectedAttributes(self) -> list[Attribute]:
         seen = set()
         attrs = []
         for idx in self.selectedIndexes():
@@ -1268,7 +1268,7 @@ class AttributesTreeView(QTreeView):
 
             undoStack.endMacro()
 
-    def moveAttributesToCategory(self, attrs: List[Attribute], category: str):
+    def moveAttributesToCategory(self, attrs: list[Attribute], category: str):
         undoStack.beginMacro(f"Move attribute{'s' if len(attrs) > 1 else ''} to '{category}'")
         for attr in attrs:
             if attr.category() != category:
@@ -1278,14 +1278,14 @@ class AttributesTreeView(QTreeView):
 
         undoStack.endMacro()
 
-    def moveAttributesToNewCategory(self, attrs: List[Attribute]):
+    def moveAttributesToNewCategory(self, attrs: list[Attribute]):
         existingCats = [c for c, _ in self._attrModel._categories]
         self.moveAttributesToCategory(attrs, findUniqueName("NewCategory", existingCats))
 
-    def copyAttributes(self, attrs: List[Attribute]):
+    def copyAttributes(self, attrs: list[Attribute]):
         AttributesTreeView.Clipboard = [a.copy() for a in attrs]
 
-    def cutAttributes(self, attrs: List[Attribute]):
+    def cutAttributes(self, attrs: list[Attribute]):
         if not self._module or not attrs:
             return
 
@@ -1325,7 +1325,7 @@ class AttributesTreeView(QTreeView):
     def pasteAttribute(self, targetCategory: Optional[str] = None, insertIndex: Optional[int] = None):
         self.pasteAttributes(targetCategory, insertIndex)
 
-    def duplicateAttributes(self, attrs: List[Attribute]):
+    def duplicateAttributes(self, attrs: list[Attribute]):
         if not self._module or not attrs:
             return
 
@@ -1345,7 +1345,7 @@ class AttributesTreeView(QTreeView):
 
         undoStack.endMacro()
 
-    def removeAttributes(self, attrs: List[Attribute]):
+    def removeAttributes(self, attrs: list[Attribute]):
         names = ", ".join(f"'{a.name()}'" for a in attrs)
         if QMessageBox.question(self, "Rig Builder", f"Remove {names}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             undoStack.beginMacro("Remove attributes")
@@ -1615,10 +1615,10 @@ class ModuleModel(QAbstractItemModel):
                 return childIdx
         return QModelIndex()
 
-    def mimeTypes(self) -> List[str]:
+    def mimeTypes(self) -> list[str]:
         return ["text/uri-list", "application/x-rigbuilder-module-internal"]
 
-    def mimeData(self, indexes: List[QModelIndex]) -> QMimeData:
+    def mimeData(self, indexes: list[QModelIndex]) -> QMimeData:
         mimeData = QMimeData()
         
         self._draggedModules = []
@@ -1819,7 +1819,7 @@ class ModuleTreeWidget(QTreeView):
     def contextMenuEvent(self, event: QContextMenuEvent):
         mainWindow.menu().popup(event.globalPos())
 
-    def selectedModules(self) -> List[Module]:
+    def selectedModules(self) -> list[Module]:
         return [self.moduleModel.getModule(idx) for idx in self.selectionModel().selectedRows()]
 
     def currentModule(self) -> Optional[Module]:
@@ -1856,7 +1856,7 @@ class ModuleTreeWidget(QTreeView):
                 tmp = tmp.parent()
             state["current"] = tuple(path)
 
-        def walk(index: QModelIndex, path: Tuple[str, ...]):
+        def walk(index: QModelIndex, path: tuple[str, ...]):
             if self.isExpanded(index):
                 state["expanded"].add(path)
             if self.selectionModel().isSelected(index):
@@ -1884,7 +1884,7 @@ class ModuleTreeWidget(QTreeView):
         selected = state.get("selected", [])
         currentPath = state.get("current")
 
-        def walk(index: QModelIndex, path: Tuple[str, ...]):
+        def walk(index: QModelIndex, path: tuple[str, ...]):
             if path in expanded:
                 self.setExpanded(index, True)
             if path in selected:
@@ -2157,7 +2157,7 @@ class ModuleTreeWidget(QTreeView):
         self.moduleModel.addModuleAt(module)
         return module
 
-    def selectModules(self, modules: List[Module]):
+    def selectModules(self, modules: list[Module]):
         """Select a list of modules in the tree view, expand their parents, and focus the first one."""
         validIndices = [self.moduleModel.indexForModule(m) for m in modules if m]
         validIndices = [idx for idx in validIndices if idx.isValid()]

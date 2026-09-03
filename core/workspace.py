@@ -4,7 +4,7 @@ import os
 import sys
 import shutil
 import xml.etree.ElementTree as ET
-from typing import List, Protocol, Optional, Union, TYPE_CHECKING
+from typing import Protocol, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element
@@ -21,7 +21,7 @@ from .core import Module
 from .uidManager import UidManager
 from .utils import forceRemove
 
-def flattenModules(roots: List[Module]) -> List[Module]:
+def flattenModules(roots: list[Module]) -> list[Module]:
     """Return all modules in depth-first order (roots and every descendant)."""
     flat = []
     stack = list(reversed(roots))
@@ -33,8 +33,8 @@ def flattenModules(roots: List[Module]) -> List[Module]:
 
 class WorkspaceFile:
     def __init__(self):
-        self.modules: List[Module] = []
-        self.expanded: List[bool] = []
+        self.modules = []
+        self.expanded = []
     
     def toXml(self) -> str:
         """Serialize workspace file to XML."""
@@ -165,7 +165,7 @@ class Workspace:
             return False
 
     @classmethod
-    def list(cls) -> List[str]:
+    def list(cls) -> list[str]:
         """List all available workspace names in the standard directory."""
         workspaces = []
         for d in os.listdir(RIG_BUILDER_WORKSPACES_PATH):

@@ -1,6 +1,7 @@
 """Standalone host server — runs module code inline, no main-thread dispatch needed.
 Used for testing and for running rigBuilder without any host.
 """
+from __future__ import annotations
 
 from . import HostServer
 

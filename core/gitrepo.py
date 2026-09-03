@@ -7,7 +7,7 @@ import shlex
 import shutil
 import sys
 import subprocess
-from typing import List, Optional, Tuple
+from typing import Optional
 
 
 if sys.platform == "win32":
@@ -48,7 +48,7 @@ class GitRepo:
         return shutil.which("git") is not None
 
     @staticmethod
-    def clone(url: str, dest: str) -> Tuple[str, str]:
+    def clone(url: str, dest: str) -> tuple[str, str]:
         """Clone url into dest directory. Return (err, out)."""
         kwargs = {
             "stdin": subprocess.DEVNULL,
@@ -88,7 +88,7 @@ class GitRepo:
         _, out = self("branch -l")
         return not any(line.strip() for line in out.splitlines())
 
-    def __call__(self, cmd: str) -> Tuple[str, str]:
+    def __call__(self, cmd: str) -> tuple[str, str]:
         """Run git with the given command string (split into args, no shell). Return (stderr, stdout)."""
         kwargs = {
             "cwd": os.fspath(self.workingDirectory),
@@ -113,9 +113,9 @@ class GitRepo:
     def commit(
         self,
         message: str,
-        files: List[str],
+        files: list[str],
         amend: bool = False,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """Stage files (if any), then commit with message. If amend, append to previous message. Return (err, out)."""
         workDir = os.fspath(self.workingDirectory)
         files = [os.path.relpath(os.fspath(f), workDir) for f in files]
