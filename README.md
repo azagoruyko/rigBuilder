@@ -1,3 +1,5 @@
+
+
 <div align="center">
    
    [![GitHub release](https://img.shields.io/github/v/release/azagoruyko/rigBuilder?color=green&logo=github)](https://github.com/azagoruyko/rigBuilder/releases)
@@ -77,7 +79,7 @@ run.bat
 
 ### 4. Host Setup (Connectivity)
 
-Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine), it will automatically appear in the Host Manager.
+Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine, or Houdini), it will automatically appear in the Host Manager.
 
 To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment.
 
