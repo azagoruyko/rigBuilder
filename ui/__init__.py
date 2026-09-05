@@ -925,6 +925,12 @@ class AttributesTreeView(QTreeView):
                     self.setIndexWidget(attrIdx1, widget)
 
     def _makeTemplateWidget(self, attr) -> Optional[TemplateWidget]:
+        if attr.template() not in TemplateWidgets:
+            logger.error(f"{attr.module().name()}.{attr.name()}: Unknown template '{attr.template()}'. Replaced with 'lineEditAndButton'")
+            v = attr.get()
+            attr.setTemplate("lineEditAndButton")
+            attr.set(v) # restore original value
+
         tw = TemplateWidgets[attr.template()]()
         tw.attr = attr
         tw.templateWidget = tw
