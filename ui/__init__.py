@@ -844,6 +844,9 @@ class AttributesTreeView(QTreeView):
         self._collapsedCategories = {} # Module: set[category_name]
         self._attrPreviewPopup = AttributePreviewPopup()
 
+        self.searchAndReplaceDialog = SearchReplaceDialog(parent=self)
+        self.searchAndReplaceDialog.onReplace.connect(self._onReplace)
+
         for name, slot, shortcut in [
             ("Duplicate", self.duplicateSelected, "Ctrl+D"),
             ("Copy", self.copySelected, "Ctrl+C"),
@@ -1083,6 +1086,10 @@ class AttributesTreeView(QTreeView):
                 menu.addAction("Copy", partial(self.copyAttributes, [attr]), "Ctrl+C")
                 menu.addAction("Cut", partial(self.cutAttributes, [attr]), "Ctrl+X")
                 menu.addAction("Remove", partial(self.removeAttributes, [attr]), "Delete")
+        else: # when no attrs selected
+            menu.addSeparator()
+            menu.addAction("Replace in values...", self.openSearchReplaceDialog, "Ctrl+R")
+
         
         undoMenu = QMenu("Undo")
 
@@ -1409,6 +1416,41 @@ class AttributesTreeView(QTreeView):
             return
 
         DiffBrowserDialog(originalText, currentText, refPath, "Current", parent=self).exec()
+
+    def openSearchReplaceDialog(self):
+        if not self._module:
+            return
+        self.searchAndReplaceDialog.exec()
+
+    def _onReplace(self, old: str, new: str, opts: Optional[dict[str, bool]] = None):
+        if not self._module or not old:
+            return
+
+        def replaceStringInData(data: object, old: str, new: str) -> object:
+            try:
+                return json.loads(json.dumps(data).replace(old, new))
+            except (ValueError, TypeError, json.JSONDecodeError):
+                return data
+
+        attributes = self._module.attributes()
+
+        undoStack.beginMacro("Replace in values")
+        try:
+            for attr in attributes:
+                valueKey = attr.localData().get("default")
+                if not valueKey or valueKey not in attr.localData():
+                    continue
+
+                oldVal = attr.localData()[valueKey]
+                newVal = replaceStringInData(oldVal, old, new)
+                if newVal != oldVal:
+                    newAttr = attr.copy()
+                    newData = newAttr.localData()
+                    newData[valueKey] = newVal
+                    newAttr.setLocalData(newData)
+                    undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Replace in '{attr.name()}'"))
+        finally:
+            undoStack.endMacro()
 
     # ------------------------------------------------------------------
     # Painting – empty state hint

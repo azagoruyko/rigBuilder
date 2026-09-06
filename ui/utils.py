@@ -3,6 +3,7 @@ import sys
 import re
 from contextlib import contextmanager
 
+from typing import Optional
 from .qt import *
 
 def getFontWidth(fontMetrics, text: str) -> int:
@@ -132,7 +133,7 @@ class SearchReplaceDialog(QDialog):
     """Dialog for search and replace operations."""
     onReplace = Signal(str, str, dict)  # old, new, options
 
-    def __init__(self, options: list = [], **kwargs):
+    def __init__(self, options: Optional[list] = None, **kwargs):
         super().__init__(**kwargs)
 
         self.optionsWidgets = {}
@@ -145,6 +146,7 @@ class SearchReplaceDialog(QDialog):
         self.replaceWidget = QLineEdit("R_")
 
         btn = QPushButton("Replace")
+        btn.setDefault(True)
         btn.clicked.connect(self.replaceClicked)
 
         gridLayout = QGridLayout()
@@ -154,10 +156,11 @@ class SearchReplaceDialog(QDialog):
         gridLayout.addWidget(self.replaceWidget, 1, 1)
         layout.addLayout(gridLayout)
 
-        for opt in options:
-            w = QCheckBox(opt)
-            self.optionsWidgets[opt] = w
-            layout.addWidget(w)
+        if options:
+            for opt in options:
+                w = QCheckBox(opt)
+                self.optionsWidgets[opt] = w
+                layout.addWidget(w)
 
         layout.addWidget(btn)
 
