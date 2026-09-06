@@ -638,7 +638,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         self.listWidget.itemChanged.connect(self._onItemChanged)
         self.listWidget.contextMenuEvent = self.listContextMenuEvent
 
-        layout.addWidget(self.listWidget, alignment=Qt.AlignLeft|Qt.AlignTop)
+        layout.addWidget(self.listWidget)
 
     def listContextMenuEvent(self, event):
         menu = QMenu(self)
@@ -680,12 +680,11 @@ class ListBoxTemplateWidget(TemplateWidget):
         w.show()        
 
     def resizeWidget(self):
-        width = self.listWidget.sizeHintForColumn(0) + 50
         height = 0
         for i in range(self.listWidget.count()):
             height += self.listWidget.sizeHintForRow(i)
         height += 2*self.listWidget.frameWidth() + 50
-        self.listWidget.setFixedSize(clamp(width, 100, 500), clamp(height, 100, 300))
+        self.setFixedHeight(clamp(height, 100, 300))
 
     def selectInHost(self, allItems=True):
         items = ["'{}'".format(self.listWidget.item(i).text())
