@@ -982,16 +982,6 @@ class AttributesTreeView(QTreeView):
         globalPos = self.viewport().mapToGlobal(pos)
         menu = QMenu(self)
 
-        undoAction = undoStack.createUndoAction(self, "Undo")
-        undoAction.setShortcut(QKeySequence.Undo)
-        menu.addAction(undoAction)
-
-        redoAction = undoStack.createRedoAction(self, "Redo")
-        redoAction.setShortcut(QKeySequence.Redo)
-        menu.addAction(redoAction)
-
-        menu.addSeparator()
-
         if self._module:
             addAttrMenu = menu.addMenu("Add attribute")
 
@@ -1009,8 +999,7 @@ class AttributesTreeView(QTreeView):
                 menu.addAction(
                     pasteText,
                     partial(self.pasteAttributes, *self._targetLocation(index)),
-                    "Ctrl+V"
-                )
+                    "Ctrl+V")
 
         if cat:
             currentCats = [c for c, _ in self._attrModel._categories]
@@ -1094,6 +1083,18 @@ class AttributesTreeView(QTreeView):
                 menu.addAction("Copy", partial(self.copyAttributes, [attr]), "Ctrl+C")
                 menu.addAction("Cut", partial(self.cutAttributes, [attr]), "Ctrl+X")
                 menu.addAction("Remove", partial(self.removeAttributes, [attr]), "Delete")
+        
+        undoMenu = QMenu("Undo")
+
+        undoAction = undoStack.createUndoAction(undoMenu, "Undo")
+        undoAction.setShortcut(QKeySequence.Undo)
+        undoMenu.addAction(undoAction)
+
+        redoAction = undoStack.createRedoAction(undoMenu, "Redo")
+        redoAction.setShortcut(QKeySequence.Redo)
+        undoMenu.addAction(redoAction)
+
+        menu.addMenu(undoMenu)
 
         menu.exec(globalPos)
 
@@ -2936,16 +2937,6 @@ class RigBuilderWindow(QFrame):
     def menu(self):
         menu = QMenu(self)
 
-        undoAction = undoStack.createUndoAction(self, "Undo")
-        undoAction.setShortcut(QKeySequence.Undo)
-        menu.addAction(undoAction)
-
-        redoAction = undoStack.createRedoAction(self, "Redo")
-        redoAction.setShortcut(QKeySequence.Redo)
-        menu.addAction(redoAction)
-
-        menu.addSeparator()
-
         menu.addAction("New", self.treeWidget.insertModule, "Insert")
         menu.addAction("Import", self.treeWidget.importModule, "Ctrl+I")
         menu.addAction("Import script", self.treeWidget.importScript)
@@ -2971,7 +2962,18 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Remove all", self.removeAllModules)
         menu.addSeparator()
-        menu.addAction("Open User folder", self.openUserFolder)
+        menu.addAction("Open User folder", self.openUserFolder)        
+        
+        undoMenu = QMenu("Undo")
+        undoAction = undoStack.createUndoAction(undoMenu, "Undo")
+        undoAction.setShortcut(QKeySequence.Undo)
+        undoMenu.addAction(undoAction)
+
+        redoAction = undoStack.createRedoAction(undoMenu, "Redo")
+        redoAction.setShortcut(QKeySequence.Redo)
+        undoMenu.addAction(redoAction)
+
+        menu.addMenu(undoMenu)
 
         return menu
 
