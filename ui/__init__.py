@@ -854,6 +854,7 @@ class AttributesTreeView(QTreeView):
             ("Paste", self.pasteSelected, "Ctrl+V"),
             ("Remove", self.removeSelected, "Delete"),
             ("Diff vs File", self.diffAttribute, "Alt+D"),
+            ("Replace in values", self.searchAndReplaceDialog.exec, "Ctrl+R"),
         ]:
             act = QAction(name, self, shortcut=shortcut, triggered=slot)
             act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
@@ -1087,9 +1088,7 @@ class AttributesTreeView(QTreeView):
                 menu.addAction("Cut", partial(self.cutAttributes, [attr]), "Ctrl+X")
                 menu.addAction("Remove", partial(self.removeAttributes, [attr]), "Delete")
         else: # when no attrs selected
-            menu.addSeparator()
-            menu.addAction("Replace in values...", self.openSearchReplaceDialog, "Ctrl+R")
-
+            menu.addAction("Replace in values", self.searchAndReplaceDialog.exec, "Ctrl+R")
         
         undoMenu = QMenu("Undo")
 
@@ -1417,11 +1416,6 @@ class AttributesTreeView(QTreeView):
 
         DiffBrowserDialog(originalText, currentText, refPath, "Current", parent=self).exec()
 
-    def openSearchReplaceDialog(self):
-        if not self._module:
-            return
-        self.searchAndReplaceDialog.exec()
-
     def _onReplace(self, old: str, new: str, opts: Optional[dict[str, bool]] = None):
         if not self._module or not old:
             return
@@ -1432,11 +1426,9 @@ class AttributesTreeView(QTreeView):
             except (ValueError, TypeError, json.JSONDecodeError):
                 return data
 
-        attributes = self._module.attributes()
-
         undoStack.beginMacro("Replace in values")
         try:
-            for attr in attributes:
+            for attr in self._module.attributes():
                 valueKey = attr.localData().get("default")
                 if not valueKey or valueKey not in attr.localData():
                     continue
