@@ -62,8 +62,9 @@ class HostServer:
         self._pull.setsockopt(zmq.LINGER, 0)
         self._pub.setsockopt(zmq.LINGER, 0)
         
-        self._pull.bind(f"tcp://*:{self._pullPort}")
-        self._pub.bind(f"tcp://*:{self._pubPort}")
+        # Host execution and events are only available on this machine.
+        self._pull.bind(f"tcp://127.0.0.1:{self._pullPort}")
+        self._pub.bind(f"tcp://127.0.0.1:{self._pubPort}")
 
         # Resolve the actual OS-assigned ports when 0 was requested.
         if self._pullPort == 0:

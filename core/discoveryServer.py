@@ -42,7 +42,8 @@ class DiscoveryServer:
         socket = ctx.socket(zmq.PULL)
         socket.setsockopt(zmq.LINGER, 0)
         try:
-            socket.bind(f"tcp://*:{self._port}")
+            # Only local host processes may register with discovery.
+            socket.bind(f"tcp://127.0.0.1:{self._port}")
             logger.info(f"Discovery server listening on port {self._port}")
         except Exception as e:
             logger.error(f"Failed to bind discovery server to port {self._port}: {e}")
