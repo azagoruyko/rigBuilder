@@ -1963,12 +1963,12 @@ class ModuleTreeWidget(QTreeView):
             self.selectionModel().select(selection, QItemSelectionModel.Select | QItemSelectionModel.Rows)
         
     def replaceModule(self, index: QModelIndex, newModule: Module):
-        """Replace a module instance at the given index, preserving expansion and selection state."""
+        """Replace a module undoably, preserving expansion and selection state."""
         if not index.isValid():
             return
         
         state = self._getTreeState()
-        self.moduleModel.replaceModule(self.moduleModel.getModule(index), newModule)
+        undoStack.push(ReplaceModuleCommand(self.moduleModel, self.moduleModel.getModule(index), newModule))
         self._setTreeState(state)
 
     def insertModule(self):
