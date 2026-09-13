@@ -158,8 +158,8 @@ def get_module_xml(module_path: str = "") -> str:
 
 @mcp.tool()
 def set_module_xml(module_path: str, xml_str: str) -> str:
-    """Replaces or updates a module using its full XML representation.
-    This synchronizes the module structure, attributes, and Python runCode.
+    """Replaces a module subtree exactly using its full XML representation as one undoable edit.
+    Omitted content is removed. No reference synchronization or file saving is performed.
     
     CRITICAL INSTRUCTION FOR AI: Before setting any XML, you MUST read the 
     'docs://rig-builder-reference' resource to ensure you are using the correct schema and syntax.

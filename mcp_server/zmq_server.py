@@ -126,17 +126,17 @@ class RigBuilderAPI:
             return {"error": f"Module not found: {module_path}"}
             
         from rigBuilder.core import Module
-        from rigBuilder.ui import SyncModuleWithCommand, undoStack
+        from rigBuilder.ui import ReplaceModuleCommand, undoStack
 
         try:
             new_module = Module.fromXml(xml_str)
         except Exception as e:
             return {"error": f"Error: {str(e)}"}
 
-        undoStack.push(SyncModuleWithCommand(model, existing_module, new_module))
-        cls.mainWindow.treeWidget.selectModule(existing_module)
+        undoStack.push(ReplaceModuleCommand(model, existing_module, new_module))
+        cls.mainWindow.treeWidget.selectModule(new_module)
         
-        return {"message": f"Successfully updated module from XML: {module_path}"}
+        return {"message": f"Successfully replaced module from XML: {new_module.path(inclusive=True)}"}
 
     @classmethod
     def read_log(cls, req):

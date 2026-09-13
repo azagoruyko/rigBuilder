@@ -338,6 +338,24 @@ class SyncModulesCommand(QUndoCommand):
             m.syncWith(oldModule)
         self.model.endResetModel()
 
+class ReplaceModuleCommand(QUndoCommand):
+    """Replace a subtree while retaining the original instances for undo."""
+
+    def __init__(self, model: ModuleModel, module: Module, newModule: Module):
+        """Keep both subtrees so earlier commands still target the original objects."""
+        super().__init__(f"Replace '{module.name()}'")
+        self.model = model
+        self.module = module
+        self.newModule = newModule
+
+    def redo(self):
+        """Install the replacement subtree without reference synchronization."""
+        self.model.replaceModule(self.module, self.newModule)
+
+    def undo(self):
+        """Restore the original subtree at the same position."""
+        self.model.replaceModule(self.newModule, self.module)
+
 class SyncModuleWithCommand(QUndoCommand):
     def __init__(self, model: ModuleModel, module: Module, referenceModule: Module):
         super().__init__(f"Sync '{module.name()}'")
@@ -1727,22 +1745,18 @@ class ModuleModel(QAbstractItemModel):
         """Handle signal from ModuleTracker when a tracked file changes."""
         self.layoutChanged.emit() # Refresh all
 
-    def replaceModule(self, index: QModelIndex, newModule: Module):
-        """Replace a module instance at the given index with a new one."""
-        oldModule = self.getModule(index)
-        if not oldModule:
-            return
-        
-        parentModule = oldModule.parent() or self._rootModule
-        
-        try:
-            row = parentModule.children().index(oldModule)
-        except ValueError:
-            return
-            
+    def replaceModule(self, module: Module, newModule: Module):
+        """Replace a subtree, including the invisible root, without syncing its data."""
+        parentModule = module.parent()
+        row = parentModule.children().index(module) if parentModule else None
+
         self.beginResetModel()
-        parentModule.removeChild(oldModule)
-        parentModule.insertChild(row, newModule)
+        if module is self._rootModule:
+            self._rootModule = newModule
+        else:
+            parentModule.removeChild(module)
+            parentModule.insertChild(row, newModule)
+
         self.endResetModel()
 
     def clear(self):
@@ -1954,7 +1968,7 @@ class ModuleTreeWidget(QTreeView):
             return
         
         state = self._getTreeState()
-        self.moduleModel.replaceModule(index, newModule)
+        self.moduleModel.replaceModule(self.moduleModel.getModule(index), newModule)
         self._setTreeState(state)
 
     def insertModule(self):
