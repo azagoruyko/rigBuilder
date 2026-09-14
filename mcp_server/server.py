@@ -74,6 +74,35 @@ def get_selected_modules() -> str:
     return output
 
 @mcp.tool()
+def get_selected_text() -> str:
+    """Return the code editor's selected text, or an empty string if nothing is selected.
+
+    Preserves whitespace and returns multiline selections with newline characters.
+    """
+    res = get_client().send_request("get_selected_text")
+    if res.get("error"):
+        return res.get("error")
+
+    return res.get("text", "")
+
+@mcp.tool()
+def replace_selected_text(text: str) -> str:
+    """Replace the code editor's current selection as one undoable edit.
+
+    Use get_selected_text first to read the selection. The replacement stays
+    selected so it can be read back. An empty text deletes the selection.
+    Returns an error without editing if nothing is selected or the editor is read-only.
+
+    Args:
+        text: Replacement text for the current selection.
+    """
+    res = get_client().send_request("replace_selected_text", text=text)
+    if res.get("error"):
+        return res.get("error")
+
+    return res.get("message", "Success")
+
+@mcp.tool()
 def get_modules() -> str:
     """Returns a list of all instantiated modules currently in the active tree.
     This provides the AI with the structural overview of the module tree (the module paths).

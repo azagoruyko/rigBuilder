@@ -1,6 +1,7 @@
 import zmq
 import json
 from PySide6.QtCore import QObject, QTimer, QPersistentModelIndex
+from PySide6.QtGui import QTextCursor
 
 ZMQ_PORT = 51607
 
@@ -18,6 +19,31 @@ class RigBuilderAPI:
             "names": [m.name() for m in modules],
             "paths": [m.path(inclusive=True) for m in modules]
         }
+
+    @classmethod
+    def get_selected_text(cls, req):
+        """Get the code editor selection with standard newline characters."""
+        editor = cls.mainWindow.codeEditorWidget.editorWidget
+        return {"text": editor.textCursor().selectedText().replace("\u2029", "\n")}
+
+    @classmethod
+    def replace_selected_text(cls, req):
+        """Replace the editor selection in one undo step and select the new text."""
+        editor = cls.mainWindow.codeEditorWidget.editorWidget
+        if editor.isReadOnly():
+            return {"error": "The code editor is read-only."}
+
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return {"error": "No text is currently selected in the code editor."}
+
+        start = cursor.selectionStart()
+        cursor.beginEditBlock()
+        cursor.insertText(req["text"])
+        cursor.endEditBlock()
+        cursor.setPosition(start, QTextCursor.KeepAnchor)
+        editor.setTextCursor(cursor)
+        return {"message": "Selected text replaced."}
 
     @classmethod
     def get_modules(cls, req):
