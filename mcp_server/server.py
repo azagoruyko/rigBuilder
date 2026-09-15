@@ -277,5 +277,4 @@ def get_workspace_settings() -> str:
     return out
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio", show_banner=False)
-
+    mcp.run(transport="stdio", show_banner=False, log_level="WARNING")
