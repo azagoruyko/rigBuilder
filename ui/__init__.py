@@ -497,6 +497,10 @@ class AttributeModel(QAbstractItemModel):
             return self.moduleTracker.getModule(self._module.uid())
 
     def isAttrSyncRequired(self, attr: Attribute) -> bool:
+        """Check sync status for attributes that can be matched by name."""
+        if not attr.name():
+            return False
+
         ref = self.refModule()
         if not ref:
             return False
