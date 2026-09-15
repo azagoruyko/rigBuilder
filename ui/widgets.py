@@ -666,17 +666,13 @@ class ListBoxTemplateWidget(TemplateWidget):
 
     def _onItemChanged(self, item):
         self.listWidget.closePersistentEditor(item)
-        self.somethingChanged.emit()
         self.resizeWidget()
+        self.somethingChanged.emit()
 
     def editItems(self):
-        def save(newData):
-            self.setItems(newData)
-            self.resizeWidget()            
-
         data = self.getItems()
         w = EditJsonDialog(data, title="Edit items", parent=self)
-        w.saved.connect(save)
+        w.saved.connect(self.setItems)
         w.show()        
 
     def resizeWidget(self):
@@ -718,8 +714,9 @@ class ListBoxTemplateWidget(TemplateWidget):
         if ok:
             with blockedWidgetContext(self.listWidget) as w:
                 w.clear()
-            self.somethingChanged.emit()
+
             self.resizeWidget()
+            self.somethingChanged.emit()
 
     def appendItem(self):
         text = "item%d"%(self.listWidget.count()+1)
@@ -743,14 +740,14 @@ class ListBoxTemplateWidget(TemplateWidget):
             for v in items:
                 w.addItem(ListBoxItem(v))
 
-        self.somethingChanged.emit()  
+        self.resizeWidget()
+        self.somethingChanged.emit()
 
     def getJsonData(self):
         return {"items": self.getItems(), "default": "items"}
 
     def setJsonData(self, data):
         self.setItems(data.get("items", []))
-        self.resizeWidget()
 
 class RadioButtonTemplateWidget(TemplateWidget):
     template = "radioButton"

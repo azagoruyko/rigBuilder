@@ -963,6 +963,7 @@ class AttributesTreeView(QTreeView):
 
         updateTemplateWidgetStyle(tw)
         tw.somethingChanged.connect(partial(self._onWidgetChanged, tw))
+        tw.somethingChanged.connect(self.scheduleDelayedItemsLayout)
         tw.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
         return tw
 
