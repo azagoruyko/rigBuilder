@@ -645,10 +645,10 @@ class AttributeModel(QAbstractItemModel):
             return False
 
         newName = replaceSpecialChars(str(value).strip())
-        if not newName or newName == attr.name():
+        if newName == attr.name():
             return False
 
-        uniqueName = findUniqueName(newName, [a.name() for a in attr.module().attributes()])
+        uniqueName = findUniqueName(newName, [a.name() for a in attr.module().attributes()]) if newName else ""
         newAttr = attr.copy()
         newAttr.setName(uniqueName)
         undoStack.push(EditAttributeCommand(self._tabWidget, attr, attr.toXml(), newAttr.toXml(), f"Rename '{attr.name()}' to '{uniqueName}'"))
