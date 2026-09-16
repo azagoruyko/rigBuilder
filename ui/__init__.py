@@ -1012,13 +1012,27 @@ class AttributesTreeView(QTreeView):
         if self._module:
             addAttrMenu = menu.addMenu("Add attribute")
 
-            addAttrMenu.hovered.connect(lambda a: self._attrPreviewPopup.showPreview(a.data(), addAttrMenu, a) if a.data() else self._attrPreviewPopup.hide())
+            addAttrMenu.hovered.connect(partial(self._previewAddAttribute, addAttrMenu))
             addAttrMenu.aboutToHide.connect(self._attrPreviewPopup.hide)
             menu.aboutToHide.connect(self._attrPreviewPopup.hide)
 
             for templateName in sorted(TemplateWidgets.keys()):
-                act = addAttrMenu.addAction(templateName, partial(self._onQuickAdd, templateName))
-                act.setData(templateName)
+                compatiblePresets = WidgetPresetManager.presets(templateName)
+                if not compatiblePresets:
+                    act = addAttrMenu.addAction(templateName, partial(self._onQuickAdd, templateName, None))
+                    act.setData({"template": templateName, "data": None})
+                    continue
+
+                templateMenu = addAttrMenu.addMenu(templateName)
+                templateMenu.hovered.connect(partial(self._previewAddAttribute, templateMenu))
+                templateMenu.aboutToHide.connect(self._attrPreviewPopup.hide)
+
+                act = templateMenu.addAction("Default", partial(self._onQuickAdd, templateName, None))
+                act.setData({"template": templateName, "data": None})
+                templateMenu.addSeparator()
+                for name, preset in sorted(compatiblePresets.items()):
+                    act = templateMenu.addAction(name, partial(self._onQuickAdd, templateName, preset["data"]))
+                    act.setData(preset)
 
             if AttributesTreeView.Clipboard:
                 clipCount = len(AttributesTreeView.Clipboard)
@@ -1090,8 +1104,7 @@ class AttributesTreeView(QTreeView):
                 presetsMenu = menu.addMenu("Presets")
                 presetsMenu.addAction("Manage Presets...", lambda: PresetEditorDialog(parent=self).exec())
                 presetsMenu.addAction("Save as Preset...", partial(self._saveAsPreset, attr))
-                presets = WidgetPresetManager.presets()
-                compatiblePresets = {n: d for n, d in presets.items() if d.get("template") == attr.template()}
+                compatiblePresets = WidgetPresetManager.presets(attr.template())
                 if compatiblePresets:
                     presetsMenu.addSeparator()
                     for name, d in sorted(compatiblePresets.items()):
@@ -1156,12 +1169,27 @@ class AttributesTreeView(QTreeView):
 
         return attrs
 
-    def _onQuickAdd(self, template: str):
+    def _previewAddAttribute(self, menu: QMenu, action: QAction):
+        """Preview the hovered default or preset in its owning menu."""
+        if action not in menu.actions():
+            return
+
+        preset = action.data()
+        if preset:
+            self._attrPreviewPopup.showPreview(preset["template"], menu, action, preset["data"])
+        else:
+            self._attrPreviewPopup.hide()
+
+    def _onQuickAdd(self, template: str, data=None):
+        """Add an attribute using default or saved preset data."""
         name = findUniqueName("attr", [a.name() for a in self._module.attributes()])
         cat, insertIdx = self._targetLocation()
         newAttr = Attribute(name=name, template=template, category=cat)
-        if template in DEFAULT_WIDGETS_DATA:
-            newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[template]))
+        if data is None:
+            data = DEFAULT_WIDGETS_DATA.get(template)
+
+        if data is not None:
+            newAttr.setData(copyJson(data))
 
         undoStack.push(AddAttributeCommand(self, self._module, newAttr, index=insertIdx))
 

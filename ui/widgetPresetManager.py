@@ -13,14 +13,21 @@ class WidgetPresetManager:
     """Manages saving, loading and removing widget presets."""
 
     @staticmethod
-    def presets() -> dict:
-        """Return all saved presets."""
-        if os.path.exists(PRESETS_FILE):
-            try:
-                return loadJson(PRESETS_FILE)
-            except Exception as e:
-                logger.error(f"Failed to load presets from {PRESETS_FILE}: {e}")
-        return {}
+    def presets(template: str = None) -> dict:
+        """Return saved presets, optionally filtered by widget template."""
+        if not os.path.exists(PRESETS_FILE):
+            return {}
+
+        try:
+            presets = loadJson(PRESETS_FILE)
+        except Exception as e:
+            logger.error(f"Failed to load presets from {PRESETS_FILE}: {e}")
+            return {}
+
+        if template is not None:
+            return {name: preset for name, preset in presets.items() if preset.get("template") == template}
+
+        return presets
 
     @staticmethod
     def savePreset(name: str, template: str, data: dict):

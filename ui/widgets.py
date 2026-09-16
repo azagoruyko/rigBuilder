@@ -1759,21 +1759,29 @@ class CompoundTemplateWidget(TemplateWidget):
 
         layout.addStretch()
 
-def getTemplateSnapshot(templateName: str, width: int = 240) -> QPixmap:
-    """Capture or retrieve a cached QPixmap snapshot of a template widget."""
-    if templateName not in _templateSnapshotCache:
-        cls = TemplateWidgets.get(templateName)
-        if not cls:
-            return QPixmap()
-        try:
-            w = cls()
-            w.setJsonData(w.getDefaultData())
-            w.setFixedWidth(width)
-            w.adjustSize()
-            _templateSnapshotCache[templateName] = w.grab()
-        except Exception:
-            _templateSnapshotCache[templateName] = QPixmap()
-    return _templateSnapshotCache[templateName]
+def getTemplateSnapshot(templateName: str, width: int = 240, data=None) -> QPixmap:
+    """Capture a preset widget or retrieve a cached default snapshot."""
+    cacheKey = (templateName, width)
+    if data is None and cacheKey in _templateSnapshotCache:
+        return _templateSnapshotCache[cacheKey]
+
+    cls = TemplateWidgets.get(templateName)
+    if not cls:
+        return QPixmap()
+
+    try:
+        w = cls()
+        w.setJsonData(copyJson(data) if data is not None else w.getDefaultData())
+        w.setFixedWidth(width)
+        w.adjustSize()
+        pixmap = w.grab()
+    except Exception:
+        pixmap = QPixmap()
+
+    if data is None:
+        _templateSnapshotCache[cacheKey] = pixmap
+
+    return pixmap
 
 class AttributePreviewPopup(QLabel):
     """Floating preview popup showing a snapshot of an attribute template widget on hover."""
@@ -1786,8 +1794,9 @@ class AttributePreviewPopup(QLabel):
         self.setStyleSheet("background-color: #252526; border: 1px solid #454545; border-radius: 4px; padding: 4px;")
         self.setAlignment(Qt.AlignCenter)
 
-    def showPreview(self, templateName: str, menu: QMenu, action: QAction):
-        pixmap = getTemplateSnapshot(templateName)
+    def showPreview(self, templateName: str, menu: QMenu, action: QAction, data=None):
+        """Show the default or customized widget beside its menu action."""
+        pixmap = getTemplateSnapshot(templateName, data=data)
         if pixmap.isNull():
             self.hide()
             return
