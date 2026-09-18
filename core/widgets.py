@@ -36,6 +36,7 @@ DEFAULT_WIDGETS_DATA = {
         "default": "value"
     },
     "listBox": {"items": ["a", "b"], "current": 0, "default": "items"},
+    "multi": {"template": "lineEditAndButton", "widget": {"value": "", "buttonEnabled": False, "default": "value"}, "values": ["item1"], "default": "values"},
     "radioButton": {"items": ["Helpers", "Run"], "current": 0, "default": "current", "columns": 3},
     "table": {"items": [["a", "1"]], "header": ["name", "value"], "default": "items"},
     "text": {"text": "", "height": 200, "default": "text"},

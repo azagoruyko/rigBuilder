@@ -221,8 +221,8 @@ Every attribute uses a widget template determining how it is configured and disp
 ```
 
 ### `compound` (Complex widget containing nested sub-widgets)
-
 ```json
+
 {
   "widgets": [
     {"items": ["a", "b"], "current": 0, "default": "items"},
@@ -233,6 +233,23 @@ Every attribute uses a widget template determining how it is configured and disp
   "default": "values"
 }
 ```
+
+### `multi` (Array of items using one shared template instance)
+```json
+
+{
+  "template": "comboBox",
+  "widget": {
+    "items": ["a", "b", "c"],
+    "current": "a",
+    "default": "current"
+  },
+  "values": ["b", "c"],
+  "default": "values"
+}
+```
+
+*Note: Edit shared properties through `widget`, rather than storing separate properties per item.*
 
 ## 4. Execution Context & The Macro `@` Syntax
 

@@ -1621,6 +1621,247 @@ class JsonTemplateWidget(TemplateWidget):
             w.loadFromJsonList(data.get("data", []))
             w.setReadOnly(data.get("readonly", False))
 
+class MultiTemplateWidget(TemplateWidget):
+    template = "multi"
+
+    def __init__(self, **kwargs):
+        """Build an editable array with a shared item template."""
+        super().__init__(**kwargs)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(QMargins())
+        layout.setSpacing(2)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(4)
+
+        addButton = QToolButton()
+        addButton.setText("➕")
+        addButton.setToolTip("Add item")
+        addButton.clicked.connect(self.addItem)
+
+        resizeButton = QToolButton()
+        resizeButton.setText("↔️")
+        resizeButton.setToolTip("Resize array")
+        resizeButton.clicked.connect(self.editSize)
+
+        clearButton = QToolButton()
+        clearButton.setText("🗑")
+        clearButton.setToolTip("Clear all items")
+        clearButton.clicked.connect(self.clearItems)
+
+        self.listWidget = QListWidget()
+        self.listWidget.setFrameShape(QFrame.NoFrame)
+        self.listWidget.setSpacing(0)
+        self.listWidget.setDragDropMode(QAbstractItemView.InternalMove)
+        self.listWidget.setDefaultDropAction(Qt.MoveAction)
+        self.listWidget.model().rowsMoved.connect(self.itemsMoved)
+        self.listWidget.contextMenuEvent = self.contextMenuEvent
+
+        toolbar.addWidget(addButton)
+        toolbar.addWidget(resizeButton)
+        toolbar.addWidget(clearButton)
+        toolbar.addStretch()
+
+        layout.addLayout(toolbar)
+        layout.addWidget(self.listWidget)
+
+        self.setJsonData(self.getDefaultData())
+
+    def contextMenuEvent(self, event):
+        """Show actions for the shared item template."""
+        menu = QMenu(self)
+        menu.addAction("Edit template", self.editTemplate)
+        menu.popup(event.globalPos())
+
+    def itemsMoved(self, parent, start, end, destination, row):
+        """Publish values in their new visual order."""
+        for i in range(self.listWidget.count()):
+            item = self.listWidget.item(i)
+            self.listWidget.itemWidget(item).layout().itemAt(0).widget().setText(f"[{i}]")
+
+        self.somethingChanged.emit()
+
+    def addItem(self):
+        """Append an item initialized from the shared template."""
+        self.resizeItems(self.listWidget.count() + 1)
+
+    def clearItems(self):
+        """Clear the array after confirmation."""
+        if not self.listWidget.count():
+            return
+
+        answer = QMessageBox.question(self, "Rig Builder", "Clear all items?",
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if answer == QMessageBox.Yes:
+            self.resizeItems(0)
+
+    def editSize(self):
+        """Ask for the number of items in the array."""
+        size, accepted = QInputDialog.getInt(self, "Resize multi", "Number of items", self.listWidget.count(), 0, 10000)
+
+        if accepted:
+            self.resizeItems(size)
+
+    def removeItem(self, item):
+        """Remove the selected row using its current position after any moves."""
+        data = self.getJsonData()
+        del data["values"][self.listWidget.row(item)]
+
+        self.setJsonData(data)
+        self.somethingChanged.emit()
+
+    def resizeItems(self, size):
+        """Keep existing values and initialize added items from the template."""
+        data = self.getJsonData()
+        values = data["values"][:size]
+
+        while len(values) < size:
+            values.append(copyJson(self.widgetData[self.widgetData["default"]]))
+
+        data["values"] = values
+        self.setJsonData(data)
+        self.somethingChanged.emit()
+
+    def editTemplate(self):
+        """Edit the shared instance using its normal widget and data editor."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit multi template")
+
+        layout = QVBoxLayout(dialog)
+
+        selector = QComboBox()
+        selector.addItems(sorted(TemplateWidgets))
+        selector.setCurrentText(self.itemTemplate)
+
+        preview = QVBoxLayout()
+
+        def setTemplate(template):
+            """Show the selected template instance."""
+            clearLayout(preview)
+
+            widget = TemplateWidgets[template]()
+            data = self.widgetData if template == self.itemTemplate else widget.getDefaultData()
+            widget.setJsonData(copyJson(data))
+
+            preview.addWidget(widget)
+
+        def editData():
+            """Edit properties of the preview instance."""
+            widget = preview.itemAt(0).widget()
+
+            editor = EditJsonDialog([widget.getJsonData()], parent=dialog)
+            editor.saved.connect(lambda data: widget.setJsonData(data[0]))
+
+            editor.exec()
+
+        selector.currentTextChanged.connect(setTemplate)
+
+        dataButton = QPushButton("Edit data")
+        dataButton.clicked.connect(editData)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout.addWidget(selector)
+        layout.addLayout(preview)
+        layout.addWidget(dataButton)
+        layout.addWidget(buttons)
+
+        setTemplate(self.itemTemplate)
+
+        if dialog.exec() == QDialog.Accepted:
+            data = self.getJsonData()
+            data["template"] = selector.currentText()
+            data["widget"] = preview.itemAt(0).widget().getJsonData()
+
+            self.setJsonData(data)
+            self.somethingChanged.emit()
+
+    def itemChanged(self, item, widget):
+        """Save only the item's value; properties belong to the shared instance."""
+        data = widget.getJsonData()
+        shared = copyJson(self.widgetData)
+        shared[shared["default"]] = data[data["default"]]
+
+        with blockedWidgetContext(widget):
+            widget.setJsonData(shared)
+
+        data = widget.getJsonData()
+        item.setData(Qt.UserRole, copyJson(data[data["default"]]))
+        item.setSizeHint(self.listWidget.itemWidget(item).sizeHint())
+
+        self.resizeWidget()
+        self.somethingChanged.emit()
+
+    def getJsonData(self):
+        """Serialize shared properties and the ordered list of values."""
+        values = [self.listWidget.item(i).data(Qt.UserRole) for i in range(self.listWidget.count())]
+
+        return copyJson({"template": self.itemTemplate, "widget": self.widgetData,
+                         "values": values, "default": "values"})
+
+    def setJsonData(self, data):
+        """Rebuild items from independent copies of the shared configuration."""
+        self.itemTemplate = data.get("template", "lineEditAndButton")
+        self.widgetData = copyJson(data.get("widget", DEFAULT_WIDGETS_DATA[self.itemTemplate]))
+        defaultKey = self.widgetData["default"]
+
+        self.listWidget.clear()
+
+        values = data.get("values", [])
+        indexWidth = self.listWidget.fontMetrics().horizontalAdvance(f"[{max(0, len(values) - 1)}]") + 8
+
+        for i, value in enumerate(values):
+            widget = TemplateWidgets[self.itemTemplate]()
+            itemData = copyJson(self.widgetData)
+            itemData[defaultKey] = copyJson(value)
+
+            try:
+                widget.setJsonData(itemData)
+            except (TypeError, ValueError, IndexError, KeyError):
+                widget.setJsonData(copyJson(self.widgetData))
+
+            normalized = widget.getJsonData()
+            item = QListWidgetItem(self.listWidget)
+            item.setData(Qt.UserRole, normalized[normalized["default"]])
+
+            row = QWidget()
+            rowLayout = QHBoxLayout(row)
+            rowLayout.setContentsMargins(0, 2, 0, 2)
+            rowLayout.setSpacing(4)
+
+            indexLabel = QLabel(f"[{i}]")
+            indexLabel.setFixedWidth(indexWidth)
+            indexLabel.setToolTip("Drag the index to reorder")
+            indexLabel.setCursor(Qt.OpenHandCursor)
+            indexLabel.setTextInteractionFlags(Qt.NoTextInteraction)
+
+            removeButton = QToolButton()
+            removeButton.setText("×")
+            removeButton.setToolTip("Remove item")
+            removeButton.clicked.connect(partial(self.removeItem, item))
+
+            rowLayout.addWidget(indexLabel)
+            rowLayout.addWidget(widget, 1)
+            rowLayout.addWidget(removeButton)
+
+            item.setSizeHint(row.sizeHint())
+            self.listWidget.setItemWidget(item, row)
+
+            widget.somethingChanged.connect(partial(self.itemChanged, item, widget))
+            widget.moduleCodeExecutionRequested.connect(self.moduleCodeExecutionRequested.emit)
+
+        self.resizeWidget()
+
+    def resizeWidget(self):
+        """Fit the rows while keeping large arrays scrollable."""
+        height = sum(self.listWidget.sizeHintForRow(i) for i in range(self.listWidget.count()))
+        self.listWidget.setFixedHeight(clamp(height, 24, 300))
+
+
 class EditCompountWidgetsDialog(QDialog):
     saved = Signal(list) # [(template, data), ...]
 
