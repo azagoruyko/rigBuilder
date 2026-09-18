@@ -3,6 +3,9 @@ from __future__ import annotations
 import math
 import os
 from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..core import Attribute
 from .utils import *
 
 DEFAULT_WIDGETS_DATA = {
@@ -43,7 +46,7 @@ DEFAULT_WIDGETS_DATA = {
     "vector": {"value": [0.0, 0.0, 0.0], "default": "value", "dimension": 3, "columns": 3, "precision": 4}
 }
 
-def getAttributeFromValue(name: str, v: any, category: str = "") -> 'Attribute':
+def getAttributeFromValue(name: str, v: any, category: str = "") -> Attribute:
     """Get an attribute with proper widget template and default data from a value."""
     from ..core import Attribute
 
