@@ -1,5 +1,4 @@
 import weakref
-import inspect
 
 class Signal:
     """A pure-Python observer implementation using weak references to prevent 
@@ -17,7 +16,7 @@ class Signal:
             if cb == callback:
                 return
 
-        if inspect.ismethod(callback):
+        if hasattr(callback, '__func__'):
             ref = weakref.WeakMethod(callback)
             self._callbacks.append(ref)
         else:
