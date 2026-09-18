@@ -174,6 +174,22 @@ class TestAttribute:
         rootAttr.setName("newRootAttr")
         assert root.runCode() == "v = @newRootAttr; @newRootAttr = v; @set_newRootAttr(v); d = @newRootAttr_data;"
 
+    def testAttributeCopyWithNameDoesNotUpdateReferences(self, moduleHierarchy):
+        """Test that a renamed copy leaves source references unchanged."""
+        root = moduleHierarchy
+        child = root.findChild("child1")
+        rootAttr = root.findAttribute("rootAttr")
+        childAttr = child.findAttribute("childAttr")
+        childAttr.setConnect("/rootAttr")
+        root.setRunCode("value = @rootAttr; data = @rootAttr_data")
+
+        duplicate = rootAttr.copy(name="rootAttr1")
+
+        assert duplicate.name() == "rootAttr1"
+        assert rootAttr.copy(name="").name() == "rootAttr"
+        assert root.runCode() == "value = @rootAttr; data = @rootAttr_data"
+        assert childAttr.connect() == "/rootAttr"
+
     def testAttributeDataOperations(self, simpleAttribute):
         """Test get/set and data operations."""
         # Simple get/set
@@ -517,6 +533,11 @@ class TestModule:
         assert len(copy.attributes()) == len(simpleModule.attributes())
         assert copy is not simpleModule
         assert copy.attributes()[0] is not simpleModule.attributes()[0]
+
+        renamedCopy = simpleModule.copy(name="renamedModule")
+        assert renamedCopy.name() == "renamedModule"
+        assert simpleModule.copy(name="").name() == "testModule"
+        assert simpleModule.name() == "testModule"
 
     def testEmbedClearsState(self):
         """embed() should clear uid."""

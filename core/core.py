@@ -153,10 +153,10 @@ class Attribute:
         self._module = None
         self._data = copyJson(widgets.DEFAULT_WIDGETS_DATA.get(template, {}))
 
-    def copy(self) -> Attribute:
-        """Create a deep copy of the attribute."""
+    def copy(self, *, name: Optional[str] = None) -> Attribute:
+        """Create a deep copy of the attribute with an optional name override."""
         attr = Attribute()
-        attr._name = self._name
+        attr._name = name or self._name
         attr._category = self._category
         attr._template = self._template
         attr._connect = self._connect
@@ -497,10 +497,10 @@ class Module:
         self._uid = "" # unique ids are assigned while saving
         self.attr = AttrsWrapper(self) # attributes accessor
 
-    def copy(self, *, children: bool = True) -> Module:
-        """Create a deep copy of the module."""
+    def copy(self, *, name: Optional[str] = None, children: bool = True) -> Module:
+        """Create a deep copy of the module with an optional name override."""
         module = Module()
-        module._name = self._name
+        module._name = name or self._name
         module._uid = self._uid
         module._runCode = self._runCode
         module._doc = self._doc

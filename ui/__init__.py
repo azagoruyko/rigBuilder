@@ -1451,10 +1451,9 @@ class AttributesTreeView(QTreeView):
         undoStack.beginMacro(f"Duplicate attribute{'s' if len(attrs) > 1 else ''}")
         existingNames = [a.name() for a in self._module.attributes()]
         for attr in attrs:
-            dup = attr.copy()
             newName = findUniqueName(attr.name(), existingNames)
             existingNames.append(newName)
-            dup.setName(newName)
+            dup = attr.copy(name=newName)
             try:
                 insertIdx = self._module.attributes().index(attr) + 1
             except ValueError:
