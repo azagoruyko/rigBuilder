@@ -450,6 +450,47 @@ class EditAttributeCommand(QUndoCommand):
         self._apply(self.oldState)
 
 
+class EditWidgetCommand(QUndoCommand):
+    """Undo a template widget edit and recalculate dependent attributes."""
+
+    def __init__(
+        self,
+        view: "AttributesTreeView",
+        attr: Attribute,
+        oldData: dict,
+        newData: dict,
+    ):
+        """Store the edited attribute's state around an already-applied edit."""
+        super().__init__(f"Edit '{attr.name()}'")
+        self.view = view
+        self.attr = attr
+        self.module = attr.module()
+        self._initialEditApplied = True
+        self.oldData = copyJson(oldData)
+        self.newData = copyJson(newData)
+
+    def _apply(self, data: dict):
+        """Apply attribute data and recalculate its module dependencies."""
+        self.attr.setData(copyJson(data))
+        for attr in self.module.attributes():
+            attr.pull()
+
+        self.view.updateTabs()
+        self.view.moduleChanged.emit(self.module)
+
+    def redo(self):
+        """Reapply the widget edit unless it is already active."""
+        if self._initialEditApplied:
+            self._initialEditApplied = False
+            return
+
+        self._apply(self.newData)
+
+    def undo(self):
+        """Restore the edited attribute and recalculate dependencies."""
+        self._apply(self.oldData)
+
+
 class MoveAttributesCommand(QUndoCommand):
     def __init__(self, view: "AttributesTreeView", module: Module, oldOrder: list, newOrder: list):
         super().__init__("Reorder attributes")
@@ -977,28 +1018,32 @@ class AttributesTreeView(QTreeView):
             if widget.attr.localData() == widgetData:
                 return
 
-            widget.attr.setData(widgetData)
             module = widget.attr.module()
+            oldData = widget.attr.localData()
+            previousData = {attr: attr.localData() for attr in module.attributes()}
 
-            previousData = {id(a): a.localData() for a in module.attributes()}
-            modifiedAttrs = set()
+            widget.attr.setData(widgetData)
             for a in module.attributes():
                 a.pull()
-                if a.localData() != previousData[id(a)]:
-                    modifiedAttrs.add(a)
 
-            if modifiedAttrs:
-                self.moduleChanged.emit(module)
-                self._attrModel.layoutChanged.emit()
+            modifiedAttrs = {
+                attr
+                for attr in module.attributes()
+                if previousData[attr] != attr.localData()
+            }
+            self.moduleChanged.emit(module)
+            self._attrModel.layoutChanged.emit()
 
             for ci, (_, attrs) in enumerate(self._attrModel._categories):
                 categoryIdx = self._attrModel.index(ci, 0, QModelIndex())
-                for ai, a in enumerate(attrs):
-                    if a in modifiedAttrs:
-                        w = self.indexWidget(self._attrModel.index(ai, 1, categoryIdx))
-                        if w:
-                            with blockedWidgetContext(w) as bw:
-                                bw.setJsonData(a.data())
+                for ai, attr in enumerate(attrs):
+                    if attr in modifiedAttrs:
+                        changedWidget = self.indexWidget(self._attrModel.index(ai, 1, categoryIdx))
+                        if changedWidget:
+                            with blockedWidgetContext(changedWidget) as blockedWidget:
+                                blockedWidget.setJsonData(attr.localData())
+
+            undoStack.push(EditWidgetCommand(self, widget.attr, oldData, widget.attr.localData()))
         except Exception as e:
             logger.error(f"{widget.attr.module().name()}.{widget.attr.name()}: {e}")
 
