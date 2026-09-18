@@ -43,6 +43,26 @@ from .workspaceManager import WorkspaceWidget, getWorkspace
 undoStack = QUndoStack()
 
 
+def addUndoMenu(menu: QMenu):
+    """Add undo and redo actions when either operation is available."""
+    canUndo = undoStack.canUndo()
+    canRedo = undoStack.canRedo()
+    if not canUndo and not canRedo:
+        return
+
+    undoMenu = menu.addMenu("Undo")
+
+    if canUndo:
+        undoAction = undoStack.createUndoAction(undoMenu, "Undo")
+        undoAction.setShortcut(QKeySequence.Undo)
+        undoMenu.addAction(undoAction)
+
+    if canRedo:
+        redoAction = undoStack.createRedoAction(undoMenu, "Redo")
+        redoAction.setShortcut(QKeySequence.Redo)
+        undoMenu.addAction(redoAction)
+
+
 def updateTemplateWidgetStyle(widget: TemplateWidget):
     attr = widget.attr
     conn = attr.connect()
@@ -1171,17 +1191,7 @@ class AttributesTreeView(QTreeView):
         else: # when no attrs selected
             menu.addAction("Replace in values", self.searchAndReplaceDialog.exec, "Ctrl+R")
         
-        undoMenu = QMenu("Undo")
-
-        undoAction = undoStack.createUndoAction(undoMenu, "Undo")
-        undoAction.setShortcut(QKeySequence.Undo)
-        undoMenu.addAction(undoAction)
-
-        redoAction = undoStack.createRedoAction(undoMenu, "Redo")
-        redoAction.setShortcut(QKeySequence.Redo)
-        undoMenu.addAction(redoAction)
-
-        menu.addMenu(undoMenu)
+        addUndoMenu(menu)
 
         menu.exec(globalPos)
 
@@ -3090,16 +3100,7 @@ class RigBuilderWindow(QFrame):
         menu.addSeparator()
         menu.addAction("Open User folder", self.openUserFolder)        
         
-        undoMenu = QMenu("Undo")
-        undoAction = undoStack.createUndoAction(undoMenu, "Undo")
-        undoAction.setShortcut(QKeySequence.Undo)
-        undoMenu.addAction(undoAction)
-
-        redoAction = undoStack.createRedoAction(undoMenu, "Redo")
-        redoAction.setShortcut(QKeySequence.Redo)
-        undoMenu.addAction(redoAction)
-
-        menu.addMenu(undoMenu)
+        addUndoMenu(menu)
 
         return menu
 
