@@ -23,7 +23,7 @@ from ..core.uidManager import UidManager
 from ..core.logger import logger, logHandler, setupStreamRedirection, setupExcepthook
 from .qt import *
 from ..host.servers import AVAILABLE_HOSTS, HOST_STARTUP_TEMPLATE
-from ..core.settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..core.settings import settings, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH, DEFAULT_DISCOVERY_PORT
 from ..core.utils import *
 from ..core.widgets import getAttributeFromValue, DEFAULT_WIDGETS_DATA
 from .widgets import TemplateWidgets, EditTextDialog, EditJsonDialog, TemplateWidget, AttributePreviewPopup
@@ -35,7 +35,7 @@ from .docBrowser import DocBrowser, DocGeneratorWorker, activeWorkers
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import DirectoryWatcher
 from .moduleBrowser import ModuleBrowser
-from .moduleHistoryBrowser import ModuleHistoryBrowser
+from .moduleHistoryBrowser import ModuleHistoryBrowser, recordModuleSave
 from .utils import *
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
 from .workspaceManager import WorkspaceWidget, getWorkspace
@@ -2097,12 +2097,12 @@ class ModuleTreeWidget(QTreeView):
                 QMessageBox.critical(mainWindow, "Rig Builder", "Can't save module '{}': {}".format(module.name(), str(e)))
             else:
                 if historyEnabled:
-                    if not moduleHistoryBrowser.recordModuleSave(module, commitMessage):
+                    if not recordModuleSave(module, commitMessage):
                         QMessageBox.critical(mainWindow, "Rig Builder", "Can't save history for '{}'".format(module.name()))
                 
                 self.moduleModel.dataChanged.emit(idx, idx) # refresh display
 
-        mainWindow.moduleHistoryBrowser.syncModuleHistory()
+        historyWidget.syncModuleHistory()
 
     def embedModule(self):
         modules = self.selectedModules()
