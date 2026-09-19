@@ -1219,6 +1219,7 @@ class NumberBarWidget(QWidget):
     def paintEvent(self, event):
         contents_y = self.textWidget.verticalScrollBar().value()
         viewport_height = self.textWidget.viewport().height()
+        viewport_y = self.textWidget.viewport().geometry().top()
         page_bottom = contents_y + viewport_height
         font_metrics = self.fontMetrics()
 
@@ -1244,7 +1245,7 @@ class NumberBarWidget(QWidget):
 
             # Draw the line number right justified at the y position of the
             # line. 3 is a magic padding number. drawText(x, y, text).
-            y_pos = round(position.y()) - contents_y + font_metrics.ascent()
+            y_pos = viewport_y + round(position.y()) - contents_y + font_metrics.ascent()
             painter.drawText(self.width() - getFontWidth(font_metrics, str(line_count)) - 3, y_pos, str(line_count))
             
             data = block.userData()
