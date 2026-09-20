@@ -318,6 +318,27 @@ class TestAttribute:
         simpleAttribute._data.pop("enabled")
         assert simpleAttribute.isSyncRequired(ref) is False
 
+    def testAttributeIsModifiedTracksDefaultValue(self, simpleAttribute):
+        """Test modification tracking against a freshly loaded attribute."""
+        ref = simpleAttribute.copy()
+        assert simpleAttribute.isModified(ref) is False
+
+        simpleAttribute.set(999.9)
+        assert simpleAttribute.isModified(ref) is True
+
+        simpleAttribute.set(10.5)
+        assert simpleAttribute.isModified(ref) is False
+
+    def testAttributeIsModifiedIgnoresOtherState(self, simpleAttribute):
+        """Test that non-value changes do not mark an attribute as modified."""
+        ref = simpleAttribute.copy()
+        simpleAttribute.setCategory("output")
+        simpleAttribute.setConnect("/source/value")
+        simpleAttribute.setExpression("value = 1")
+        simpleAttribute.set(True, "enabled")
+
+        assert simpleAttribute.isModified(ref) is False
+
     def testAttributeSetTemplate(self, simpleAttribute):
         """Test changing template clears data and correctly triggers sync requirement."""
         from rigBuilder.core.widgets import DEFAULT_WIDGETS_DATA
@@ -584,6 +605,24 @@ class TestModule:
         assert simpleModule.isSyncRequired(ref) is True
         child.unmute()
         assert simpleModule.isSyncRequired(ref) is False
+
+    def testModuleIsModifiedAggregatesAttributesRecursively(self, simpleModule):
+        """Test module value comparison across its attribute hierarchy."""
+        child = createModule("child")
+        childAttr = createAttribute("childAttr", value="loaded")
+        child.addAttribute(childAttr)
+        simpleModule.addChild(child)
+        ref = simpleModule.copy()
+
+        assert simpleModule.isModified(ref) is False
+
+        childAttr.set("changed")
+        assert childAttr.isModified(ref.findChild("child").findAttribute("childAttr")) is True
+        assert child.isModified(ref.findChild("child")) is True
+        assert simpleModule.isModified(ref) is True
+
+        childAttr.set("loaded")
+        assert simpleModule.isModified(ref) is False
 
     def testModuleSyncFrom(self, simpleModule):
         """Test surgical module synchronization."""
@@ -1093,6 +1132,30 @@ class TestModuleFileOperations:
 
         loaded = Module.loadModule(parentPath, sync=False)
         assert loaded.findChild("child").runCode() == "original_run"
+
+    def testIsModifiedComparesWithFreshLoad(self, tempDir):
+        """Test value comparison against normal module loading and synchronization."""
+        limb = createModule("Limb")
+        limb.addAttribute(createAttribute("joint1", value="L_arm_1_joint"))
+        limbPath = os.path.join(tempDir, "Limb.xml")
+        limb.saveToFile(limbPath)
+        UidManager.sync()
+
+        limbInstance = Module.loadModule(limbPath)
+        limbInstance.findAttribute("joint1").set("saved_override")
+
+        biped = createModule("Biped")
+        biped.addChild(limbInstance)
+        bipedPath = os.path.join(tempDir, "Biped.xml")
+        biped.saveToFile(bipedPath)
+        UidManager.sync()
+
+        current = Module.loadModule(bipedPath)
+        freshlyLoaded = Module.loadModule(bipedPath)
+        assert current.isModified(freshlyLoaded) is False
+
+        current.findChild("Limb").findAttribute("joint1").set("L_leg_1_joint")
+        assert current.isModified(freshlyLoaded) is True
 
     def testSyncPreservesAttributeValues(self, tempDir):
         """Test that sync() preserves attribute values while syncronizing structure."""

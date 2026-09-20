@@ -241,6 +241,10 @@ class Attribute:
             newValue = copyJson(value)
             if newValue != self._defaultValue():
                 self._data[self._data["default"]] = newValue
+
+    def isModified(self, refAttr: Attribute) -> bool:
+        """Check whether the default value differs from a freshly loaded attribute."""
+        return self._defaultValue() != refAttr._defaultValue()
     
     def data(self) -> DictExt[str, Any]: # return actual read-only copy of all data
         """Get read-only copy of all attribute data."""
@@ -816,6 +820,22 @@ class Module:
 
         for c, rc in zip(self._children, refModule._children):
             if c.isSyncRequired(rc) or c._muted != rc._muted: # compare muted state for children only
+                return True
+
+        return False
+
+    def isModified(self, refModule: Module) -> bool:
+        """Check attribute values recursively against a freshly loaded module."""
+        refAttrs = {attr._name: attr for attr in refModule._attributes}
+        for attr in self._attributes:
+            refAttr = refAttrs.get(attr._name)
+            if refAttr and attr.isModified(refAttr):
+                return True
+
+        refChildren = {child._name: child for child in refModule._children}
+        for child in self._children:
+            refChild = refChildren.get(child._name)
+            if refChild and child.isModified(refChild):
                 return True
 
         return False

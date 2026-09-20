@@ -151,11 +151,39 @@ class ModuleTracker(QObject):
         for uid in list(self._cache.keys()):
             self.loadModule(uid)
 
+    def findLoadedCounterpart(self, module: Module) -> Optional[Module]:
+        """Find a module in a freshly loaded copy of its outermost referenced ancestor."""
+        sourceRoot = module if module.uid() else None
+        ancestor = module.parent()
+        while ancestor:
+            if ancestor.uid():
+                sourceRoot = ancestor
+            ancestor = ancestor.parent()
+
+        if not sourceRoot:
+            return None
+
+        rows = []
+        current = module
+        while current is not sourceRoot:
+            parent = current.parent()
+            rows.insert(0, parent.children().index(current))
+            current = parent
+
+        tracked = self.getModule(sourceRoot.uid())
+        for row in rows:
+            if not tracked or row >= len(tracked.children()):
+                return None
+            tracked = tracked.children()[row]
+
+        return tracked
+
     def clearCache(self):
         """Clear all loaded modules and stop watching files."""
         self._cache.clear()
         if self._watcher.files():
             self._watcher.removePaths(self._watcher.files())
+
 
 class RenameModuleCommand(QUndoCommand):
     def __init__(self, model: ModuleModel, module: Module, oldName: str, newName: str):
@@ -361,9 +389,9 @@ class SyncModulesCommand(QUndoCommand):
 class ReplaceModuleCommand(QUndoCommand):
     """Replace a subtree while retaining the original instances for undo."""
 
-    def __init__(self, model: ModuleModel, module: Module, newModule: Module):
+    def __init__(self, model: ModuleModel, module: Module, newModule: Module, text: Optional[str] = None):
         """Keep both subtrees so earlier commands still target the original objects."""
-        super().__init__(f"Replace '{module.name()}'")
+        super().__init__(text or f"Replace '{module.name()}'")
         self.model = model
         self.module = module
         self.newModule = newModule
@@ -557,6 +585,26 @@ class AttributeModel(QAbstractItemModel):
         if self._module and self._module.uid():
             return self.moduleTracker.getModule(self._module.uid())
 
+    def loadedModule(self) -> Optional[Module]:
+        """Get this module as it would appear after loading its outer module again."""
+        if self._module:
+            return self.moduleTracker.findLoadedCounterpart(self._module)
+
+    def loadedAttribute(self, attr: Attribute) -> Optional[Attribute]:
+        """Get an attribute from a freshly loaded copy of its outer module."""
+        loadedModule = self.loadedModule()
+        if not loadedModule:
+            return None
+
+        loadedAttr = loadedModule.findAttribute(attr.name())
+        if loadedAttr:
+            return loadedAttr
+
+        attrs = self._module.attributes()
+        loadedAttrs = loadedModule.attributes()
+        if len(attrs) == len(loadedAttrs):
+            return loadedAttrs[attrs.index(attr)]
+
     def isAttrSyncRequired(self, attr: Attribute) -> bool:
         """Check sync status for attributes that can be matched by name."""
         if not attr.name():
@@ -568,8 +616,18 @@ class AttributeModel(QAbstractItemModel):
         refAttr = ref.findAttribute(attr.name())
         return not refAttr or attr.isSyncRequired(refAttr)
 
+    def isAttrModified(self, attr: Attribute) -> bool:
+        """Check whether an attribute value differs from a fresh module load."""
+        loadedAttr = self.loadedAttribute(attr)
+        return bool(loadedAttr and attr.isModified(loadedAttr))
+
     def isCategorySyncRequired(self, category: str) -> bool:
+        """Check whether a category contains an out-of-sync attribute."""
         return any(self.isAttrSyncRequired(a) for a in self._module.attributes() if a.category() == category) if self._module else False
+
+    def isCategoryModified(self, category: str) -> bool:
+        """Check whether a category contains a modified attribute."""
+        return any(self.isAttrModified(a) for a in self._module.attributes() if a.category() == category) if self._module else False
 
     def setModule(self, module: Optional[Module]):
         self.beginResetModel()
@@ -637,7 +695,9 @@ class AttributeModel(QAbstractItemModel):
         # Category Header
         if isinstance(ptr, str):
             if role == Qt.DisplayRole and col == 0:
-                suffix = "*" if self.isCategorySyncRequired(ptr) else ""
+                suffix = "*" if self.isCategoryModified(ptr) else ""
+                if self.isCategorySyncRequired(ptr):
+                    suffix += " ⚠"
                 return ptr + suffix
 
             if role == Qt.EditRole and col == 0:
@@ -659,7 +719,9 @@ class AttributeModel(QAbstractItemModel):
         # Attribute Row
         attr = ptr
         if role == Qt.DisplayRole and col == 0:
-            suffix = "*" if self.isAttrSyncRequired(attr) else ""
+            suffix = "*" if self.isAttrModified(attr) else ""
+            if self.isAttrSyncRequired(attr):
+                suffix += " ⚠"
             return attr.name() + suffix
 
         if role == Qt.EditRole and col == 0:
@@ -1162,7 +1224,8 @@ class AttributesTreeView(QTreeView):
 
                     menu.addAction("Clear expression", partial(self._clearExpression, attr))
 
-                menu.addAction("Reset", partial(self._resetAttr, attr))
+                resetAction = menu.addAction("Reset", partial(self._resetAttr, attr))
+                resetAction.setEnabled(self._attrModel.loadedAttribute(attr) is not None)
                 menu.addAction("Expose", partial(self._exposeAttr, attr))
                 menu.addAction("Diff vs File", self.diffAttribute, "Alt+D")
 
@@ -1310,10 +1373,12 @@ class AttributesTreeView(QTreeView):
         undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Clear expression '{attr.name()}'"))
 
     def _resetAttr(self, attr):
-        newAttr = attr.copy()
-        newAttr.setConnect("")
-        newAttr.setData(copyJson(DEFAULT_WIDGETS_DATA[attr.template()]))
-        undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Reset '{attr.name()}'"))
+        """Restore an attribute from a freshly loaded module copy."""
+        loadedAttr = self._attrModel.loadedAttribute(attr)
+        if not loadedAttr:
+            return
+
+        undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), loadedAttr.toXml(), f"Reset '{attr.name()}'"))
 
     def _exposeAttr(self, attr):
         parentModule = attr.module().parent()
@@ -1651,10 +1716,11 @@ class ModuleModel(QAbstractItemModel):
                 
                 name = module.name()
                 refModule = self.moduleTracker.getModule(module.uid())
-                if refModule and module.isSyncRequired(refModule):
+                loadedModule = self.moduleTracker.findLoadedCounterpart(module)
+                if loadedModule and module.isModified(loadedModule):
                     name += "*"
-                else:
-                    name += " " # space placeholder
+                if refModule and module.isSyncRequired(refModule):
+                    name += " ⚠"
 
                 return icon + name
 
@@ -2191,6 +2257,44 @@ class ModuleTreeWidget(QTreeView):
         state = self._getTreeState()
         undoStack.push(SyncModulesCommand(self.moduleModel, modules))
         self._setTreeState(state)
+
+    def resetSelectedModules(self):
+        """Restore selected subtrees from freshly loaded and synchronized modules."""
+        selected = self.selectedModules()
+        selectedSet = set(selected)
+        modules = []
+        for module in selected:
+            parent = module.parent()
+            hasSelectedParent = False
+            while parent:
+                if parent in selectedSet:
+                    hasSelectedParent = True
+                    break
+                parent = parent.parent()
+
+            if not hasSelectedParent:
+                modules.append(module)
+
+        replacements = []
+        for module in modules:
+            loadedModule = self.moduleModel.moduleTracker.findLoadedCounterpart(module)
+            if loadedModule:
+                replacements.append((module, loadedModule.copy()))
+
+        if not replacements:
+            return
+
+        undoStack.beginMacro("Reset modules")
+        for module, loadedModule in replacements:
+            undoStack.push(ReplaceModuleCommand(
+                self.moduleModel,
+                module,
+                loadedModule,
+                f"Reset '{module.name()}'",
+            ))
+        undoStack.endMacro()
+
+        self.selectModules([loadedModule for _, loadedModule in replacements])
 
     def syncWithSelection(self):
         """Sync destination module (current/latest clicked) with source module selected in tree."""
@@ -3088,6 +3192,11 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Paste", self.treeWidget.pasteModules, "Ctrl+V")
 
         menu.addSeparator()
+        resetAction = menu.addAction("Reset", self.treeWidget.resetSelectedModules)
+        resetAction.setEnabled(any(
+            self.treeWidget.moduleModel.moduleTracker.findLoadedCounterpart(module)
+            for module in self.treeWidget.selectedModules()
+        ))
         menu.addAction("Sync with file", self.treeWidget.syncSelectedModules, "Ctrl+R")
         menu.addAction("Sync with selection", self.treeWidget.syncWithSelection)
         menu.addAction("Embed", self.treeWidget.embedModule)
