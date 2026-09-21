@@ -1007,7 +1007,7 @@ class Module:
 
         for ch in self._children:
             if not ch.muted():
-                ch.run(callback=callback, context=context)
+                ctx = ch.run(callback=callback, context=ctx)
 
         return ctx
 

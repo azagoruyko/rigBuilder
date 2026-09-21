@@ -1498,6 +1498,30 @@ class TestModuleExecution:
         assert "parent_ran" in ctx
         assert Module.glob.get("muted_child_ran") is None  # Child should not have run
 
+    def testModuleRunPassesContextThroughChildren(self):
+        """Test children inherit and update the accumulated execution context."""
+        parent = createModule("parent")
+        child = createModule("child")
+        grandchild = createModule("grandchild")
+        sibling = createModule("sibling")
+
+        parent.setRunCode("a = 5")
+        child.setRunCode("parent_value = a; a = 6")
+        grandchild.setRunCode("child_value = a; a = 7")
+        sibling.setRunCode("grandchild_value = a; a = 8")
+
+        child.addChild(grandchild)
+        parent.addChild(child)
+        parent.addChild(sibling)
+
+        ctx = parent.run()
+
+        assert ctx["parent_value"] == 5
+        assert ctx["child_value"] == 6
+        assert ctx["grandchild_value"] == 7
+        assert ctx["a"] == 8
+        assert ctx["module"] is sibling
+
 
 # ============================================================================
 # HELPER CLASSES TESTS
