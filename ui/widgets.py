@@ -634,7 +634,6 @@ class ListBoxTemplateWidget(TemplateWidget):
 
         self.listWidget = QListWidget()
         self.listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.listWidget.itemSelectionChanged.connect(self.somethingChanged.emit)
         self.listWidget.itemChanged.connect(self._onItemChanged)
         self.listWidget.contextMenuEvent = self.listContextMenuEvent
 
