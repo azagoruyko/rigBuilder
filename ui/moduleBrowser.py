@@ -18,6 +18,8 @@ from .fileTracker import DirectoryWatcher
 from ..core.moduleIndexer import ModuleIndexer
 
 _docCache = {}  # path: (mtime, content)
+RECENT_MODULES_KEY = "moduleBrowser/recentModules"
+RECENT_MODULES_LIMIT = 10
 
 
 def getDocFromFile(path: str) -> str:
@@ -381,7 +383,7 @@ class ModuleBrowser(QDialog):
 
     def _rebuildCategoryList(self):
         selected = self.categoryList.currentItem()
-        selectedCat = selected.data(Qt.UserRole) if selected else None  # None = All Modules
+        selectedCat = selected.data(Qt.UserRole) if selected else "__all__"
 
         self.categoryList.clear()
 
@@ -392,7 +394,7 @@ class ModuleBrowser(QDialog):
             if cat and cat != ".":
                 categories.add(cat)
 
-        for label, catKey in [("All Modules", "__all__")]:
+        for label, catKey in [("Recent", "__recent__"), ("All Modules", "__all__")]:
             item = QListWidgetItem()
             widget = CategoryItemWidget(label, catKey)            
             item.setData(Qt.UserRole, catKey)
@@ -434,6 +436,24 @@ class ModuleBrowser(QDialog):
                 "score": 0.0,
             }
         return modules
+
+    def getRecentModules(self) -> list[str]:
+        """Return recently added module paths in most-recent-first order."""
+        recentModules = QSettings("RigBuilder").value(RECENT_MODULES_KEY, [])
+        if isinstance(recentModules, str):
+            recentModules = [recentModules]
+
+        return [os.path.normpath(path) for path in recentModules]
+
+    def recordRecentModule(self, filepath: str):
+        """Move a module path to the front of the persistent recent list."""
+        filepath = os.path.normpath(filepath)
+        recentModules = [path for path in self.getRecentModules() if path != filepath]
+        recentModules.insert(0, filepath)
+        QSettings("RigBuilder").setValue(
+            RECENT_MODULES_KEY,
+            recentModules[:RECENT_MODULES_LIMIT],
+        )
 
     def _rebuildModulesList(self):
         catItem = self.categoryList.currentItem()
@@ -512,6 +532,8 @@ class ModuleBrowser(QDialog):
             return
 
         filepath = card.filepath
+        self.recordRecentModule(filepath)
+        self._rebuildModulesList()
         self.close()
 
         self.moduleRequested.emit(filepath)
