@@ -1,4 +1,5 @@
 from __future__ import annotations
+import html
 import json
 import time
 import re
@@ -70,9 +71,10 @@ def updateTemplateWidgetStyle(widget: TemplateWidget):
 
     tooltip = []
     if conn:
-        tooltip.append("Connect: " + conn)
+        tooltip.append("<b>Connect</b>: " + html.escape(conn))
     if expr:
-        tooltip.append("Expression:\n" + expr)
+        expression = html.escape(expr).replace("\n", "<br>")
+        tooltip.append("<b>Expression</b>:<br>" + expression)
 
     if conn and not expr:
         style = "TemplateWidget { padding: 2px; border: 1px solid rgba(210, 175, 0, 0.7); border-radius: 4px; }"
@@ -84,7 +86,7 @@ def updateTemplateWidgetStyle(widget: TemplateWidget):
         style = ""
 
     widget.setStyleSheet(style)
-    widget.setToolTip("\n".join(tooltip))
+    widget.setToolTip("<br>".join(tooltip))
 
 
 class ModuleTracker(QObject):
@@ -700,6 +702,14 @@ class AttributeModel(QAbstractItemModel):
                     suffix += " ⚠"
                 return ptr + suffix
 
+            if role == Qt.ToolTipRole and col == 0:
+                parts = []
+                if self.isCategoryModified(ptr):
+                    parts.append("* <b>Modified locally</b>: this category contains values that differ from a fresh module load.")
+                if self.isCategorySyncRequired(ptr):
+                    parts.append("⚠ <b>Out of sync</b>: this category contains definitions that do not match the referenced source.")
+                return "<br>".join(parts) or None
+
             if role == Qt.EditRole and col == 0:
                 return ptr
 
@@ -732,13 +742,18 @@ class AttributeModel(QAbstractItemModel):
 
         if role == Qt.ToolTipRole and col == 0:
             parts = []
+            if self.isAttrModified(attr):
+                parts.append("* <b>Modified locally</b>: this value differs from a fresh module load.")
+            if self.isAttrSyncRequired(attr):
+                parts.append("⚠ <b>Out of sync</b>: this attribute definition does not match the referenced source.")
             if attr.connect():
-                parts.append("Connect: " + attr.connect())
+                parts.append("<b>Connect</b>: " + html.escape(attr.connect()))
 
             if attr.expression():
-                parts.append("Expression:\n" + attr.expression())
+                expression = html.escape(attr.expression()).replace("\n", "<br>")
+                parts.append("<b>Expression</b>:<br>" + expression)
 
-            return "\n".join(parts) or None
+            return "<br>".join(parts) or None
 
         if role == Qt.SizeHintRole:
             return QSize(0, 28)
@@ -1736,6 +1751,18 @@ class ModuleModel(QAbstractItemModel):
             if column == 0:
                 return module.name()
             return "n/a"
+
+        elif role == Qt.ToolTipRole and column == 0:
+            parts = []
+            loadedModule = self.moduleTracker.findLoadedCounterpart(module)
+            if loadedModule and module.isModified(loadedModule):
+                parts.append("* <b>Modified locally</b>: this module contains values that differ from a fresh module load.")
+
+            refModule = self.moduleTracker.getModule(module.uid())
+            if refModule and module.isSyncRequired(refModule):
+                parts.append("⚠ <b>Out of sync</b>: this module definition does not match the referenced source.")
+
+            return "<br>".join(parts) or None
 
         elif role == Qt.ForegroundRole:
             # Check if self or any parent is muted
