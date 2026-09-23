@@ -15,6 +15,7 @@ from ..core.workspace import Workspace
 from ..core.utils import replaceSpecialChars
 from ..core.connectionManager import connectionManager
 from ..core.gitrepo import GitRepo
+from .hostExecutor import hostExecutor
 
 _workspaceCache = {}
 
@@ -181,6 +182,11 @@ class WorkspaceManagerDialog(QDialog):
         self.trackHistoryCheck.toggled.connect(partial(self._onSettingChanged, "trackHistory"))
         self.settingsLayout.addRow("Track History", self.trackHistoryCheck)
 
+        self.persistContextCheck = QCheckBox()
+        self.persistContextCheck.setToolTip("Keep variables between executions for interactive debugging.")
+        self.persistContextCheck.toggled.connect(partial(self._onSettingChanged, "persistContext"))
+        self.settingsLayout.addRow("Persist Context", self.persistContextCheck)
+
         self.aiLanguageEdit = QLineEdit()
         self.aiLanguageEdit.editingFinished.connect(partial(self._onLineEditChanged, "aiLanguage", self.aiLanguageEdit))
         self.settingsLayout.addRow("AI Language:", self.aiLanguageEdit)
@@ -229,6 +235,7 @@ class WorkspaceManagerDialog(QDialog):
         self.scriptsPathEdit.setText(ws.settings.scriptsPath)
         self.vscodeEdit.setText(ws.settings.vscode)
         self.trackHistoryCheck.setChecked(ws.settings.trackHistory)
+        self.persistContextCheck.setChecked(ws.settings.persistContext)
         self.aiLanguageEdit.setText(ws.settings.aiLanguage)
         self.ollamaModelEdit.setText(ws.settings.ollamaModel)
         self.ollamaEmbeddingModelEdit.setText(ws.settings.ollamaEmbeddingModel)
@@ -252,6 +259,8 @@ class WorkspaceManagerDialog(QDialog):
         # update global settings as well
         if ws.folderPath() == settings.workspacePath:
             setattr(settings, key, value)
+            if key == "persistContext":
+                hostExecutor.resetContext()
 
     def _onLineEditChanged(self, key, edit):
         ws = self.selectedWorkspace()

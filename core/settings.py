@@ -28,6 +28,7 @@ class Settings:
     def __init__(self):
         self.vscode = "code"
         self.trackHistory = True
+        self.persistContext = False
         self.ollamaModel = "gpt-oss:20b-cloud"
         self.ollamaEmbeddingModel = "nomic-embed-text"
         self.aiLanguage = "English"

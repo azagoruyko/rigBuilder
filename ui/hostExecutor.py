@@ -2,6 +2,7 @@ from ..core.connectionManager import connectionManager
 from typing import Optional
 from .qt import QObject, Signal, QApplication, Qt
 from ..core import Module
+from ..core.settings import settings
 import functools
 
 def executionGate(func):
@@ -80,7 +81,7 @@ class HostExecutor(QObject):
         if not self._conn:
             self.onConnectionError.emit("No active connection")
             return {}
-        reply = self._conn.executeCode(code, contextKey="global")
+        reply = self._conn.executeCode(code, contextKey="global" if settings.persistContext else "")
         if reply.get("ok"):
             return reply.get("context", {})
         return {}  # error already shown via streaming onError
@@ -91,7 +92,7 @@ class HostExecutor(QObject):
         if not self._conn:
             self.onConnectionError.emit("No active connection")
             return None
-        reply = self._conn.executeModuleCode(module.toXml(), ".", code, contextKey="global")
+        reply = self._conn.executeModuleCode(module.toXml(), ".", code, contextKey="global" if settings.persistContext else "")
         if reply.get("ok"):
             try:
                 return Module.fromXml(reply["xml"])
@@ -105,13 +106,25 @@ class HostExecutor(QObject):
         if not self._conn:
             self.onConnectionError.emit("No active connection")
             return None
-        reply = self._conn.runModule(module.toXml(), ".", contextKey="global")
+        reply = self._conn.runModule(module.toXml(), ".", contextKey="global" if settings.persistContext else "")
         if reply.get("ok"):
             try:
                 return Module.fromXml(reply["xml"])
             except Exception as e:
                 self.onError.emit(f"Failed to sync state from server: {e}", "")
         return None  # error already shown via streaming onError
+
+    @executionGate
+    def resetContext(self) -> bool:
+        """Discard accumulated variables on the connected host."""
+        if not self._conn:
+            return False
+
+        reply = self._conn.resetContext()
+        if not reply.get("ok"):
+            self.onError.emit(reply.get("error", "Failed to reset context"), "")
+
+        return reply.get("ok", False)
 
     @executionGate
     def switchWorkspace(self, name: str) -> bool:

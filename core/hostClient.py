@@ -113,6 +113,10 @@ class HostClient:
         """Execute host-side Python code and return JSON-serializable context."""
         return self._send({"cmd": "executeCode", "code": code, "contextKey": contextKey})
 
+    def resetContext(self, contextKey: str = "global") -> dict:
+        """Discard the saved execution context on the host."""
+        return self._send({"cmd": "resetContext", "contextKey": contextKey})
+
     def switchWorkspace(self, name: str) -> dict:
         """Switch workspace on the host."""
         return self._send({"cmd": "switchWorkspace", "name": name})

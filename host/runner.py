@@ -10,6 +10,11 @@ from ..core.utils import captureOutput, jsonifyContext, getErrorStack, executeWi
 # Keyed by a client-supplied contextKey so variables accumulate across calls.
 _interactiveContexts = {}
 
+def resetContext(contextKey: str = "global") -> dict:
+    """Discard saved variables for an execution context."""
+    _interactiveContexts.pop(contextKey, None)
+    return {"ok": True}
+
 class _StreamCapture(io.TextIOBase):
     """Captures stdout/stderr produced during module run or code execution
     and converts each line into a 'print' PUB event."""

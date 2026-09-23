@@ -9,7 +9,7 @@ from typing import Callable
 
 import zmq
 
-from rigBuilder.host.runner import runModule, executeModuleCode, executeCode
+from rigBuilder.host.runner import runModule, executeModuleCode, executeCode, resetContext
 from rigBuilder.core.settings import HEARTBEAT_INTERVAL_SEC, REGISTRATION_INTERVAL_SEC, MODULE_EXECUTION_TIMEOUT, CODE_EXECUTION_TIMEOUT
 
 AVAILABLE_HOSTS = sorted(["blender", "houdini", "maya", "standalone", "unreal"]) # names MUST match the host files in this folder!
@@ -167,6 +167,9 @@ class HostServer:
             elif cmd == "executeCode":
                 reply = self.executeCode(msg)
 
+            elif cmd == "resetContext":
+                reply = self.resetContext(msg)
+
             elif cmd == "switchWorkspace":
                 reply = self.switchWorkspace(msg)
 
@@ -297,6 +300,13 @@ class HostServer:
             timeout=CODE_EXECUTION_TIMEOUT,
         )
 
+    def resetContext(self, msg: dict) -> dict:
+        """Clear saved variables on the host main thread."""
+        return self._scheduleHostExecution(
+            lambda: resetContext(msg.get("contextKey", "global")),
+            timeout=CODE_EXECUTION_TIMEOUT,
+        )
+
     def switchWorkspace(self, msg: dict) -> dict:
         """Switch workspace on the server side."""
         def task():
@@ -304,6 +314,7 @@ class HostServer:
             name = msg.get("name", "default")
             if Workspace.exists(name):
                 Workspace.load(name).activate()
+                resetContext()
                 return {"ok": True, "workspace": name}
             return {"ok": False, "error": f"Workspace {name!r} does not exist"}
 

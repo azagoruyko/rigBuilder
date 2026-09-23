@@ -3232,6 +3232,9 @@ class RigBuilderWindow(QFrame):
 
         menu.addSeparator()
         menu.addAction("Remove all", self.removeAllModules)
+        if settings.persistContext:
+            menu.addAction("Reset context", hostExecutor.resetContext)
+
         menu.addSeparator()
         menu.addAction("Open User folder", self.openUserFolder)        
         
