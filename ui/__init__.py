@@ -2718,7 +2718,7 @@ class HostManagerDialog(QDialog):
         portRow.addWidget(self.discoveryPortEdit)
         portRow.addStretch()
         
-        self.savePortBtn = QPushButton("Save && Restart")
+        self.savePortBtn = QPushButton("Save")
         self.savePortBtn.setFixedWidth(120)
         self.savePortBtn.clicked.connect(self._saveDiscoveryPort)
         portRow.addWidget(self.savePortBtn)
