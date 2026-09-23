@@ -274,6 +274,16 @@ class ModuleHistoryBrowser(QWidget):
             if not err and content:
                 try:
                     module = Module.fromXml(content.strip())
+                    sourceFile = UidManager.get(uid)
+                    if not sourceFile:
+                        err, subject = repo("show -s --format=%s {}".format(rev))
+                        if not err and ": " in subject:
+                            sourceFile = subject.split(": ", 1)[0]
+
+                    if sourceFile:
+                        module.setName(os.path.splitext(os.path.basename(sourceFile))[0])
+
+                    module.setName("{}_{}".format(module.name(), rev))
                     self.moduleAdditionRequested.emit(module)
 
                 except Exception:
