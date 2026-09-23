@@ -179,7 +179,8 @@ def buildHistoryHtml(filterText: str = "") -> str:
                 recoverLink = " <a href='{}' title='Add module from this revision to the tree'>recover</a>".format(recoverUrl)
                 
                 dateStrFormatted = f"<span class='date'>{escape(datePart)} {escape(timePart)}</span>"
-                line = "{} {} {}{}".format(dateStrFormatted, label, diffLink, recoverLink)
+                revisionLabel = f"<code>{escape(rev)}</code>"
+                line = f"{dateStrFormatted} {revisionLabel} {label} {diffLink}{recoverLink}"
                 parts.append("<p>{}</p>".format(line))
     return "".join(parts)
 
