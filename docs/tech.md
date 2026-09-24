@@ -65,6 +65,16 @@ Modules are serialized to XML format. A `.rb` file represents a single root modu
 
 Output attributes must use the `out_` prefix (for example, `out_result`).
 
+### Module Documentation
+
+Write module documentation as Markdown using these four sections in this order:
+
+1. `## Summary` — Give a concise 1–3 sentence description of the module's purpose and behavior.
+2. `## Inputs` — List the important input attributes by name and explain what values, scene objects, or settings they expect and how the module uses them.
+3. `## Outputs` — List the outputs by name and describe what the module creates or makes available to downstream modules. Output attribute names must use the `out_` prefix.
+4. `## Usage` — Give practical steps for configuring and running the module, including relevant modes, helper workflows, and downstream connections.
+
+Use the exact headings shown above. Keep the explanations specific to the module's implementation and its attributes.
 
 ## 3. Widget Templates & JSON Schemas
 
