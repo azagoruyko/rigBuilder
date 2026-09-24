@@ -13,9 +13,8 @@ from pygments.formatters import HtmlFormatter
 from ..core.logger import logger
 
 STARTUP_MESSAGE = """
-I'm your **Rig Builder** assistant. I'm not very smart, but I'll do my best to help you. 
-A number of tools available for me, so don't hesitate to ask me to do something.
-I hope I don't break anything. Let's try!
+I'm your **Rig Builder** assistant. I can inspect and edit modules, help debug scripts,
+and explain how they work.
 """
 
 class AIChatWorker(QThread):
