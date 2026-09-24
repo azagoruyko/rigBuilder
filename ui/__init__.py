@@ -955,7 +955,6 @@ class AttributesHeaderView(QHeaderView):
         super().__init__(Qt.Horizontal, parent)
         self.collapseBtn = QPushButton("⊟", self, toolTip="Collapse All")
         self.collapseBtn.setFocusPolicy(Qt.NoFocus)
-        self.collapseBtn.clicked.connect(parent.collapseAllCategories)
 
 
 class AttributesTreeView(QTreeView):
@@ -978,6 +977,7 @@ class AttributesTreeView(QTreeView):
         self.setModel(self._attrModel)
 
         self.setHeader(AttributesHeaderView(self))
+        self.header().collapseBtn.clicked.connect(self.collapseAllCategories)
 
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1955,6 +1955,9 @@ class ModuleTreeWidget(QTreeView):
         
         self.moduleModel = ModuleModel()
         self.setModel(self.moduleModel)
+        self.setHeader(AttributesHeaderView(self))
+        self.header().collapseBtn.setToolTip("Collapse All Modules")
+        self.header().collapseBtn.clicked.connect(self.collapseAll)
 
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -2920,6 +2923,7 @@ class RigBuilderWindow(QFrame):
             self.codeEditorWidget.editorWidget.addCustomAction(action)
         
         self.vscodeBtn = QPushButton("🧙‍♂️ Edit in VSCode")
+        self.vscodeBtn.setToolTip("Right-click for options, including Copy MCP Config")
         self.vscodeBtn.clicked.connect(self.editInVSCode)
         self.vscodeBtn.setContextMenuPolicy(Qt.CustomContextMenu)
         self.vscodeBtn.customContextMenuRequested.connect(self._onVSCodeBtnContextMenu)
@@ -2969,7 +2973,10 @@ class RigBuilderWindow(QFrame):
         treeWithBtnWidget = QWidget()        
         treeWithBtnWidget.setLayout(QVBoxLayout())
         treeWithBtnWidget.layout().setContentsMargins(0, 0, 0, 0)
-        treeWithBtnWidget.layout().addWidget(self.vscodeBtn)
+        treeHeaderLayout = QHBoxLayout()
+        treeHeaderLayout.setContentsMargins(0, 0, 0, 0)
+        treeHeaderLayout.addWidget(self.vscodeBtn)
+        treeWithBtnWidget.layout().addLayout(treeHeaderLayout)
         treeWithBtnWidget.layout().addWidget(self.treeWidget)
         treeWithBtnWidget.layout().addWidget(self.runBtn)
 
