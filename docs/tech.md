@@ -61,6 +61,10 @@ Modules are serialized to XML format. A `.rb` file represents a single root modu
 | `connect` | Connection path to a source attribute from parent module (e.g., `/parentAttr` or `/neighborModule/neighborAttr`). |
 | `<attr>` CDATA | JSON string defining the widget properties. **Must** contain a `"default"` key mapping to the main value key. |
 
+### Attribute Naming
+
+Output attributes must use the `out_` prefix (for example, `out_result`).
+
 
 ## 3. Widget Templates & JSON Schemas
 
