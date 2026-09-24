@@ -5,8 +5,11 @@ from fastmcp import FastMCP
 
 MCP_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(MCP_DIRECTORY)
+with open(os.path.join(os.path.dirname(MCP_DIRECTORY), "ai", "prompt.md"), "r", encoding="utf-8") as f:
+    CHAT_PROMPT = f.read()
+
 # Initialize MCP Server
-mcp = FastMCP("RigBuilder AI", instructions="CRITICAL: You MUST read the 'docs://rig-builder-reference' resource before interacting with this server.")
+mcp = FastMCP("RigBuilder AI", instructions=CHAT_PROMPT)
 
 client = None
 

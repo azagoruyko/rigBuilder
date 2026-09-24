@@ -42,7 +42,8 @@ def isOllamaAvailable(ttl: float = 5.0) -> bool:
 with open(os.path.join(RootDirectory, '..', 'docs', 'tech.md'), 'r', encoding='utf-8') as f:
     TECH_DOCS = f.read()
 
-SYSTEM_PROMPT = TECH_DOCS
+with open(os.path.join(RootDirectory, 'prompt.md'), 'r', encoding='utf-8') as f:
+    SYSTEM_PROMPT = '\n\n'.join([f.read(), TECH_DOCS])
 
 _contextLimitCache = {}
 

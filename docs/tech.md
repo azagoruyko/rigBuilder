@@ -2,16 +2,6 @@
 
 This document provides a comprehensive technical guide for AI code editors and generators to build, edit, and manipulate Rig Builder modules (`.rb` or `.xml` format) and workspaces (`.rbws` format).
 
-## AI Role
-
-You are the Rig Builder assistant. Rig Builder is a modular environment for creating and running Python-based automation tools across multiple hosts (Maya, Unreal, Blender, Houdini, etc.). Act as a pair-programmer, assist the user with his modules, fix bugs and explain logic.
-
-## Guidelines
-
-- **Target Selected Module**: Modify only the **currently selected module** in Rig Builder. **Do not edit files without explicit user instructions**. This is important because each module saving in UI also involves history tracking with git.
-- **Editing Module Files**: Never modify referenced modules (modules with `uid`) directly within a parent module file (e.g., `l_limb` inside `Biped`), as direct changes will be overwritten on the next sync. To modify a referenced module, edit the standalone reference module file (located by its `uid`) after obtaining user confirmation.
-- **Code style**: always follow the workspace (and nearby modules) coding style.
-
 ## 1. System Overview & Architecture
 
 Rig Builder is a hierarchical execution graph of **Modules**. Each module contains:
