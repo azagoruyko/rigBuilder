@@ -19,7 +19,7 @@ and explain how they work.
 
 class AIChatWorker(QThread):
     chunkReceived = Signal(str)
-    finished = Signal(dict)
+    responseFinished = Signal(dict)
     error = Signal(str)
     toolCallUpdate = Signal(list)
     toolResultUpdate = Signal(dict)
@@ -44,7 +44,7 @@ class AIChatWorker(QThread):
                 elif eventType == 'tool_result':
                     self.toolResultUpdate.emit(data)
                 elif eventType == 'stats':
-                    self.finished.emit(data)
+                    self.responseFinished.emit(data)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -64,6 +64,7 @@ class AIChatDialog(QDialog):
         self.messages = []
         self.currentResponse = ""
         self.worker = None
+        self._closeWhenStopped = False
         self.aiToolsContext = {}
 
         layout = QVBoxLayout(self)
@@ -165,7 +166,9 @@ class AIChatDialog(QDialog):
         self.worker.chunkReceived.connect(self.onChunkReceived)
         self.worker.toolCallUpdate.connect(self.onToolCallUpdate)
         self.worker.toolResultUpdate.connect(self.onToolResultUpdate)
-        self.worker.finished.connect(self.onFinished)
+        self.worker.responseFinished.connect(self.onFinished)
+        self.worker.finished.connect(self.onWorkerFinished)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.error.connect(self.onError)
         
         self.currentResponse = ""
@@ -175,23 +178,24 @@ class AIChatDialog(QDialog):
         self.worker.start()
 
     def stopWorker(self):
+        """Request cancellation while retaining the thread until it actually exits."""
         if self.worker:
-            worker = self.worker
-            self.worker = None
-            worker.stop()
-            try:
-                worker.chunkReceived.disconnect()
-                worker.toolCallUpdate.disconnect()
-                worker.toolResultUpdate.disconnect()
-                worker.finished.disconnect()
-                worker.error.disconnect()
-            except Exception:
-                pass
-            worker.quit()
+            self.worker.stop()
+            self.sendBtn.setEnabled(False)
+            self.statusLabel.setText("Stopping...")
 
+    def onWorkerFinished(self):
+        """Release the worker only after QThread reports that run has returned."""
+        if not self.worker._isRunning:
+            self.statusLabel.setText("Stopped")
+
+        self.worker = None
         self.sendBtn.setText("⏎ Send")
         self.sendBtn.setEnabled(True)
-        self.statusLabel.setText("Stopped")
+
+        if self._closeWhenStopped:
+            self._closeWhenStopped = False
+            self.close()
 
     def clearChat(self):
         if self.worker or not self.messages:
@@ -206,13 +210,13 @@ class AIChatDialog(QDialog):
             self.saveChat()
 
     def onChunkReceived(self, chunk):
-        if not self.worker:
+        if not self.worker or not self.worker._isRunning:
             return
         self.currentResponse += chunk
         self.updateHistory(streaming=True)
 
     def onToolCallUpdate(self, toolCalls):
-        if not self.worker:
+        if not self.worker or not self.worker._isRunning:
             return
         self.messages.append({
             'role': 'assistant',
@@ -225,7 +229,7 @@ class AIChatDialog(QDialog):
         self.statusLabel.setText("Executing tools...")
 
     def onToolResultUpdate(self, toolMsg):
-        if not self.worker:
+        if not self.worker or not self.worker._isRunning:
             return
         self.messages.append(toolMsg)
         self.saveChat()
@@ -233,11 +237,10 @@ class AIChatDialog(QDialog):
         self.statusLabel.setText("Analyzing tool results...")
 
     def onFinished(self, stats):
-        if not self.worker:
+        if not self.worker or not self.worker._isRunning:
             return
         self.messages.append({'role': 'assistant', 'content': self.currentResponse, 'stats': stats})
         self.saveChat()
-        self.worker = None
         self.currentResponse = ""
         self.statusLabel.setText("Ready")
         self.sendBtn.setText("⏎ Send")
@@ -260,8 +263,10 @@ class AIChatDialog(QDialog):
         self.updateHistory()
 
     def onError(self, error):
+        if not self.worker or not self.worker._isRunning:
+            return
+
         self.statusLabel.setText(f"Error: {error}")
-        self.worker = None
         self.sendBtn.setText("⏎ Send")
         self.sendBtn.setEnabled(True)
 
@@ -355,7 +360,11 @@ class AIChatDialog(QDialog):
 
     def closeEvent(self, event):
         if self.worker:
+            self._closeWhenStopped = True
             self.stopWorker()
+            event.ignore()
+            return
+
         super().closeEvent(event)
 
 
