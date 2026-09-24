@@ -81,31 +81,31 @@ def getMaxChars(model: str = None) -> int:
 
 
 def pruneMessages(messages: list, maxChars: int = 250000) -> list:
-    """Prune conversation history dynamically to fit within maximum character headroom."""
+    """Drop old user turns without splitting tool exchanges or truncating source code."""
     if not messages:
         return []
 
-    pruned = []
+    turns = []
+    for msg in messages:
+        if not turns or msg.get('role') == 'user':
+            turns.append([])
+
+        turns[-1].append(msg)
+
+    keptTurns = []
     currentChars = 0
+    for turn in reversed(turns):
+        turnChars = sum(len(json.dumps(msg, ensure_ascii=False)) for msg in turn)
+        if currentChars + turnChars > maxChars:
+            if not keptTurns:
+                raise ValueError("The current request and tool results exceed the model context. Use a smaller selection or a model with a larger context.")
 
-    for msg in reversed(messages):
-        role = msg.get('role', '')
-        content = msg.get('content', '') or ""
-        msgChars = len(content)
-
-        if currentChars + msgChars > maxChars:
-            # If a single active tool/user message exceeds total headroom, truncate to fit available space
-            allowedSpace = maxChars - currentChars
-            if allowedSpace > 500 and len(content) > allowedSpace:
-                truncatedContent = content[:allowedSpace] + f"\n... [content truncated at {allowedSpace} chars to fit context headroom]"
-                msg = dict(msg, content=truncatedContent)
-                pruned.append(msg)
             break
 
-        pruned.append(msg)
-        currentChars += msgChars
+        keptTurns.append(turn)
+        currentChars += turnChars
 
-    return list(reversed(pruned))
+    return [msg for turn in reversed(keptTurns) for msg in turn]
 
 
 def getChatMessages(messages: list) -> list:
@@ -120,8 +120,9 @@ def getChatMessages(messages: list) -> list:
             'content': f'Translate all textual output to {settings.aiLanguage}. Do not translate code!'
         }
     ]
-    maxHeadroomChars = getMaxChars() - len(SYSTEM_PROMPT)
-    pruned = pruneMessages(messages, maxHeadroomChars)
+    systemMessages.extend(msg for msg in messages if msg.get('role') == 'system')
+    maxHeadroomChars = getMaxChars() - sum(len(json.dumps(msg, ensure_ascii=False)) for msg in systemMessages)
+    pruned = pruneMessages([msg for msg in messages if msg.get('role') != 'system'], maxHeadroomChars)
     return systemMessages + pruned
 
 
@@ -208,7 +209,7 @@ def cosineSimilarity(v1: list[float], v2: list[float]) -> float:
     return dotProduct / (normA * normB)
 
 
-def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int = 5):
+def chatStreamWithTools(messages: list, temperature: float = 0.2, turnLimit: int = 5):
     """
     Generator that yields events from the chat loop with tools:
     ('chunk', content)
@@ -292,13 +293,6 @@ def chatStreamWithTools(messages: list, temperature: float = 0.7, turnLimit: int
                     result = MCPClientManager.executeTool(funcName, args)
                     
                     resStr = str(result)
-                    # Dynamically compute available headroom in input context
-                    currentLength = sum(len(str(m.get('content', '') or '')) for m in totalMessages)
-                    availableHeadroom = getMaxChars() - currentLength
-
-                    if availableHeadroom > 0 and len(resStr) > availableHeadroom:
-                        resStr = resStr[:availableHeadroom] + f"\n... [tool result truncated at {availableHeadroom} chars to fit context limit]"
-
                     toolMsg = {
                         'role': 'tool',
                         'content': resStr,

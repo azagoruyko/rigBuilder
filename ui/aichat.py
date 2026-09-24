@@ -25,7 +25,7 @@ class AIChatWorker(QThread):
     toolCallUpdate = Signal(list)
     toolResultUpdate = Signal(dict)
 
-    def __init__(self, messages, temperature=0.7):
+    def __init__(self, messages, temperature=0.2):
         super().__init__()
         self.messages = copy.deepcopy(messages)
         self.temperature = temperature
