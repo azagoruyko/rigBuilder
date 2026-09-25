@@ -3298,7 +3298,7 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Sync with file", self.treeWidget.syncSelectedModules, "Ctrl+R")
         menu.addAction("Sync with selection", self.treeWidget.syncWithSelection)
         menu.addAction("Embed", self.treeWidget.embedModule)
-        dependentsAction = menu.addAction("Show dependencies", self.treeWidget.showDependents)
+        dependentsAction = menu.addAction("Show dependents", self.treeWidget.showDependents)
         dependentsAction.setEnabled(bool(self.treeWidget.selectedModules()))
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
