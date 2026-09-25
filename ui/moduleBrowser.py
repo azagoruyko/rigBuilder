@@ -20,6 +20,7 @@ from ..core.moduleIndexer import ModuleIndexer
 _docCache = {}  # path: (mtime, content)
 RECENT_MODULES_KEY = "moduleBrowser/recentModules"
 RECENT_MODULES_LIMIT = 10
+FOLDER_COLORS_KEY = "moduleBrowser/folderColors"
 
 
 def getDocFromFile(path: str) -> str:
@@ -85,14 +86,11 @@ class IndexWorker(QThread):
             logger.error(f"Background Indexing Error: {e}")
 
 
-def getCategoryColor(category: str) -> str:
-    """Return a stable color string for a category name."""
-    if not category or category in (".", ""):
-        return "#6ea7ff"  # accent blue for root
-    hashVal = sum(ord(c) for c in category)
-    colors = ["#4e54c8", "#11998e", "#fc4a1a", "#ee0979", "#00c6ff",
-              "#f7b733", "#38ef7d", "#ff6a00", "#b5179e", "#7209b7"]
-    return colors[hashVal % len(colors)]
+def getCategoryColor(category: str) -> Optional[str]:
+    """Return a folder's assigned color, if any."""
+    folder = os.path.normcase(os.path.abspath(os.path.join(settings.modulesPath, category)))
+    savedColors = QSettings("RigBuilder").value(FOLDER_COLORS_KEY, {}) or {}
+    return savedColors.get(folder)
 
 
 # ---------------------------------------------------------------------------
@@ -110,19 +108,17 @@ class ModuleCardWidget(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(8)
 
-        # Color dot indicating category
-        self.dot = QFrame()
-        self.dot.setFixedSize(8, 8)
-
-        # Determine dot color by hashing category name
         rel = os.path.relpath(filepath, settings.modulesPath)
         cat = os.path.dirname(rel)
         color = getCategoryColor(cat)
-        self.dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
+        if color:
+            dot = QFrame()
+            dot.setFixedSize(8, 8)
+            dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
+            layout.addWidget(dot)
 
         self.nameLabel = QLabel(name)
 
-        layout.addWidget(self.dot)
         layout.addWidget(self.nameLabel)
         layout.addStretch()
 
@@ -130,25 +126,25 @@ class ModuleCardWidget(QWidget):
             self.scoreLabel = QLabel(f"{score:.0%}")
             layout.addWidget(self.scoreLabel)
 
-    def getCategoryColor(self, category: str) -> str:
-        return getCategoryColor(category)
-
 
 class CategoryItemWidget(QWidget):
     """Category list item with a matching color dot."""
+    contextMenuRequested = Signal(str, QPoint)
 
     def __init__(self, label: str, category: str, parent=None):
         super().__init__(parent)
+        self.category = category
         self.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 3, 4, 3)
         layout.setSpacing(6)
 
-        if category and category not in ["__all__"]:
+        color = getCategoryColor(category) if category not in ("__recent__", "__all__") else None
+        if color:
             dot = QFrame()
             dot.setFixedSize(8, 8)
             dot.setStyleSheet(
-                f"background-color: {getCategoryColor(category)};"
+                f"background-color: {color};"
                 " border-radius: 4px; border: none;")
             layout.addWidget(dot)
 
@@ -156,6 +152,11 @@ class CategoryItemWidget(QWidget):
         lbl.setStyleSheet("background: transparent;")
         layout.addWidget(lbl)
         layout.addStretch()
+
+    def contextMenuEvent(self, event):
+        """Forward a right-click on the visible folder row to the browser."""
+        self.contextMenuRequested.emit(self.category, event.globalPos())
+        event.accept()
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +213,7 @@ class ModuleBrowser(QDialog):
     """Refactored module browser dialog triggered by pressing Tab."""
     modulesReloaded = Signal()
     moduleRequested = Signal(str)
+    folderColorsChanged = Signal()
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
@@ -394,19 +396,15 @@ class ModuleBrowser(QDialog):
             if cat and cat != ".":
                 categories.add(cat)
 
-        for label, catKey in [("Recent", "__recent__"), ("All Modules", "__all__")]:
+        categoryItems = [("Recent", "__recent__"), ("All Modules", "__all__")]
+        categoryItems.extend((cat, cat) for cat in sorted(categories))
+        for label, catKey in categoryItems:
             item = QListWidgetItem()
-            widget = CategoryItemWidget(label, catKey)            
+            widget = CategoryItemWidget(label, catKey)
             item.setData(Qt.UserRole, catKey)
             self.categoryList.addItem(item)
             self.categoryList.setItemWidget(item, widget)
-
-        for cat in sorted(categories):
-            item = QListWidgetItem()
-            widget = CategoryItemWidget(cat, cat)
-            item.setData(Qt.UserRole, cat)
-            self.categoryList.addItem(item)
-            self.categoryList.setItemWidget(item, widget)
+            widget.contextMenuRequested.connect(self._onCategoryContextMenu)
 
         # Restore selection
         for i in range(self.categoryList.count()):
@@ -416,6 +414,34 @@ class ModuleBrowser(QDialog):
                 break
         else:
             self.categoryList.setCurrentRow(0)
+
+    def _onCategoryContextMenu(self, category, globalPos):
+        """Choose or disable the color of a folder in the category list."""
+        if category in ("__recent__", "__all__"):
+            return
+
+        menu = QMenu(self)
+        chooseAction = menu.addAction("Choose color...")
+        disableAction = menu.addAction("Disable color")
+        disableAction.setEnabled(bool(getCategoryColor(category)))
+        action = menu.exec(globalPos)
+        if action not in (chooseAction, disableAction):
+            return
+
+        folder = os.path.normcase(os.path.abspath(os.path.join(settings.modulesPath, category)))
+        savedColors = QSettings("RigBuilder").value(FOLDER_COLORS_KEY, {}) or {}
+        if action == chooseAction:
+            color = QColorDialog.getColor(QColor(getCategoryColor(category) or "#c8c8c8"), self, "Folder color")
+            if not color.isValid():
+                return
+            savedColors[folder] = color.name()
+        else:
+            savedColors.pop(folder, None)
+
+        QSettings("RigBuilder").setValue(FOLDER_COLORS_KEY, savedColors)
+        self._rebuildCategoryList()
+        self._rebuildModulesList()
+        self.folderColorsChanged.emit()
 
     def _getAvailableModules(self) -> dict[str, dict]:
         """Return dict mapping normpath -> module info dict."""

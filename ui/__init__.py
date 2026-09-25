@@ -35,7 +35,7 @@ from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDia
 from .docBrowser import DocBrowser, DocGeneratorWorker, activeWorkers
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import DirectoryWatcher
-from .moduleBrowser import ModuleBrowser
+from .moduleBrowser import ModuleBrowser, getCategoryColor
 from .moduleHistoryBrowser import ModuleHistoryBrowser, recordModuleSave
 from .utils import *
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
@@ -1778,6 +1778,14 @@ class ModuleModel(QAbstractItemModel):
                 color = QColor(200, 200, 200)
                 if isMuted:
                     color = QColor(100, 100, 100)
+                elif module.referenceFile():
+                    refPath = os.path.normcase(os.path.abspath(module.referenceFile()))
+                    modulesPath = os.path.normcase(os.path.abspath(settings.modulesPath))
+                    if refPath.startswith(modulesPath + os.sep):
+                        category = os.path.dirname(os.path.relpath(refPath, modulesPath))
+                        folderColor = getCategoryColor(category)
+                        if folderColor:
+                            color = QColor(folderColor)
                 return color
 
             elif column == 1:
@@ -2952,6 +2960,7 @@ class RigBuilderWindow(QFrame):
 
         self.moduleBrowser = ModuleBrowser(parent=self)
         self.moduleBrowser.moduleRequested.connect(self.addModuleBySpec)
+        self.moduleBrowser.folderColorsChanged.connect(self.treeWidget.moduleModel.layoutChanged.emit)
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self._onModuleFileChanged)
         
         self.workspaceWidget.updateRequested.connect(self.moduleBrowser.refreshModules)
