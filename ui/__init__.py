@@ -2366,7 +2366,31 @@ class ModuleTreeWidget(QTreeView):
             return
 
         undoStack.push(MuteModuleCommand(self.moduleModel, modules))
-        
+
+    def showDependents(self):
+        """Show module files that depend on the selected modules."""
+        selectedModules = self.selectedModules()
+        if not selectedModules:
+            return
+
+        selectedUids = {module.uid() for module in selectedModules if module.uid()}
+        if not selectedUids:
+            return
+
+        dependents = []
+        for filePath in Module.listModules(settings.modulesPath):
+            try:
+                module = Module.loadFromFile(filePath)
+            except (OSError, ET.ParseError):
+                continue
+
+            if any(module.dependsOn(uid) for uid in selectedUids):
+                dependents.append(os.path.relpath(filePath, settings.modulesPath))
+
+        title = "Modules that depend on selection"
+        message = "\n".join(dependents) if dependents else "No dependent modules found."
+        QMessageBox.information(self, title, message)
+
     def duplicateModule(self):
         modules = self.selectedModules()
         if not modules:
@@ -3243,6 +3267,8 @@ class RigBuilderWindow(QFrame):
         menu.addAction("Sync with file", self.treeWidget.syncSelectedModules, "Ctrl+R")
         menu.addAction("Sync with selection", self.treeWidget.syncWithSelection)
         menu.addAction("Embed", self.treeWidget.embedModule)
+        dependentsAction = menu.addAction("Show dependencies", self.treeWidget.showDependents)
+        dependentsAction.setEnabled(bool(self.treeWidget.selectedModules()))
         menu.addAction("Mute", self.treeWidget.muteModule, "M")
         menu.addAction("Remove", self.treeWidget.removeModule, "Delete")
 
