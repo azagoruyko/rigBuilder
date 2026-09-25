@@ -99,8 +99,42 @@ class ModuleTracker(QObject):
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._cache = {} # uid: Module
-        self._watcher = QFileSystemWatcher(self)
-        self._watcher.fileChanged.connect(self._onFileChanged)
+        self._modulesPath = settings.modulesPath
+        self._fileSnapshot = self._scanModuleFiles()
+        self._watcher = DirectoryWatcher(
+            [settings.modulesPath],
+            filePatterns=["*" + ext for ext in MODULE_EXTS],
+            recursive=True,
+            parent=self,
+        )
+        self._watcher.fileChanged.connect(self._onFilesystemChanged)
+
+    def _scanModuleFiles(self) -> dict[str, tuple[str, tuple[int, int]]]:
+        """Return module file UIDs and fingerprints for the workspace tree."""
+        files = {}
+        for dirPath, _, filenames in os.walk(self._modulesPath):
+            for filename in filenames:
+                if not any(filename.endswith(ext) for ext in MODULE_EXTS):
+                    continue
+
+                path = os.path.normpath(os.path.join(dirPath, filename))
+                try:
+                    stat = os.stat(path)
+                    uid = UidManager.getUidFromFile(path)
+                except OSError:
+                    continue
+                files[path] = (uid, (stat.st_mtime_ns, stat.st_size))
+
+        return files
+
+    def setModulesPath(self, path: str):
+        """Switch the watched workspace module directory."""
+        path = os.path.normpath(path)
+        if path != self._modulesPath:
+            self._cache.clear()
+            self._modulesPath = path
+        self._watcher.setRoots([path])
+        self._fileSnapshot = self._scanModuleFiles()
 
     def getModule(self, uid: str) -> Optional[Module]:
         """Get the cached reference module by UID, loading it if necessary."""
@@ -113,7 +147,7 @@ class ModuleTracker(QObject):
         return self._cache.get(uid)
 
     def loadModule(self, uid: str):
-        """Load module from disk and add its file to the watcher."""
+        """Load a module from disk into the reference cache."""
         path = UidManager.resolve(uid)
         if not path or not os.path.exists(path):
             self._cache[uid] = None
@@ -123,30 +157,37 @@ class ModuleTracker(QObject):
             # Get the module from disk (synced)
             refModule = Module.loadModule(path)
             self._cache[uid] = refModule
-            
-            # Start watching the file for changes if not already watched
-            if path not in self._watcher.files():
-                self._watcher.addPath(path)
-                
+
         except Exception as e:
             logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
             self._cache[uid] = None
 
-    def _onFileChanged(self, path: str):
-        """Handle file change event from QFileSystemWatcher."""
-        if not os.path.exists(path):
-            return
-            
-        uid = UidManager.getUidFromFile(path)
-        if uid and uid in self._cache:
-            self.loadModule(uid)
-            self.moduleChanged.emit(uid)
+    def _onFilesystemChanged(self, _path: str):
+        """Reload cached modules whose files changed in the workspace tree."""
+        currentSnapshot = self._scanModuleFiles()
+        changedFiles = self._fileSnapshot.keys() | currentSnapshot.keys()
+        changedUids = {
+            snapshot[0]
+            for filePath in changedFiles
+            if self._fileSnapshot.get(filePath) != currentSnapshot.get(filePath)
+            for snapshot in (self._fileSnapshot.get(filePath), currentSnapshot.get(filePath))
+            if snapshot and snapshot[0]
+        }
 
-        # resync dependent modules in cache
-        for m in self._cache.values():
-            if m.dependsOn(uid):
-                m.sync()
-                self.moduleChanged.emit(m._uid)
+        self._fileSnapshot = currentSnapshot
+        if not changedUids:
+            return
+
+        UidManager.sync()
+        for uid in changedUids:
+            if uid in self._cache:
+                self.loadModule(uid)
+                self.moduleChanged.emit(uid)
+
+        for module in self._cache.values():
+            if module and any(module.dependsOn(uid) for uid in changedUids):
+                module.sync()
+                self.moduleChanged.emit(module._uid)
 
     def refresh(self):
         """Force-reload all cached reference modules."""
@@ -181,10 +222,9 @@ class ModuleTracker(QObject):
         return tracked
 
     def clearCache(self):
-        """Clear all loaded modules and stop watching files."""
+        """Clear all loaded reference modules."""
         self._cache.clear()
-        if self._watcher.files():
-            self._watcher.removePaths(self._watcher.files())
+        self.setModulesPath(settings.modulesPath)
 
 
 class RenameModuleCommand(QUndoCommand):
@@ -2032,15 +2072,6 @@ class ModuleTreeWidget(QTreeView):
         if draggedModules:
             self.selectModules(draggedModules)
 
-    def drawRow(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
-        if self.selectionModel().isSelected(index):
-            fullRowRect = QRect(0, option.rect.y(), self.viewport().width(), option.rect.height())
-            painter.fillRect(fullRowRect, self.palette().highlight())
-            option.palette.setBrush(QPalette.Highlight, QBrush(Qt.transparent, Qt.NoBrush))
-        else:
-            option.palette.setBrush(QPalette.Highlight, self.palette().highlight())
-        super().drawRow(painter, option, index)
-
     def wheelEvent(self, event: QWheelEvent):
         ctrl = event.modifiers() & Qt.ControlModifier
 
@@ -3487,6 +3518,7 @@ class RigBuilderWindow(QFrame):
     def _onWorkspaceChanged(self, ws: workspace.Workspace):
         """Handle workspace change event."""
         self.loadFromWorkspace(ws)
+        self.attributesTreeView._attrModel.moduleTracker.setModulesPath(ws.settings.modulesPath)
         self.flushUndo()
         self.aiChatDialog.loadChat()
         self._updateAutoSaveInterval()
