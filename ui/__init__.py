@@ -2408,14 +2408,23 @@ class ModuleTreeWidget(QTreeView):
         if not selectedUids:
             return
 
+        selectedPaths = {
+            os.path.normcase(os.path.abspath(module.referenceFile()))
+            for module in selectedModules
+            if module.referenceFile()
+        }
         dependents = []
         for filePath in Module.listModules(settings.modulesPath):
-            try:
-                module = Module.loadFromFile(filePath)
-            except (OSError, ET.ParseError):
+            if os.path.normcase(os.path.abspath(filePath)) in selectedPaths:
                 continue
 
-            if any(module.dependsOn(uid) for uid in selectedUids):
+            try:
+                with open(filePath, "r", encoding="utf-8", errors="ignore") as moduleFile:
+                    content = moduleFile.read()
+            except OSError:
+                continue
+
+            if any(uid in content for uid in selectedUids):
                 dependents.append(os.path.relpath(filePath, settings.modulesPath))
 
         title = "Modules that depend on selection"
