@@ -24,7 +24,7 @@ def replaceAttrPrefix(code: str) -> str:
     return re.sub(r'@(\w+)', ATTR_PREFIX + r'\1', code)
 
 def replaceAttrPrefixInverse(code: str) -> str:
-    return re.sub(r'{}(\w+)'.format(ATTR_PREFIX), r'@\1', code)
+    return re.sub(rf'{ATTR_PREFIX}(\w+)', r'@\1', code)
 
 class DictExt(dict):
     """Extended dictionary with attribute-style access."""
@@ -177,9 +177,9 @@ class Attribute:
         if self._module and self._name and newName:
             runCode = self._module.runCode()
             
-            pairs = [(r"@\b{}\b".format(self._name), "@"+newName),
-                     (r"@\bset_{}\b".format(self._name), "@set_"+newName),
-                     (r"@\b{}_data\b".format(self._name), "@"+newName+"_data")]
+            pairs = [(rf"@\b{self._name}\b", "@"+newName),
+                     (rf"@\bset_{self._name}\b", "@set_"+newName),
+                     (rf"@\b{self._name}_data\b", "@"+newName+"_data")]
 
             newRunCode = replacePairs(pairs, runCode)
 
@@ -293,7 +293,7 @@ class Attribute:
         try:
             valueCopy = copyJson(value)
         except TypeError:
-            raise CopyJsonError("Cannot set non-JSON data (got {})".format(value))
+            raise CopyJsonError(f"Cannot set non-JSON data (got {value})")
 
         if not key:
             self._setDefaultValue(valueCopy)
@@ -319,7 +319,7 @@ class Attribute:
         try:
             exec(self._expression, ctx)
         except Exception as e:
-            raise AttributeExpressionError("Invalid expression: {}".format(str(e)))
+            raise AttributeExpressionError(f"Invalid expression: {e}")
         else:
             self._setDefaultValue(ctx["value"])
 
@@ -328,7 +328,7 @@ class Attribute:
         if self._module and self._module._parent and self._connect:
             srcAttr = self._module._parent.findAttributeByPath(self._connect)
             if not srcAttr:
-                raise AttributeResolverError("Cannot resolve connection source '{}'".format(self._connect))
+                raise AttributeResolverError(f"Cannot resolve connection source '{self._connect}'")
             return srcAttr
 
     def listConnections(self) -> list[Attribute]:
@@ -357,14 +357,13 @@ class Attribute:
                  ("category", self._category),
                  ("connect", self._connect)]
 
-        attrsStr = " ".join(["{}=\"{}\"".format(k, v) for k, v in attrs])
+        attrsStr = " ".join(f'{k}="{v}"' for k, v in attrs)
 
         data = dict(self._data) # here data can have additional keys for storing custom data
         if self._expression:
             data["_expression"] = self._expression
         
-        header = "<attr {attribs}><![CDATA[{data}]]></attr>"
-        return header.format(attribs=attrsStr, data=json.dumps(data))
+        return f"<attr {attrsStr}><![CDATA[{json.dumps(data)}]]></attr>"
     
     @staticmethod
     def fromXml(xml: Union[str, Element]) -> Attribute:
@@ -450,7 +449,7 @@ class AttrsWrapper: # attributes getter/setter
         if attr:
             return attr
         else:
-            raise AttributeError("Attribute '{}' not found".format(name))
+            raise AttributeError(f"Attribute '{name}' not found")
 
     def __setattr__(self, name: str, value: Any): # for code like 'module.attr.input = value'
         if name == "_module":
@@ -461,7 +460,7 @@ class AttrsWrapper: # attributes getter/setter
             if attr:
                 attr.set(value)
             else:
-                raise AttributeError("Attribute '{}' not found".format(name))
+                raise AttributeError(f"Attribute '{name}' not found")
 
 class AttributeDataAccessor: # for accessing data with @_data suffix inside a module's code
     def __init__(self, attr: Attribute):
@@ -664,8 +663,8 @@ class Module:
                  ("muted", int(self._muted)),
                  ("uid", self._uid)]
 
-        attrsStr = " ".join(["{}=\"{}\"".format(k,v) for k, v in attrs])
-        template = ["<module {}>".format(attrsStr)]
+        attrsStr = " ".join(f'{k}="{v}"' for k, v in attrs)
+        template = [f"<module {attrsStr}>"]
 
         if self._runCode:
             template.append("".join(["<run>",
@@ -884,7 +883,7 @@ class Module:
         """Load module by spec (path, relative path, or UID)."""
         modulePath = UidManager.resolve(spec)
         if not modulePath:
-            raise ModuleNotFoundError("Module '{}' not found".format(spec))
+            raise ModuleNotFoundError(f"Module '{spec}' not found")
 
         module = Module.loadFromFile(modulePath)
         if sync:
