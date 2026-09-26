@@ -2985,7 +2985,7 @@ class RigBuilderWindow(QFrame):
         self._refreshingUI = False
         self._progressCounter = 0
         
-        self.setWindowTitle("Rig Builder {}".format(__version__))
+        self.setWindowTitle(f"Rig Builder {__version__}")
         self.setGeometry(0, 0, 1300, 900)
 
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinMaxButtonsHint)
@@ -3486,6 +3486,11 @@ class RigBuilderWindow(QFrame):
 
         module = self.treeWidget.currentModule()
         en = module is not None
+
+        if module:
+            self.setWindowTitle(f"Rig Builder {__version__} - {module.path().replace('ROOT/', '')}")
+        else:
+            self.setWindowTitle(f"Rig Builder {__version__}")
 
         self.runBtn.setEnabled(en)
         self.docBrowser.setEnabled(en)
