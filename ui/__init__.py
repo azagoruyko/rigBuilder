@@ -2048,6 +2048,16 @@ class ModuleTreeItemDelegate(QStyledItemDelegate):
         return QSize(option.rect.width(), max(super().sizeHint(option, index).height(), height))
 
 
+class ModuleTreeFilterEdit(QLineEdit):
+    def keyPressEvent(self, event: QKeyEvent):
+        """Clear the active filter with Escape."""
+        if event.key() == Qt.Key_Escape:
+            self.clear()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class ModuleTreeWidget(QTreeView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2072,11 +2082,71 @@ class ModuleTreeWidget(QTreeView):
         self.setIndentation(16)
         self.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
 
+        self.filterEdit = ModuleTreeFilterEdit()
+        self.filterEdit.setPlaceholderText("Filter modules...")
+        self.filterEdit.setClearButtonEnabled(True)
+        self.filterEdit.textChanged.connect(self._onFilterChanged)
+        self.moduleModel.modelReset.connect(self._refreshFilter)
+        self.moduleModel.layoutChanged.connect(self._refreshFilter)
+        self._filterExpansion = None
+
+    def _onFilterChanged(self, text: str):
+        """Filter modules and preserve the user's expansion state."""
+        if text and self._filterExpansion is None:
+            self._filterExpansion = []
+            self._saveExpandedModules(QModelIndex())
+        elif not text and self._filterExpansion is not None:
+            expandedModules = self._filterExpansion
+            self._filterExpansion = None
+            self._applyFilter(QModelIndex(), "", showAll=True)
+            self.collapseAll()
+            for module in expandedModules:
+                index = self.moduleModel.indexForModule(module)
+                if index.isValid():
+                    self.setExpanded(index, True)
+            return
+
+        self._refreshFilter()
+
+    def _saveExpandedModules(self, parent: QModelIndex):
+        """Record expanded modules before filtering changes branch expansion."""
+        for row in range(self.moduleModel.rowCount(parent)):
+            index = self.moduleModel.index(row, 0, parent)
+            if self.isExpanded(index):
+                self._filterExpansion.append(self.moduleModel.getModule(index))
+            self._saveExpandedModules(index)
+
+    def _refreshFilter(self, *args):
+        """Apply the current filter while retaining matching module context."""
+        text = self.filterEdit.text().strip().casefold()
+        self._applyFilter(QModelIndex(), text, showAll=not text)
+
+    def _applyFilter(self, parent: QModelIndex, text: str, showAll: bool = False) -> bool:
+        """Show matching branches and retain context around each result."""
+        anyVisible = False
+        for row in range(self.moduleModel.rowCount(parent)):
+            index = self.moduleModel.index(row, 0, parent)
+            name = str(self.moduleModel.data(index, Qt.EditRole) or "").casefold()
+            path = str(self.moduleModel.data(index, ModuleModel.PathRole) or "").casefold()
+            matches = showAll or text in name or text in path
+            childVisible = self._applyFilter(index, text, showAll=showAll or matches)
+            visible = matches or childVisible
+            self.setRowHidden(row, parent, not visible)
+            if text and visible:
+                self.setExpanded(index, True)
+            anyVisible = anyVisible or visible
+        return anyVisible
+
     def clear(self):
         """Clear the tree by resetting the model."""
         self.moduleModel.clear()
 
     def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_F and event.modifiers() & Qt.ControlModifier:
+            self.filterEdit.setFocus()
+            self.filterEdit.selectAll()
+            event.accept()
+            return
         if event.key() == Qt.Key_Escape:
             self.selectionModel().clearSelection()
             event.accept()
@@ -2085,8 +2155,12 @@ class ModuleTreeWidget(QTreeView):
 
     def paintEvent(self, event: QPaintEvent):
         super().paintEvent(event)
-        
-        if self.moduleModel.rootModule().children():
+
+        filtering = bool(self.filterEdit.text().strip())
+        if filtering and any(not self.isRowHidden(row, QModelIndex()) for row in range(self.moduleModel.rowCount())):
+            return
+
+        if not filtering and self.moduleModel.rootModule().children():
             return
 
         painter = QPainter()
@@ -2097,7 +2171,8 @@ class ModuleTreeWidget(QTreeView):
             painter.setFont(font)
             viewportRect = self.viewport().rect()
             paddedRect = QRect(viewportRect.x(), viewportRect.y(), viewportRect.width(), viewportRect.height() - 5)
-            painter.drawText(paddedRect, Qt.AlignBottom | Qt.AlignHCenter, "Press TAB to add modules")
+            message = "No matching modules" if filtering else "Press TAB to add modules"
+            painter.drawText(paddedRect, Qt.AlignBottom | Qt.AlignHCenter, message)
             painter.end()
 
     def mousePressEvent(self, event: QMouseEvent):
@@ -3112,6 +3187,7 @@ class RigBuilderWindow(QFrame):
         treeHeaderLayout.setContentsMargins(0, 0, 0, 0)
         treeHeaderLayout.addWidget(self.vscodeBtn)
         treeWithBtnWidget.layout().addLayout(treeHeaderLayout)
+        treeWithBtnWidget.layout().addWidget(self.treeWidget.filterEdit)
         treeWithBtnWidget.layout().addWidget(self.treeWidget)
         treeWithBtnWidget.layout().addWidget(self.runBtn)
 
