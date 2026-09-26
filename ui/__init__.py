@@ -1695,6 +1695,8 @@ class ModuleModel(QAbstractItemModel):
     Qt Model for Module hierarchy.
     Enables MVC pattern where Module is the single source of truth.
     """
+    PathRole = Qt.UserRole + 1
+
     def __init__(self, rootModule: Optional[Module] = None, parent=None):
         super().__init__(parent)
         self._rootModule = rootModule or Module()
@@ -1752,7 +1754,7 @@ class ModuleModel(QAbstractItemModel):
         return len(parentModule.children())
 
     def columnCount(self, parent=QModelIndex()):
-        return 2 # Name, Path
+        return 1
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -1779,13 +1781,10 @@ class ModuleModel(QAbstractItemModel):
 
                 return icon + name
 
-            elif column == 1:
-                ref = module.referenceFile()
-                if ref:
-                    path = relativePath(ref, settings.modulesPath).replace("\\", "/")
-                    return os.path.splitext(path)[0]
-                else:
-                    return ""
+        elif role == self.PathRole:
+            ref = module.referenceFile()
+            path = relativePath(ref, settings.modulesPath).replace("\\", "/") if ref else ""
+            return os.path.splitext(path)[0]
 
         elif role == Qt.EditRole:
             if column == 0:
@@ -1828,9 +1827,6 @@ class ModuleModel(QAbstractItemModel):
                             color = QColor(folderColor)
                 return color
 
-            elif column == 1:
-                return QColor(100, 100, 100) if isMuted else QColor(125, 125, 125)
-
         elif role == Qt.BackgroundRole:
             if column == 0:
                 if not re.match("\\w*", module.name()):
@@ -1872,7 +1868,7 @@ class ModuleModel(QAbstractItemModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return ["Name", "Path"][section]
+            return "Modules" if section == 0 else None
         return None
 
     def flags(self, index):
@@ -1994,6 +1990,64 @@ class ModuleModel(QAbstractItemModel):
         self._rootModule.removeChildren()
         self.endResetModel()
 
+class ModuleTreeItemDelegate(QStyledItemDelegate):
+    """Draw each module name with its reference path below it."""
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+        """Paint the name and optional reference path as a two-line item."""
+        styleOption = QStyleOptionViewItem(option)
+        self.initStyleOption(styleOption, index)
+        name = styleOption.text
+        styleOption.text = ""
+        style = styleOption.widget.style() if styleOption.widget else QApplication.style()
+        style.drawControl(QStyle.CE_ItemViewItem, styleOption, painter, styleOption.widget)
+
+        path = index.data(ModuleModel.PathRole)
+        textRect = option.rect.adjusted(5, 2, -5, -2)
+        nameFont = option.font
+        pathFont = QFont(nameFont)
+        pathFont.setPointSizeF(max(7.0, nameFont.pointSizeF() * 0.82))
+        nameMetrics = QFontMetrics(nameFont)
+        pathMetrics = QFontMetrics(pathFont)
+        pathHeight = pathMetrics.height() if path else 0
+        gap = 1 if path else 0
+        totalHeight = nameMetrics.height() + gap + pathHeight
+        nameRect = QRect(textRect.x(), textRect.y() + max(0, (textRect.height() - totalHeight) // 2),
+                         textRect.width(), nameMetrics.height())
+
+        selected = bool(option.state & QStyle.State_Selected)
+        nameColor = option.palette.color(QPalette.HighlightedText) if selected else index.data(Qt.ForegroundRole)
+
+        painter.save()
+        painter.setFont(nameFont)
+        painter.setPen(nameColor)
+        painter.drawText(nameRect, Qt.AlignLeft | Qt.AlignVCenter,
+                         nameMetrics.elidedText(name, Qt.ElideRight, nameRect.width()))
+
+        if path:
+            pathRect = QRect(nameRect.x(), nameRect.y() + nameMetrics.height() + gap,
+                             nameRect.width(), pathHeight)
+            pathColor = option.palette.color(QPalette.HighlightedText) if selected else QColor(125, 125, 125)
+            painter.setFont(pathFont)
+            painter.setPen(pathColor)
+            painter.drawText(pathRect, Qt.AlignLeft | Qt.AlignVCenter,
+                             pathMetrics.elidedText(path, Qt.ElideRight, pathRect.width()))
+        painter.restore()
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        """Reserve enough row height for the module name and path lines."""
+        path = index.data(ModuleModel.PathRole)
+        font = option.font
+        height = QFontMetrics(font).height()
+        if not path:
+            return QSize(option.rect.width(), max(super().sizeHint(option, index).height(), height))
+
+        pathFont = QFont(font)
+        pathFont.setPointSizeF(max(7.0, font.pointSizeF() * 0.82))
+        height += QFontMetrics(pathFont).height() + 3
+        return QSize(option.rect.width(), max(super().sizeHint(option, index).height(), height))
+
+
 class ModuleTreeWidget(QTreeView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2003,12 +2057,13 @@ class ModuleTreeWidget(QTreeView):
         
         self.moduleModel = ModuleModel()
         self.setModel(self.moduleModel)
+        self.setItemDelegate(ModuleTreeItemDelegate(self))
         self.setHeader(AttributesHeaderView(self))
         self.header().collapseBtn.setToolTip("Collapse All Modules")
         self.header().collapseBtn.clicked.connect(self.collapseAll)
 
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.header().setSectionResizeMode(QHeaderView.Stretch)
 
         self.setDragEnabled(False) # Handle manually via middle button
         self.setAcceptDrops(True)
@@ -3527,6 +3582,8 @@ class RigBuilderWindow(QFrame):
     def _onWorkspaceChanged(self, ws: workspace.Workspace):
         """Handle workspace change event."""
         self.loadFromWorkspace(ws)
+        self.attributesTreeView.setModule(None)
+        self.attributesTreeView.setEnabled(False)
         self.attributesTreeView._attrModel.moduleTracker.setModulesPath(ws.settings.modulesPath)
         self.flushUndo()
         self.aiChatDialog.loadChat()
