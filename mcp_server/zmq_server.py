@@ -47,16 +47,27 @@ class RigBuilderAPI:
 
     @classmethod
     def get_modules(cls, req):
-        """Get all modules in the tree"""
-        rootModule = cls.mainWindow.treeWidget.moduleModel.rootModule()
-        
-        def _get_paths(module):
-            paths = [module.path(inclusive=True)]
-            for c in module.children():
-                paths.extend(_get_paths(c))
-            return paths
-            
-        return {"modules": _get_paths(rootModule)}
+        """Get the module hierarchy and metadata for a readable tree."""
+        from rigBuilder.core import settings
+        from rigBuilder.core.utils import relativePath
+
+        treeWidget = cls.mainWindow.treeWidget
+        rootModule = treeWidget.moduleModel.rootModule()
+        selected = set(treeWidget.selectedModules())
+
+        def module_data(module):
+            """Serialize one module and its children in display order."""
+            reference = module.referenceFile()
+            return {
+                "name": module.name(),
+                "path": module.path(inclusive=True),
+                "reference": relativePath(reference, settings.modulesPath).replace("\\", "/") if reference else "",
+                "uid": module.uid(),
+                "selected": module in selected,
+                "children": [module_data(child) for child in module.children()],
+            }
+
+        return {"tree": module_data(rootModule)}
 
     @classmethod
     def query_module(cls, req):
@@ -103,6 +114,52 @@ class RigBuilderAPI:
         cmd = AddModuleCommand(model, new_module, parentModule, -1)
         undoStack.push(cmd)
         return {"message": f"Added module {new_module.name()} to {parent_path}"}
+
+    @classmethod
+    def move_module(cls, req):
+        """Move one module to a parent and position it before a sibling."""
+        module_path = req.get("module_path", "")
+        parent_path = req.get("target_parent_path", "")
+        before_path = req.get("before_path", "")
+        model = cls.mainWindow.treeWidget.moduleModel
+        rootModule = model.rootModule()
+
+        module = rootModule.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+        if module is rootModule:
+            return {"error": "Cannot move ROOT module"}
+
+        targetParent = rootModule.findModuleByPath(parent_path)
+        if not targetParent:
+            return {"error": f"Target parent not found: {parent_path}"}
+
+        ancestor = targetParent
+        while ancestor:
+            if ancestor is module:
+                return {"error": "Cannot move a module into itself or its descendant"}
+            ancestor = ancestor.parent()
+
+        oldParent = module.parent()
+        siblings = [child for child in targetParent.children() if child is not module]
+        if oldParent is not targetParent and any(child.name() == module.name() for child in siblings):
+            return {"error": f"Target parent already has a module named: {module.name()}"}
+
+        if before_path:
+            beforeModule = rootModule.findModuleByPath(before_path)
+            if not beforeModule or beforeModule.parent() is not targetParent or beforeModule is module:
+                return {"error": f"Insert-before module must be another child of the target parent: {before_path}"}
+            targetRow = siblings.index(beforeModule)
+        else:
+            targetRow = len(siblings)
+
+        if oldParent is targetParent and oldParent.children().index(module) == targetRow:
+            return {"message": f"Module already at requested position: {module.path(inclusive=True)}"}
+
+        from rigBuilder.ui import MoveModulesCommand, undoStack
+
+        undoStack.push(MoveModulesCommand(model, [module], targetParent, targetRow))
+        return {"message": f"Moved {module_path} to {module.path(inclusive=True)} at row {targetRow}"}
 
     @classmethod
     def remove_module(cls, req):

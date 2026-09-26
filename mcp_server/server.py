@@ -107,21 +107,43 @@ def replace_selected_text(text: str) -> str:
 
 @mcp.tool()
 def get_modules() -> str:
-    """Returns a list of all instantiated modules currently in the active tree.
-    This provides the AI with the structural overview of the module tree (the module paths).
+    """Return the active module hierarchy with exact paths, references, UIDs, and selection.
+
+    Use the path= value for module operations. Child counts are direct children.
     """
     res = get_client().send_request("get_modules")
     if res.get("error"):
         return res.get("error")
 
-    modules = res.get("modules", [])
-    if not modules:
+    root = res.get("tree")
+    if not root:
         return "No modules are currently in the tree."
-        
-    out = "Current Tree Modules:\n"
-    for m in modules:
-        out += f"- {m}\n"
-    return out
+
+    lines = ["Current Tree Modules:"]
+
+    def append_module(module, prefix="", branch=""):
+        """Append one tree row and recursively append its children."""
+        children = module["children"]
+        parts = [module["name"], f'path={module["path"]}']
+        if module["reference"]:
+            parts.append(f'@ref={module["reference"]}')
+        if module["uid"]:
+            parts.append(f'uid={module["uid"]}')
+        if children:
+            count = len(children)
+            parts.append(f'({count} child{"ren" if count != 1 else ""})')
+        else:
+            parts.append("[leaf]")
+        if module["selected"]:
+            parts.append("← selected")
+        lines.append(prefix + branch + "  ".join(parts))
+
+        child_prefix = prefix + ("   " if branch == "└─ " else "│  " if branch else "")
+        for index, child in enumerate(children):
+            append_module(child, child_prefix, "└─ " if index == len(children) - 1 else "├─ ")
+
+    append_module(root)
+    return "\n".join(lines)
 
 @mcp.tool()
 def query_module(query: str, k: int = 5) -> str:
@@ -155,6 +177,29 @@ def add_module(parent_path: str, name: str, reference_path: str = "") -> str:
         reference_path: (Optional) Path string relative to 'modules/' of an existing module file in the current workspace (e.g. 'biped/arm.xml'). If empty, creates an empty module.
     """
     res = get_client().send_request("add_module", parent_path=parent_path, name=name, reference_path=reference_path)
+    if res.get("error"):
+        return res.get("error")
+
+    return res.get("message", "Success")
+
+@mcp.tool()
+def move_module(module_path: str, target_parent_path: str, before_path: str = "") -> str:
+    """Move one module under another parent or reorder it as one undoable edit.
+
+    Use exact paths from get_modules. An empty target_parent_path means ROOT.
+    Omit before_path to append; otherwise insert before a child of the target parent.
+
+    Args:
+        module_path: Full path of the module to move.
+        target_parent_path: Full path of the destination parent, or empty for ROOT.
+        before_path: Full path of the destination sibling to insert before.
+    """
+    res = get_client().send_request(
+        "move_module",
+        module_path=module_path,
+        target_parent_path=target_parent_path,
+        before_path=before_path,
+    )
     if res.get("error"):
         return res.get("error")
 
