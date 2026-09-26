@@ -354,7 +354,7 @@ QTreeWidget::item:selected,
 QTreeWidget::item:selected:hover,
 QListWidget::item:selected,
 QListView::item:selected {
-	background-color: #3e7bd6;
+	background-color: #2b4f82;
 	color: #ffffff;
 	outline: none;
 }

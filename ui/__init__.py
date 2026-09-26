@@ -2015,8 +2015,7 @@ class ModuleTreeItemDelegate(QStyledItemDelegate):
         nameRect = QRect(textRect.x(), textRect.y() + max(0, (textRect.height() - totalHeight) // 2),
                          textRect.width(), nameMetrics.height())
 
-        selected = bool(option.state & QStyle.State_Selected)
-        nameColor = option.palette.color(QPalette.HighlightedText) if selected else index.data(Qt.ForegroundRole)
+        nameColor = index.data(Qt.ForegroundRole)
 
         painter.save()
         painter.setFont(nameFont)
@@ -2027,7 +2026,7 @@ class ModuleTreeItemDelegate(QStyledItemDelegate):
         if path:
             pathRect = QRect(nameRect.x(), nameRect.y() + nameMetrics.height() + gap,
                              nameRect.width(), pathHeight)
-            pathColor = option.palette.color(QPalette.HighlightedText) if selected else QColor(125, 125, 125)
+            pathColor = QColor(125, 125, 125)
             painter.setFont(pathFont)
             painter.setPen(pathColor)
             painter.drawText(pathRect, Qt.AlignLeft | Qt.AlignVCenter,
