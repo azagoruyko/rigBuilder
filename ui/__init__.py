@@ -2038,7 +2038,7 @@ class ModuleTreeItemDelegate(QStyledItemDelegate):
         """Reserve enough row height for the module name and path lines."""
         path = index.data(ModuleModel.PathRole)
         font = option.font
-        height = QFontMetrics(font).height()
+        height = QFontMetrics(font).height() + 6
         if not path:
             return QSize(option.rect.width(), max(super().sizeHint(option, index).height(), height))
 
