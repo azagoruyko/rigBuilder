@@ -2076,6 +2076,13 @@ class ModuleTreeWidget(QTreeView):
         """Clear the tree by resetting the model."""
         self.moduleModel.clear()
 
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Escape:
+            self.selectionModel().clearSelection()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def paintEvent(self, event: QPaintEvent):
         super().paintEvent(event)
         
