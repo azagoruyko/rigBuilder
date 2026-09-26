@@ -287,7 +287,7 @@ class ModuleBrowser(QDialog):
         self.modulesList.itemDoubleClicked.connect(self.addSelectedModule)
         self.splitter.addWidget(self.modulesList)
 
-        # Right Panel: Doc Browser & Add Button
+        # Right Panel: Doc Browser
         self.docContainer = QWidget()
         docLayout = QVBoxLayout(self.docContainer)
         docLayout.setContentsMargins(0, 0, 0, 0)
@@ -295,10 +295,6 @@ class ModuleBrowser(QDialog):
 
         self.docBrowser = DocBrowser(editable=False)        
         docLayout.addWidget(self.docBrowser)
-
-        self.addButton = QPushButton("➕ Add Module")
-        self.addButton.clicked.connect(self.addSelectedModule)
-        docLayout.addWidget(self.addButton)
 
         self.splitter.addWidget(self.docContainer)
 
@@ -374,6 +370,9 @@ class ModuleBrowser(QDialog):
 
     def refreshModules(self):
         """Syncs modules, trigger indexing, and rebuild the UI list."""
+        self.modulesList.setCurrentRow(-1)
+        self.docBrowser.setDoc("")
+
         UidManager.sync()
 
         self.indexer.filePath = os.path.join(settings.workspacePath, "moduleIndex.json")
@@ -529,22 +528,18 @@ class ModuleBrowser(QDialog):
 
         if self.modulesList.count() == 0:
             self.docBrowser.clear()
-            self.addButton.setEnabled(False)
 
     def _onModuleSelectionChanged(self):
         selectedItem = self.modulesList.currentItem()
         if not selectedItem:
             self.docBrowser.clear()
-            self.addButton.setEnabled(False)
             return
 
         card = self.modulesList.itemWidget(selectedItem)
         if not card:
             self.docBrowser.clear()
-            self.addButton.setEnabled(False)
             return
 
-        self.addButton.setEnabled(True)
         doc = getDocFromFile(card.filepath)
         self.docBrowser.setDoc(doc)
 
