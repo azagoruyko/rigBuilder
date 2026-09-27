@@ -12,20 +12,31 @@ from ..ai import engine
 
 activeWorkers = []
 
-def calculateModulesDiff(modules: list[Module]) -> str:
-    """Calculate unified diffs for a list of modules against their disk state."""
+
+def calculateModulesDiff(modules: list[Module], paths: list[str] | None = None) -> str:
+    """Calculate unified diffs for the current in-memory module state vs its saved file."""
     diffTexts = []
-    for m in modules:
-        filePath = m.referenceFile()
+    for index, m in enumerate(modules):
+        filePath = paths[index] if paths is not None else m.referenceFile()
+        preview = m.copy()
+        if filePath:
+            preview.setName(os.path.splitext(os.path.basename(filePath))[0])
+
+        preview._muted = False
+        for attr in preview.attributes():
+            attr.setConnect("")
+
+        newText = preview.toText()
         if filePath and os.path.exists(filePath):
             oldModule = Module.loadModule(filePath) # load and sync
             oldText = oldModule.toText()
-            newText = m.toText()
+            oldLabel = os.path.basename(filePath)
+            newLabel = oldLabel + " (memory)"
             diff = difflib.unified_diff(
                 oldText.splitlines(),
                 newText.splitlines(),
-                fromfile=filePath,
-                tofile=filePath + " (memory)",
+                fromfile=oldLabel,
+                tofile=newLabel,
                 lineterm=""
             )
             diffText = "\n".join(diff)
@@ -33,12 +44,12 @@ def calculateModulesDiff(modules: list[Module]) -> str:
                 diffTexts.append(diffText)
         else:
             # New module or no file on disk - show all as additions
-            newText = m.toText()
+            targetName = os.path.basename(filePath or m.name())
             diff = difflib.unified_diff(
                 [],
                 newText.splitlines(),
                 fromfile="/dev/null",
-                tofile=m.name(),
+                tofile=targetName,
                 lineterm=""
             )
             diffText = "\n".join(diff)
@@ -56,29 +67,35 @@ class DiffUserData(QTextBlockUserData):
 class DiffHighlighter(QSyntaxHighlighter):
     """Git-style coloring with intra-line highlighting for unified diff."""
 
-    def __init__(self, parent: QTextDocument):
+    def __init__(self, parent: QTextDocument, darkTheme: bool):
         super().__init__(parent)
 
         self.defaultFormat = QTextCharFormat()
-        self.defaultFormat.setForeground(QColor(180, 180, 180))
+        self.defaultFormat.setForeground(QColor(180, 180, 180) if darkTheme else QColor(45, 45, 45))
 
         self.removedFormat = QTextCharFormat()
-        self.removedFormat.setForeground(QColor(200, 100, 100))
+        self.removedFormat.setForeground(QColor(220, 125, 125) if darkTheme else QColor(125, 25, 25))
+        self.removedFormat.setBackground(QColor(65, 39, 43) if darkTheme else QColor(255, 232, 232))
 
         self.addedFormat = QTextCharFormat()
-        self.addedFormat.setForeground(QColor(100, 200, 100))
+        self.addedFormat.setForeground(QColor(130, 215, 130) if darkTheme else QColor(20, 105, 45))
+        self.addedFormat.setBackground(QColor(36, 60, 43) if darkTheme else QColor(226, 248, 230))
 
         self.hunkFormat = QTextCharFormat()
-        self.hunkFormat.setForeground(QColor(130, 130, 220))
+        self.hunkFormat.setForeground(QColor(150, 155, 235) if darkTheme else QColor(55, 65, 150))
         self.hunkFormat.setFontWeight(QFont.Bold)
 
+        self.fileFormat = QTextCharFormat()
+        self.fileFormat.setForeground(QColor(140, 190, 235) if darkTheme else QColor(35, 80, 135))
+        self.fileFormat.setFontWeight(QFont.Bold)
+
         self.removedWordFormat = QTextCharFormat()
-        self.removedWordFormat.setBackground(QColor(120, 50, 50))
-        self.removedWordFormat.setForeground(QColor(255, 200, 200))
+        self.removedWordFormat.setBackground(QColor(120, 50, 50) if darkTheme else QColor(245, 185, 185))
+        self.removedWordFormat.setForeground(QColor(255, 200, 200) if darkTheme else QColor(95, 15, 15))
 
         self.addedWordFormat = QTextCharFormat()
-        self.addedWordFormat.setBackground(QColor(50, 120, 50))
-        self.addedWordFormat.setForeground(QColor(200, 255, 200))
+        self.addedWordFormat.setBackground(QColor(50, 120, 50) if darkTheme else QColor(165, 225, 175))
+        self.addedWordFormat.setForeground(QColor(200, 255, 200) if darkTheme else QColor(10, 75, 30))
 
         # Re-calculate diffs immediately
         self.recalculateIntraLineDiffs()
@@ -147,7 +164,10 @@ class DiffHighlighter(QSyntaxHighlighter):
         if not text:
             return
         
-        if text.startswith("-") and not text.startswith("---"):
+        if text.startswith(("diff --git ", "--- ", "+++ ")):
+            self.setFormat(0, len(text), self.fileFormat)
+
+        elif text.startswith("-") and not text.startswith("---"):
             self.setFormat(0, len(text), self.removedFormat)
             data = self.currentBlock().userData()
             if data and isinstance(data, DiffUserData):
@@ -205,51 +225,63 @@ class DiffBrowserWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.worker = None
 
-        # Create Splitter
-        self.splitter = QSplitter(Qt.Vertical)
-        layout.addWidget(self.splitter)
+        lines = diffText.splitlines()
+        self.changeBlocks = [index for index, line in enumerate(lines) if line.startswith("@@")]
+        added = sum(line.startswith("+") and not line.startswith("+++") for line in lines)
+        removed = sum(line.startswith("-") and not line.startswith("---") for line in lines)
+
+        toolbar = QHBoxLayout()
+        if diffText.strip():
+            self.summaryLabel = QLabel("")
+            toolbar.addWidget(self.summaryLabel)
+        else:
+            self.summaryLabel = QLabel("No changes to review")
+            toolbar.addWidget(self.summaryLabel)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
 
         self.textEdit = QPlainTextEdit()
         self.textEdit.setReadOnly(True)
-        self.textEdit.setPlainText(diffText)
-        self.highlighter = DiffHighlighter(self.textEdit.document())
-        self.splitter.addWidget(self.textEdit)
+        self.textEdit.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self.textEdit.setPlainText(diffText if diffText.strip() else "No changes to review.")
+        darkTheme = self.textEdit.palette().color(QPalette.Base).lightness() < 128
+        self.highlighter = DiffHighlighter(self.textEdit.document(), darkTheme)
+        layout.addWidget(self.textEdit, 1)
 
-        # AI Summary Section
-        self.aiGroup = QGroupBox("🤖 AI Summary")
-        aiLayout = QVBoxLayout(self.aiGroup)
-        
+        self.aiButton = QPushButton("AI summary ▸")
+        self.aiButton.setCheckable(True)
+        self.aiButton.toggled.connect(self.toggleAiSummary)
+        layout.addWidget(self.aiButton)
         self.aiText = QTextEdit()
         self.aiText.setReadOnly(True)
         self.aiText.setPlaceholderText("Analyzing changes...")
         self.aiText.setStyleSheet("font-style: italic; color: #8a92a3; background-color: #2b313b; border: none;")
-        
-        aiLayout.addWidget(self.aiText)
-        self.splitter.addWidget(self.aiGroup)        
+        self.aiText.setFixedHeight(130)
+        self.aiText.hide()
+        layout.addWidget(self.aiText)
 
-        self.splitter.setSizes([400, 400])
-
-        # Hide AI group if Ollama is not available or if there is no diff
         if not engine.isOllamaAvailable() or not diffText.strip():
-            self.aiGroup.hide()
+            self.aiButton.hide()
         else:
-            # Create worker without parent so it's not destroyed with the dialog
             worker = DiffDescriptionWorker(diffText)
             worker.finished.connect(self._onAiFinished)
-            
-            # Keep alive in global list
             activeWorkers.append(worker)
             worker.finished.connect(lambda: activeWorkers.remove(worker))
-            
             worker.start()
             self.worker = worker
+
+    def toggleAiSummary(self, visible: bool):
+        """Expand or collapse the optional AI summary."""
+        self.aiButton.setText("AI summary ▾" if visible else "AI summary ▸")
+        self.aiText.setVisible(visible)
 
     def _onAiFinished(self, summary: str):
         if summary:
             self.aiText.setMarkdown(summary)
             self.aiText.setStyleSheet("color: #c8cfdb; background-color: #2b313b; border: none;") # Normal color once finished
         else:
-            self.aiGroup.hide()
+            self.aiButton.hide()
+            self.aiText.hide()
         self.worker = None
 
 

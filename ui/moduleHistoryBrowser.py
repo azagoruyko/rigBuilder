@@ -336,8 +336,8 @@ class ModuleHistoryBrowser(QWidget):
                 "Squash failed: {}".format(errMsg),
             )
 
-    def showCommitMessageDialog(self, diffText: str = "", description: str = ""):
-        """Show commit message dialog. Returns (accepted, message)."""
+    def showCommitMessageDialog(self, diffText: str = "", description: str = "", historyEnabled: bool = True):
+        """Show save confirmation with change review and an optional commit message."""
         dlg = QDialog(self)
         dlg.resize(600, 100)
         dlg.setWindowTitle("Save module")
@@ -355,7 +355,8 @@ class ModuleHistoryBrowser(QWidget):
             line.setFrameShadow(QFrame.Sunken)
             line.setStyleSheet("margin: 10px 0;")
             layout.addWidget(line)
-        layout.addWidget(QLabel("Commit message (optional):"))
+        if historyEnabled:
+            layout.addWidget(QLabel("Commit message (optional):"))
 
         hLayout = QHBoxLayout()
         lineEdit = QLineEdit()
@@ -366,10 +367,11 @@ class ModuleHistoryBrowser(QWidget):
         genButton.setToolTip("Generate commit message from changes using AI")
         hLayout.addWidget(genButton)
 
-        if not engine.isOllamaAvailable() or not diffText:
+        if not historyEnabled or not diffText or not engine.isOllamaAvailable():
             genButton.hide()
 
-        layout.addLayout(hLayout)
+        if historyEnabled:
+            layout.addLayout(hLayout)
 
         # We need to keep a reference to the worker so it doesn't get garbage collected
         dlg._worker = None
@@ -398,13 +400,22 @@ class ModuleHistoryBrowser(QWidget):
         genButton.clicked.connect(onGenerate)
 
         bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bbox.button(QDialogButtonBox.Ok).setText("✅ OK")
+        bbox.button(QDialogButtonBox.Ok).setText("Save")
         bbox.button(QDialogButtonBox.Cancel).setText("❌ Cancel")
+        reviewButton = bbox.addButton("Review changes...", QDialogButtonBox.ActionRole)
+        reviewButton.clicked.connect(
+            lambda: DiffBrowserDialog(
+                diffText=diffText,
+                fromDesc="Saved file",
+                toDesc="Save preview",
+                parent=dlg,
+            ).exec()
+        )
         bbox.accepted.connect(dlg.accept)
         bbox.rejected.connect(dlg.reject)
         layout.addWidget(bbox)
         accepted = dlg.exec_() == QDialog.Accepted
-        return (accepted, lineEdit.text().strip() if accepted else "")
+        return (accepted, lineEdit.text().strip() if accepted and historyEnabled else "")
 
     def syncModuleHistory(self):
         """Sync the module history widget with the latest history if visible."""

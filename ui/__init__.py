@@ -1679,15 +1679,17 @@ class AttributesTreeView(QTreeView):
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(refPath))
             return
 
-        currentText = attr.toText()
-        refAttr = Module.loadModule(refPath).findAttribute(attr.name())
-        originalText = refAttr.toText() if refAttr else ""
+        module = attr.module()
+        if not module:
+            QMessageBox.warning(self, "Rig Builder", "This attribute has no owning module.")
+            return
 
-        if originalText == currentText:
+        diffText = calculateModulesDiff([module], [refPath])
+        if not diffText.strip():
             QMessageBox.information(self, "Rig Builder", "No changes detected.")
             return
 
-        DiffBrowserDialog(originalText, currentText, refPath, "Current", parent=self).exec()
+        DiffBrowserDialog(diffText=diffText, fromDesc=refPath, toDesc="Current", parent=self).exec()
 
     def _onReplace(self, old: str, new: str, opts: Optional[dict[str, bool]] = None):
         if not self._module or not old:
@@ -2464,17 +2466,15 @@ class ModuleTreeWidget(QTreeView):
         # Build list for description
         desc = "Save modules?\n" + "\n".join(["{} -> {}".format(m.name(), relativePath(p, settings.modulesPath)) for m, p, _ in saveData])
 
-        if historyEnabled:
-            modulesToSave = [m for m, _, _ in saveData]
-            accepted, commitMessage = historyWidget.showCommitMessageDialog(
-                diffText=calculateModulesDiff(modulesToSave),
-                description=desc
-            )
-            if not accepted:
-                return
-        else:
-            if QMessageBox.question(mainWindow, "Rig Builder", desc, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
-                return
+        modulesToSave = [m for m, _, _ in saveData]
+        outputPaths = [p for _, p, _ in saveData]
+        accepted, commitMessage = historyWidget.showCommitMessageDialog(
+            diffText=calculateModulesDiff(modulesToSave, outputPaths),
+            description=desc,
+            historyEnabled=historyEnabled,
+        )
+        if not accepted:
+            return
 
         # 3. Perform the actual save
         for module, outputPath, idx in saveData:
@@ -3583,14 +3583,12 @@ class RigBuilderWindow(QFrame):
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(refPath))
             return
 
-        currentText = module.toText()
-        originalText = Module.loadModule(refPath).toText()
-
-        if originalText == currentText:
+        diffText = calculateModulesDiff([module], [refPath])
+        if not diffText.strip():
             QMessageBox.information(self, "Rig Builder", "No changes detected.")
             return
 
-        DiffBrowserDialog(originalText, currentText, refPath, "Current", parent=self).exec()
+        DiffBrowserDialog(diffText=diffText, fromDesc=refPath, toDesc="Current", parent=self).exec()
                     
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
