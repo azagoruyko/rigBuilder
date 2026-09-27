@@ -106,12 +106,13 @@ def replace_selected_text(text: str) -> str:
     return res.get("message", "Success")
 
 @mcp.tool()
-def get_modules() -> str:
-    """Return the active module hierarchy with exact paths, references, UIDs, and selection.
+def get_active_module_tree() -> str:
+    """Return the entire live module tree from ROOT.
 
-    Use the path= value for module operations. Child counts are direct children.
+    Each row includes its exact path, reference, UID, selection, and direct child count.
+    Use the path= value for operations on a specific module.
     """
-    res = get_client().send_request("get_modules")
+    res = get_client().send_request("get_active_module_tree")
     if res.get("error"):
         return res.get("error")
 
@@ -119,7 +120,7 @@ def get_modules() -> str:
     if not root:
         return "No modules are currently in the tree."
 
-    lines = ["Current Tree Modules:"]
+    lines = ["Current Module Hierarchy:"]
 
     def append_module(module, prefix="", branch=""):
         """Append one tree row and recursively append its children."""
@@ -186,7 +187,7 @@ def add_module(parent_path: str, name: str, reference_path: str = "") -> str:
 def move_module(module_path: str, target_parent_path: str, before_path: str = "") -> str:
     """Move one module under another parent or reorder it as one undoable edit.
 
-    Use exact paths from get_modules. An empty target_parent_path means ROOT.
+    Use exact paths from get_active_module_tree. An empty target_parent_path means ROOT.
     Omit before_path to append; otherwise insert before a child of the target parent.
 
     Args:
@@ -218,8 +219,8 @@ def remove_module(module_path: str) -> str:
     return res.get("message", "Success")
 
 @mcp.tool()
-def get_module_xml(module_path: str = "") -> str:
-    """Returns the full XML representation of a specific module (including its runCode, children, and doc).
+def get_module_subtree(module_path: str = "") -> str:
+    """Return a module and all its descendants as XML.
     
     CRITICAL INSTRUCTION FOR AI: Before reading or making any changes, you MUST 
     read the 'docs://rig-builder-reference' resource to understand the XML structure.
@@ -227,14 +228,14 @@ def get_module_xml(module_path: str = "") -> str:
     Args:
         module_path: The full path to the module (e.g. 'ROOT/spine_01'). Leave empty for ROOT.
     """
-    res = get_client().send_request("get_module_xml", module_path=module_path)
+    res = get_client().send_request("get_module_subtree", module_path=module_path)
     if res.get("error"):
         return res.get("error")
 
     return res.get("xml", "")
 
 @mcp.tool()
-def set_module_xml(module_path: str, xml_str: str) -> str:
+def set_module_subtree(module_path: str, xml_str: str) -> str:
     """Replaces a module subtree exactly using its full XML representation as one undoable edit.
     Omitted content is removed. No reference synchronization or file saving is performed.
     
@@ -245,11 +246,110 @@ def set_module_xml(module_path: str, xml_str: str) -> str:
         module_path: The full path to the module being updated.
         xml_str: The complete XML string of the updated module.
     """
-    res = get_client().send_request("set_module_xml", module_path=module_path, xml=xml_str)
+    res = get_client().send_request("set_module_subtree", module_path=module_path, xml=xml_str)
     if res.get("error"):
         return res.get("error")
 
     return res.get("message", "Success")
+
+
+@mcp.tool()
+def get_module(module_path: str) -> str:
+    """Return one module's XML, including its attributes but not its children.
+
+    Includes the module name, UID, muted state, run code, and documentation.
+    Read docs://rig-builder-reference before editing module XML.
+    """
+    res = get_client().send_request("get_module", module_path=module_path)
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("xml", "")
+
+
+@mcp.tool()
+def set_module(module_path: str, module_xml: str) -> str:
+    """Replace one module's content and attributes as one undoable edit.
+
+    Use XML from get_module. The name and UID must match; children cannot be
+    included. Existing children remain untouched. Omitted attributes are removed.
+    Read docs://rig-builder-reference before editing module XML.
+    """
+    res = get_client().send_request("set_module", module_path=module_path, xml=module_xml)
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("message", "Success")
+
+
+@mcp.tool()
+def get_attribute(module_path: str, name: str) -> str:
+    """Return one attribute's XML without reading its module's children.
+
+    Read docs://rig-builder-reference before editing attribute XML.
+    """
+    res = get_client().send_request("get_attribute", module_path=module_path, name=name)
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("xml", "")
+
+
+@mcp.tool()
+def add_attribute(module_path: str, attribute_xml: str, before_name: str = "") -> str:
+    """Add one attribute to a module as an undoable edit.
+
+    Omit before_name to append. The XML must contain one complete <attr> element.
+    Read docs://rig-builder-reference before creating attribute XML.
+    """
+    res = get_client().send_request(
+        "add_attribute", module_path=module_path, xml=attribute_xml, before_name=before_name
+    )
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("message", "Success")
+
+
+@mcp.tool()
+def set_attribute(module_path: str, name: str, attribute_xml: str) -> str:
+    """Replace one existing attribute exactly, preserving its position.
+
+    The XML attribute name must match name. Read docs://rig-builder-reference first.
+    """
+    res = get_client().send_request(
+        "set_attribute", module_path=module_path, name=name, xml=attribute_xml
+    )
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("message", "Success")
+
+
+@mcp.tool()
+def move_attribute(module_path: str, name: str, before_name: str = "") -> str:
+    """Move one attribute before another in the same module as an undoable edit.
+
+    Omit before_name to move it to the end.
+    """
+    res = get_client().send_request(
+        "move_attribute", module_path=module_path, name=name, before_name=before_name
+    )
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("message", "Success")
+
+
+@mcp.tool()
+def remove_attribute(module_path: str, name: str) -> str:
+    """Remove one attribute from a module as an undoable edit."""
+    res = get_client().send_request("remove_attribute", module_path=module_path, name=name)
+    if res.get("error"):
+        return res["error"]
+
+    return res.get("message", "Success")
+
 
 @mcp.tool()
 def read_log() -> str:

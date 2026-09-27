@@ -46,8 +46,8 @@ class RigBuilderAPI:
         return {"message": "Selected text replaced."}
 
     @classmethod
-    def get_modules(cls, req):
-        """Get the module hierarchy and metadata for a readable tree."""
+    def get_active_module_tree(cls, req):
+        """Get the entire active module tree and metadata."""
         from rigBuilder.core import settings
         from rigBuilder.core.utils import relativePath
 
@@ -187,7 +187,7 @@ class RigBuilderAPI:
         return {"message": f"Removed module {module_path}"}
 
     @classmethod
-    def get_module_xml(cls, req):
+    def get_module_subtree(cls, req):
         """Get XML representation of a module in the tree"""
         rootModule = cls.mainWindow.treeWidget.moduleModel.rootModule()
         module_path = req.get("module_path", "")
@@ -197,7 +197,7 @@ class RigBuilderAPI:
         return {"xml": module.toXml()}
 
     @classmethod
-    def set_module_xml(cls, req):
+    def set_module_subtree(cls, req):
         """Set a module in the tree from XML."""
         model = cls.mainWindow.treeWidget.moduleModel
         rootModule = model.rootModule()
@@ -220,6 +220,193 @@ class RigBuilderAPI:
         cls.mainWindow.treeWidget.selectModule(new_module)
         
         return {"message": f"Successfully replaced module from XML: {new_module.path(inclusive=True)}"}
+
+    @classmethod
+    def get_module(cls, req):
+        """Return only a module's own content as XML."""
+        module_path = req.get("module_path", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        return {"xml": module.copy(children=False).toXml()}
+
+    @classmethod
+    def set_module(cls, req):
+        """Edit module content and attributes in place, preserving children."""
+        module_path = req.get("module_path", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        from rigBuilder.core import Module
+
+        try:
+            replacement = Module.fromXml(req.get("xml", ""))
+        except (SyntaxError, ValueError, TypeError) as exc:
+            return {"error": f"Invalid module XML: {exc}"}
+
+        if replacement.name() != module.name() or replacement.uid() != module.uid():
+            return {"error": "Module name and UID must match the existing module"}
+        if replacement.children():
+            return {"error": "Module XML must not contain children"}
+
+        same_content = (replacement.runCode(), replacement.doc(), replacement.muted()) == (
+            module.runCode(), module.doc(), module.muted()
+        )
+        same_attributes = [attr.toXml() for attr in replacement.attributes()] == [
+            attr.toXml() for attr in module.attributes()
+        ]
+        if same_content and same_attributes:
+            return {"message": f"Module content already matches: {module_path}"}
+
+        from rigBuilder.ui import EditModuleContentCommand, undoStack
+
+        cls.mainWindow.treeWidget.selectModule(module)
+        undoStack.push(EditModuleContentCommand(cls.mainWindow, module, replacement))
+        return {"message": f"Updated module content: {module_path}"}
+
+    @classmethod
+    def get_attribute(cls, req):
+        """Return one attribute's XML from the active module tree."""
+        module_path = req.get("module_path", "")
+        name = req.get("name", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        attr = module.findAttribute(name)
+        if not attr:
+            return {"error": f"Attribute not found: {name}"}
+
+        return {"xml": attr.toXml()}
+
+    @classmethod
+    def add_attribute(cls, req):
+        """Add one parsed attribute through the UI undo stack."""
+        module_path = req.get("module_path", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        from rigBuilder.core import Attribute
+
+        try:
+            attr = Attribute.fromXml(req.get("xml", ""))
+        except (SyntaxError, ValueError, TypeError) as exc:
+            return {"error": f"Invalid attribute XML: {exc}"}
+
+        if not attr.name() or not attr.template() or not isinstance(attr.localData(), dict):
+            return {"error": "Attribute requires a name, template, and JSON object data"}
+        if module.findAttribute(attr.name()):
+            return {"error": f"Attribute already exists: {attr.name()}"}
+
+        before_name = req.get("before_name", "")
+        before = module.findAttribute(before_name) if before_name else None
+        if before_name and not before:
+            return {"error": f"Insert-before attribute not found: {before_name}"}
+
+        from rigBuilder.ui import AddAttributeCommand, undoStack
+
+        index = module.attributes().index(before) if before else None
+        cls.mainWindow.treeWidget.selectModule(module)
+        undoStack.push(AddAttributeCommand(cls.mainWindow.attributesTreeView, module, attr, index))
+        return {"message": f"Added attribute {attr.name()} to {module_path}"}
+
+    @classmethod
+    def set_attribute(cls, req):
+        """Replace one existing attribute through the UI undo stack."""
+        module_path = req.get("module_path", "")
+        name = req.get("name", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        attr = module.findAttribute(name)
+        if not attr:
+            return {"error": f"Attribute not found: {name}"}
+
+        from rigBuilder.core import Attribute
+
+        try:
+            replacement = Attribute.fromXml(req.get("xml", ""))
+        except (SyntaxError, ValueError, TypeError) as exc:
+            return {"error": f"Invalid attribute XML: {exc}"}
+
+        if replacement.name() != name:
+            return {"error": "Replacement XML name must match the existing attribute name"}
+        if not replacement.template() or not isinstance(replacement.localData(), dict):
+            return {"error": "Attribute requires a template and JSON object data"}
+
+        from rigBuilder.ui import EditAttributeCommand, undoStack
+
+        cls.mainWindow.treeWidget.selectModule(module)
+        undoStack.push(EditAttributeCommand(
+            cls.mainWindow.attributesTreeView, attr, attr.toXml(), replacement.toXml(),
+            f"Edit attribute '{name}'",
+        ))
+        return {"message": f"Updated attribute {name} in {module_path}"}
+
+    @classmethod
+    def move_attribute(cls, req):
+        """Reorder one attribute through the UI undo stack."""
+        module_path = req.get("module_path", "")
+        name = req.get("name", "")
+        before_name = req.get("before_name", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        attr = module.findAttribute(name)
+        if not attr:
+            return {"error": f"Attribute not found: {name}"}
+
+        before = module.findAttribute(before_name) if before_name else None
+        if before_name and not before:
+            return {"error": f"Insert-before attribute not found: {before_name}"}
+        if before is attr:
+            return {"error": "Cannot move an attribute before itself"}
+
+        old_order = module.attributes()
+        new_order = [item for item in old_order if item is not attr]
+        index = new_order.index(before) if before else len(new_order)
+        new_order.insert(index, attr)
+        if new_order == old_order:
+            return {"message": f"Attribute already at requested position: {name}"}
+
+        from rigBuilder.ui import MoveAttributesCommand, undoStack
+
+        cls.mainWindow.treeWidget.selectModule(module)
+        undoStack.push(MoveAttributesCommand(
+            cls.mainWindow.attributesTreeView, module, old_order, new_order
+        ))
+        return {"message": f"Moved attribute {name} to position {index} in {module_path}"}
+
+    @classmethod
+    def remove_attribute(cls, req):
+        """Remove one attribute through the UI undo stack."""
+        module_path = req.get("module_path", "")
+        name = req.get("name", "")
+        root = cls.mainWindow.treeWidget.moduleModel.rootModule()
+        module = root.findModuleByPath(module_path)
+        if not module:
+            return {"error": f"Module not found: {module_path}"}
+
+        attr = module.findAttribute(name)
+        if not attr:
+            return {"error": f"Attribute not found: {name}"}
+
+        from rigBuilder.ui import RemoveAttributeCommand, undoStack
+
+        cls.mainWindow.treeWidget.selectModule(module)
+        undoStack.push(RemoveAttributeCommand(cls.mainWindow.attributesTreeView, attr))
+        return {"message": f"Removed attribute {name} from {module_path}"}
 
     @classmethod
     def read_log(cls, req):

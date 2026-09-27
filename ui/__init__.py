@@ -446,6 +446,54 @@ class ReplaceModuleCommand(QUndoCommand):
         """Restore the original subtree at the same position."""
         self.model.replaceModule(self.newModule, self.module)
 
+
+class EditModuleContentCommand(QUndoCommand):
+    """Edit a module's own content and attributes without replacing its children."""
+
+    def __init__(self, window: "RigBuilderWindow", module: Module, newModule: Module):
+        super().__init__(f"Edit module '{module.name()}'")
+        self.window = window
+        self.module = module
+        oldAttributes = module.attributes()
+        newAttributes = newModule.attributes()
+        if [attr.toXml() for attr in newAttributes] == [attr.toXml() for attr in oldAttributes]:
+            newAttributes = oldAttributes
+        else:
+            newModule.removeAttributes()
+
+        self.oldState = (module.runCode(), module.doc(), module.muted(), oldAttributes)
+        self.newState = (newModule.runCode(), newModule.doc(), newModule.muted(), newAttributes)
+
+    def _apply(self, state: tuple[str, str, bool, list[Attribute]]):
+        """Apply content and refresh the active editor and tree."""
+        runCode, doc, muted, attributes = state
+        self.module.setRunCode(runCode)
+        self.module.setDoc(doc)
+        if muted:
+            self.module.mute()
+        else:
+            self.module.unmute()
+
+        if self.module.attributes() != attributes:
+            self.module.removeAttributes()
+            for attr in attributes:
+                self.module.addAttribute(attr)
+
+        self.window.treeWidget.moduleModel.layoutChanged.emit()
+        if self.window.treeWidget.currentModule() is self.module:
+            self.window.attributesTreeView.updateTabs()
+            self.window.codeEditorWidget.updateState()
+            self.window.docBrowser.setDoc(doc)
+
+    def redo(self):
+        """Apply the requested module content."""
+        self._apply(self.newState)
+
+    def undo(self):
+        """Restore the previous module content."""
+        self._apply(self.oldState)
+
+
 class SyncModuleWithCommand(QUndoCommand):
     def __init__(self, model: ModuleModel, module: Module, referenceModule: Module):
         super().__init__(f"Sync '{module.name()}'")
