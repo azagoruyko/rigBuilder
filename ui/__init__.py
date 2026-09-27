@@ -3544,8 +3544,9 @@ class RigBuilderWindow(QFrame):
 
     def copyMCPConfig(self):
         mcpConfig = {
-            "mcpServers": {
+            "servers": {
                 "rigBuilder": {
+                    "type": "stdio",
                     "command": os.path.join(RIG_BUILDER_PATH, ".venv", "Scripts", "python.exe"),
                     "args": ["-u", os.path.join(RIG_BUILDER_PATH, "mcp_server", "server.py")]
                 }
@@ -3555,7 +3556,7 @@ class RigBuilderWindow(QFrame):
         configStr = json.dumps(mcpConfig, indent=4)
         QApplication.clipboard().setText(configStr)
 
-        msg = "The Rig Builder MCP configuration has been copied to your clipboard.\n\nPlease manually install it for your editor!\n\nHappy coding!"
+        msg = "A VS Code-compatible Rig Builder MCP configuration has been copied to your clipboard. Use it as a reference when configuring your MCP client. Keep the Rig Builder app running to let MCP tools access the active workspace.\n\nHappy coding!"
         QMessageBox.information(self, "Rig Builder", msg)
 
     def editInVSCode(self):

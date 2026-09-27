@@ -87,6 +87,10 @@ To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in t
 
 To get started with building your own modules, take a look at the [example.rb](modules/example.rb) module provided in the `modules` directory. This serves as a primary reference for module structure and usage patterns.
 
+### 6. Connect an MCP client
+
+Rig Builder provides an MCP server over stdio for MCP-compatible clients. Configure your client to launch `mcp_server/server.py` with the Python interpreter used by Rig Builder. The **Copy MCP Config** option provides a VS Code-compatible example; adapt its format to your MCP client as needed. Keep the Rig Builder application running to let MCP tools access the active workspace.
+
 ## 🖥️ Host Requirements
 
 To execute Rig Builder modules inside a host application (like Maya, Blender, or Unreal Engine), the host must meet the following requirements:
