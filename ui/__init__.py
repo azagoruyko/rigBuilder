@@ -2141,6 +2141,7 @@ class ModuleTreeWidget(QTreeView):
         self.moduleModel.clear()
 
     def keyPressEvent(self, event: QKeyEvent):
+        """Handle module tree shortcuts."""
         if event.key() == Qt.Key_F and event.modifiers() & Qt.ControlModifier:
             self.filterEdit.setFocus()
             self.filterEdit.selectAll()
@@ -2150,6 +2151,23 @@ class ModuleTreeWidget(QTreeView):
             self.selectionModel().clearSelection()
             event.accept()
             return
+
+        if event.key() == Qt.Key_Space and event.modifiers() in (Qt.NoModifier, Qt.ControlModifier):
+            index = self.currentIndex()
+            if index.isValid():
+                expanded = not self.isExpanded(index)
+                recursive = event.modifiers() == Qt.ControlModifier
+                pending = [index]
+                while pending:
+                    item = pending.pop()
+                    self.setExpanded(item, expanded)
+                    if recursive:
+                        pending.extend(self.moduleModel.index(row, 0, item)
+                                       for row in range(self.moduleModel.rowCount(item)))
+
+                event.accept()
+                return
+
         super().keyPressEvent(event)
 
     def paintEvent(self, event: QPaintEvent):
