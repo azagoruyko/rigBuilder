@@ -1,4 +1,4 @@
-<module name="example" muted="0" uid="f094f3d47efe4680b27c3d06b05f4ca6">
+<module name="Example" muted="0" uid="f094f3d47efe4680b27c3d06b05f4ca6">
 <run><![CDATA[import time
 print("lineAttr:", @lineAttr, type(@lineAttr))
 

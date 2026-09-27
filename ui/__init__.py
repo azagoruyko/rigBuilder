@@ -2451,6 +2451,9 @@ class ModuleTreeWidget(QTreeView):
                 initialPath = os.path.join(settings.modulesPath, module.name())
                 title = "Save as " + module.name() if forceDialog else "Save " + module.name()
                 outputPath, _ = QFileDialog.getSaveFileName(mainWindow, title, initialPath, "Module files (*.rb *.xml)")
+                if outputPath:
+                    directory, fileName = os.path.split(outputPath)
+                    outputPath = os.path.join(directory, fileName[0].upper() + fileName[1:])
 
             if outputPath:
                 saveData.append((module, outputPath, idx))

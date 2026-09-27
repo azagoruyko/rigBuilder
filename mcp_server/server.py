@@ -36,13 +36,13 @@ def read_rig_builder_reference() -> str:
 
 @mcp.resource("docs://example.rb")
 def get_example_module() -> str:
-    """Returns the example.rb module. Useful as a reference for Rig Builder module structure."""
-    example_path = os.path.join(os.path.dirname(MCP_DIRECTORY), "modules", "example.rb")
+    """Returns the Example.rb module. Useful as a reference for Rig Builder module structure."""
+    example_path = os.path.join(os.path.dirname(MCP_DIRECTORY), "modules", "Example.rb")
     if os.path.exists(example_path):
         with open(example_path, "r", encoding="utf-8") as f:
             return f.read()
             
-    return "example.rb not found."
+    return "Example.rb not found."
 
 @mcp.tool()
 def read_resource(uri: str) -> str:

@@ -85,7 +85,7 @@ To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in t
 
 ### 5. Usage
 
-To get started with building your own modules, take a look at the [example.rb](modules/example.rb) module provided in the `modules` directory. This serves as a primary reference for module structure and usage patterns.
+To get started with building your own modules, take a look at the [Example.rb](modules/Example.rb) module provided in the `modules` directory. This serves as a primary reference for module structure and usage patterns.
 
 ### 6. Connect an MCP client
 
