@@ -3117,6 +3117,47 @@ class TabEventFilter(QObject):
         return super().eventFilter(watched, event)
 
 
+class McpToolLabel(QLabel):
+    def __init__(self, parent=None):
+        """Create an MCP activity label with a fade animation and hide timer."""
+        super().__init__(parent)
+        self.setStyleSheet("color: #ffd54f;")
+        self.opacityEffect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.opacityEffect)
+        self.hide()
+
+        self.fadeAnimation = QPropertyAnimation(self.opacityEffect, b"opacity", self)
+        self.fadeAnimation.setDuration(1200)
+        self.fadeAnimation.setKeyValueAt(0.0, 1.0)
+        self.fadeAnimation.setKeyValueAt(0.5, 0.3)
+        self.fadeAnimation.setKeyValueAt(1.0, 1.0)
+        self.fadeAnimation.setLoopCount(-1)
+
+        self.hideTimer = QTimer(self)
+        self.hideTimer.setSingleShot(True)
+        self.hideTimer.timeout.connect(self._hide)
+
+    def showTool(self, action: str):
+        """Show the current MCP action and restart its fade cycle."""
+        self.hideTimer.stop()
+        self.fadeAnimation.stop()
+        self.setText(f"● MCP is calling {action}")
+        self.opacityEffect.setOpacity(1.0)
+        self.show()
+        self.parentWidget().layout().activate()
+        self.repaint()
+        self.fadeAnimation.start()
+
+    def finishTool(self):
+        """Hide the label five seconds after the request finishes."""
+        self.hideTimer.start(5000)
+
+    def _hide(self):
+        """Stop fading and hide the label."""
+        self.fadeAnimation.stop()
+        self.hide()
+
+
 class RigBuilderWindow(QFrame):
     def __init__(self):
         super().__init__()
@@ -3294,6 +3335,9 @@ class RigBuilderWindow(QFrame):
 
         layout.addWidget(layoutSplitter)
         layout.addWidget(self.progressBarWidget)
+
+        self.mcpLabel = McpToolLabel(self)
+        layout.addWidget(self.mcpLabel)
 
         centerWindow(self)
 

@@ -496,12 +496,17 @@ class ZmqServer(QObject):
             
         try:
             req = json.loads(message)
+            if self.mainWindow:
+                self.mainWindow.mcpLabel.showTool(req.get("action"))
             resp = self._handle_request(req)
             self.socket.send_string(json.dumps({"status": "success", "data": resp}))
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.socket.send_string(json.dumps({"status": "error", "message": str(e)}))
+        finally:
+            if self.mainWindow:
+                self.mainWindow.mcpLabel.finishTool()
 
     def _handle_request(self, req: dict) -> dict:
         action = req.get("action")
