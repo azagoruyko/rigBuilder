@@ -3295,7 +3295,9 @@ class RigBuilderWindow(QFrame):
         self.docBrowser.setEnabled(False)
 
         self.moduleBrowser = ModuleBrowser(parent=self)
-        self.moduleBrowser.moduleRequested.connect(self.addModuleBySpec)
+        self.moduleBrowser.moduleRequested.connect(
+            lambda spec: self.addModuleBySpec(spec, self.treeWidget.currentModule())
+        )
         self.moduleBrowser.folderColorsChanged.connect(self.treeWidget.moduleModel.layoutChanged.emit)
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self._onModuleFileChanged)
         
@@ -3601,14 +3603,14 @@ class RigBuilderWindow(QFrame):
 
         return menu
 
-    def addModuleBySpec(self, spec: str):
+    def addModuleBySpec(self, spec: str, parent: Optional[Module] = None):
         """Load and select module by spec (UID, relative or full path)."""
         try:
             module = Module.loadModule(spec)
         except ModuleNotFoundError:
             logger.warning("Module not found: {}".format(spec))
             return
-        self.treeWidget.addModule(module)
+        self.treeWidget.moduleModel.addModuleAt(module, parent)
         self.treeWidget.selectModule(module)
 
     def _onVSCodeBtnContextMenu(self, pos: QPoint):
