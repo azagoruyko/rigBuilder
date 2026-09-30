@@ -1,6 +1,5 @@
 from __future__ import annotations
 import os
-import threading
 from functools import partial
 from typing import Optional, Union
 
@@ -8,19 +7,14 @@ from .qt import *
 from ..core.settings import (
     settings, # global settings
     Settings,
-    RIG_BUILDER_WORKSPACES_PATH
 )
 from ..core import workspace
 from ..core.workspace import Workspace
 from ..core.utils import replaceSpecialChars
 from ..core.connectionManager import connectionManager
-from ..core.gitrepo import GitRepo
 from .hostExecutor import hostExecutor
 
 _workspaceCache = {}
-
-COMMUNITY_REPO = "https://github.com/azagoruyko/rigBuilder-community"
-COMMUNITY_NAME = "community"
 
 def getWorkspace(name: str) -> Workspace:
     """Retrieve workspace from cache or load it."""
@@ -31,70 +25,6 @@ def getWorkspace(name: str) -> Workspace:
     _workspaceCache[name] = ws
     return ws
 
-def syncCommunityWorkspace(parent=None) -> bool:
-    """Clone the community workspace repo if it doesn't exist, otherwise pull updates.
-
-    Shows a modal progress dialog while the git operation runs in a background
-    thread so the UI stays responsive.
-
-    Args:
-        parent: Optional QWidget parent for dialogs.
-
-    Returns:
-        True if the operation succeeded, False otherwise.
-    """
-    if not GitRepo.isAvailable():
-        QMessageBox.critical(
-            parent,
-            "Community Workspace",
-            "'git' executable not found. Please install Git and ensure it is on your PATH.",
-        )
-        return False
-
-    destPath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, COMMUNITY_NAME)
-    isClone = not GitRepo.exists(destPath)
-    action = "Cloning" if isClone else "Pulling"
-
-    progress = QProgressDialog(f"{action} community workspace...", None, 0, 0, parent)
-    progress.setWindowTitle("Community Workspace")
-    progress.setWindowModality(Qt.WindowModal)
-    progress.setMinimumDuration(0)
-    progress.setValue(0)
-    progress.show()
-    QApplication.processEvents()
-
-    result = {"err": "", "out": ""}
-
-    def _run():
-        if isClone:
-            result["err"], result["out"] = GitRepo.clone(COMMUNITY_REPO, destPath)
-        else:
-            repo = GitRepo(destPath)
-            result["err"], result["out"] = repo("pull")
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    while thread.is_alive():
-        QApplication.processEvents()
-        thread.join(timeout=0.05)
-
-    progress.close()
-
-    if not result["err"]:
-        QMessageBox.information(
-            parent,
-            "Community Workspace",
-            f"Community workspace {'cloned' if isClone else 'updated'} successfully.",
-        )
-        return True
-    else:
-        QMessageBox.critical(
-            parent,
-            "Community Workspace",
-            f"Git operation failed:\n{result['err']}",
-        )
-        return False
-
 class WorkspaceManagerDialog(QDialog):
     """Dialog for listing, creating, and removing workspaces."""
     workspaceSwitchRequested = Signal(str)
@@ -102,7 +32,7 @@ class WorkspaceManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Workspace Manager")
-        self.setMinimumSize(700, 400)
+        self.setMinimumSize(760, 500)
         
         self._blockSettingsSignals = False
 
@@ -121,13 +51,6 @@ class WorkspaceManagerDialog(QDialog):
         self.openBtn.setAutoDefault(False)
         self.openBtn.clicked.connect(self._onOpenFolder)
 
-        self.communityBtn = QPushButton("🌐 Community")
-        self.communityBtn.setAutoDefault(False)
-        self.communityBtn.setToolTip(
-            "Clone or update the rigBuilder-community workspace from GitHub"
-        )
-        self.communityBtn.clicked.connect(self._onCommunity)
-
         btnLayout = QHBoxLayout()
         btnLayout.addWidget(self.newBtn)
         btnLayout.addWidget(self.removeBtn)
@@ -139,7 +62,6 @@ class WorkspaceManagerDialog(QDialog):
         listLayout.addWidget(QLabel("Available Workspaces:"))
         listLayout.addWidget(self.listWidget)
         listLayout.addLayout(btnLayout)
-        listLayout.addWidget(self.communityBtn)
 
         # 2. Right Panel (Settings)
         self.settingsGroup = QGroupBox("Workspace Settings")
@@ -159,6 +81,27 @@ class WorkspaceManagerDialog(QDialog):
 
         modulesPathLayout.addWidget(self.modulesPathBrowseBtn)
         self.settingsLayout.addRow("Modules Path:", modulesPathLayout)
+
+        self.moduleDependenciesList = QListWidget()
+        self.moduleDependenciesList.setMaximumHeight(100)
+
+        dependencyButtonsLayout = QHBoxLayout()
+        for text, tooltip, callback in (
+            ("➕", "Add dependency folder", self._onAddDependencyPath),
+            ("❌", "Remove selected dependency folder", self._onRemoveDependencyPath),
+            ("⬆️", "Move selected folder up in priority", partial(self._moveDependencyPath, -1)),
+            ("⬇️", "Move selected folder down in priority", partial(self._moveDependencyPath, 1)),
+        ):
+            button = QPushButton(text)
+            button.setAutoDefault(False)
+            button.setToolTip(tooltip)
+            button.clicked.connect(callback)
+            dependencyButtonsLayout.addWidget(button)
+
+        dependencyPathsLayout = QVBoxLayout()
+        dependencyPathsLayout.addWidget(self.moduleDependenciesList)
+        dependencyPathsLayout.addLayout(dependencyButtonsLayout)
+        self.settingsLayout.addRow("Module Dependencies:", dependencyPathsLayout)
 
         self.scriptsPathEdit = QLineEdit()
         self.scriptsPathEdit.setPlaceholderText("Path to scripts folder...")
@@ -232,6 +175,7 @@ class WorkspaceManagerDialog(QDialog):
 
         self._blockSettingsSignals = True
         self.modulesPathEdit.setText(ws.settings.modulesPath)
+        self._setDependencyPaths(ws.settings.moduleDependenciesPaths)
         self.scriptsPathEdit.setText(ws.settings.scriptsPath)
         self.vscodeEdit.setText(ws.settings.vscode)
         self.trackHistoryCheck.setChecked(ws.settings.trackHistory)
@@ -288,6 +232,52 @@ class WorkspaceManagerDialog(QDialog):
         if path:
             self.modulesPathEdit.setText(path)
             self._onSettingChanged("modulesPath", path)
+
+    def _setDependencyPaths(self, paths):
+        self.moduleDependenciesList.clear()
+        self.moduleDependenciesList.addItems(paths)
+
+    def _onAddDependencyPath(self):
+        ws = self.selectedWorkspace()
+        if not ws:
+            return
+
+        paths = list(ws.settings.moduleDependenciesPaths)
+        startDir = paths[-1] if paths else ws.folderPath()
+        path = QFileDialog.getExistingDirectory(self, "Select Module Dependency Directory", startDir)
+        if path:
+            path = os.path.normpath(path)
+            if path not in paths:
+                paths.append(path)
+                self._onSettingChanged("moduleDependenciesPaths", paths)
+                self._setDependencyPaths(paths)
+                self.moduleDependenciesList.setCurrentRow(len(paths) - 1)
+
+    def _onRemoveDependencyPath(self):
+        ws = self.selectedWorkspace()
+        row = self.moduleDependenciesList.currentRow()
+        if not ws or row < 0:
+            return
+
+        paths = list(ws.settings.moduleDependenciesPaths)
+        paths.pop(row)
+        self._onSettingChanged("moduleDependenciesPaths", paths)
+        self._setDependencyPaths(paths)
+        if paths:
+            self.moduleDependenciesList.setCurrentRow(min(row, len(paths) - 1))
+
+    def _moveDependencyPath(self, offset):
+        ws = self.selectedWorkspace()
+        row = self.moduleDependenciesList.currentRow()
+        targetRow = row + offset
+        if not ws or row < 0 or targetRow < 0 or targetRow >= self.moduleDependenciesList.count():
+            return
+
+        paths = list(ws.settings.moduleDependenciesPaths)
+        paths[row], paths[targetRow] = paths[targetRow], paths[row]
+        self._onSettingChanged("moduleDependenciesPaths", paths)
+        self._setDependencyPaths(paths)
+        self.moduleDependenciesList.setCurrentRow(targetRow)
 
     def _onBrowseScriptsPath(self):
         ws = self.selectedWorkspace()
@@ -358,11 +348,6 @@ class WorkspaceManagerDialog(QDialog):
         ws = self.selectedWorkspace()
         if ws:
             os.startfile(ws.folderPath())
-
-    def _onCommunity(self):
-        """Clone or pull the community workspace via the top-level helper."""
-        if syncCommunityWorkspace(parent=self):
-            self.refresh()
 
 class WorkspaceWidget(QWidget):
     """UI Widget for workspace selection and management."""

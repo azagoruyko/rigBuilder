@@ -35,7 +35,13 @@ from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDia
 from .docBrowser import DocBrowser, DocGeneratorWorker, activeWorkers
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import DirectoryWatcher
-from .moduleBrowser import ModuleBrowser, getCategoryColor
+from .moduleBrowser import (
+    ModuleBrowser,
+    getCategoryColor,
+    getModuleDisplayPath,
+    getModuleFolderColor,
+    isDependencyModuleFile,
+)
 from .moduleHistoryBrowser import ModuleHistoryBrowser, recordModuleSave
 from .utils import *
 from .widgetPresetManager import WidgetPresetManager, PresetEditorDialog
@@ -100,6 +106,7 @@ class ModuleTracker(QObject):
         super().__init__(parent)
         self._cache = {} # uid: Module
         self._modulesPath = settings.modulesPath
+        self._dependencyPaths = list(settings.moduleDependenciesPaths)
         self._fileSnapshot = self._scanModuleFiles()
         self._watcher = DirectoryWatcher(
             [settings.modulesPath],
@@ -110,31 +117,33 @@ class ModuleTracker(QObject):
         self._watcher.fileChanged.connect(self._onFilesystemChanged)
 
     def _scanModuleFiles(self) -> dict[str, tuple[str, tuple[int, int]]]:
-        """Return module file UIDs and fingerprints for the workspace tree."""
+        """Return module file UIDs and fingerprints for owned and dependency trees."""
         files = {}
-        for dirPath, _, filenames in os.walk(self._modulesPath):
-            for filename in filenames:
-                if not any(filename.endswith(ext) for ext in MODULE_EXTS):
-                    continue
+        for rootPath in [self._modulesPath, *self._dependencyPaths]:
+            for dirPath, _, filenames in os.walk(rootPath):
+                for filename in filenames:
+                    if not any(filename.endswith(ext) for ext in MODULE_EXTS):
+                        continue
 
-                path = os.path.normpath(os.path.join(dirPath, filename))
-                try:
-                    stat = os.stat(path)
-                    uid = UidManager.getUidFromFile(path)
-                except OSError:
-                    continue
-                files[path] = (uid, (stat.st_mtime_ns, stat.st_size))
+                    path = os.path.normpath(os.path.join(dirPath, filename))
+                    try:
+                        stat = os.stat(path)
+                        uid = UidManager.getUidFromFile(path)
+                    except OSError:
+                        continue
+                    files[path] = (uid, (stat.st_mtime_ns, stat.st_size))
 
         return files
 
-    def setModulesPath(self, path: str):
-        """Switch the watched workspace module directory."""
+    def setModulesPath(self, path: str, dependencyPaths: Optional[list[str]] = None):
+        """Switch the owned and dependency module directories."""
         path = os.path.normpath(path)
-        if path != self._modulesPath:
-            self._cache.clear()
+        dependencyPaths = dependencyPaths if dependencyPaths is not None else settings.moduleDependenciesPaths
+        dependencyPaths = [os.path.normpath(dependencyPath) for dependencyPath in dependencyPaths]
+        if path != self._modulesPath or dependencyPaths != self._dependencyPaths:
             self._modulesPath = path
+            self._dependencyPaths = dependencyPaths
         self._watcher.setRoots([path])
-        self._fileSnapshot = self._scanModuleFiles()
 
     def getModule(self, uid: str) -> Optional[Module]:
         """Get the cached reference module by UID, loading it if necessary."""
@@ -162,11 +171,10 @@ class ModuleTracker(QObject):
             logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
             self._cache[uid] = None
 
-    def _onFilesystemChanged(self, _path: str):
-        """Reload cached modules whose files changed in the workspace tree."""
-        currentSnapshot = self._scanModuleFiles()
+    def _changedUids(self, currentSnapshot: dict[str, tuple[str, tuple[int, int]]]) -> set[str]:
+        """Return UIDs for module files added, removed, or modified since the last scan."""
         changedFiles = self._fileSnapshot.keys() | currentSnapshot.keys()
-        changedUids = {
+        return {
             snapshot[0]
             for filePath in changedFiles
             if self._fileSnapshot.get(filePath) != currentSnapshot.get(filePath)
@@ -174,11 +182,19 @@ class ModuleTracker(QObject):
             if snapshot and snapshot[0]
         }
 
+    def _onFilesystemChanged(self, _path: str):
+        """Reload cached modules whose files changed in the workspace tree."""
+        currentSnapshot = self._scanModuleFiles()
+        changedUids = self._changedUids(currentSnapshot)
         self._fileSnapshot = currentSnapshot
         if not changedUids:
             return
 
         UidManager.sync()
+        self._refreshChangedModules(changedUids)
+
+    def _refreshChangedModules(self, changedUids: set[str]):
+        """Reload changed references and cached modules that depend on them."""
         for uid in changedUids:
             if uid in self._cache:
                 self.loadModule(uid)
@@ -190,9 +206,17 @@ class ModuleTracker(QObject):
                 self.moduleChanged.emit(module._uid)
 
     def refresh(self):
-        """Force-reload all cached reference modules."""
-        for uid in list(self._cache.keys()):
-            self.loadModule(uid)
+        """Rescan module sources and reload references whose files changed."""
+        UidManager.sync()
+        currentSnapshot = self._scanModuleFiles()
+        changedUids = self._changedUids(currentSnapshot)
+        self._fileSnapshot = currentSnapshot
+
+        if changedUids:
+            self._refreshChangedModules(changedUids)
+        else:
+            for uid in list(self._cache.keys()):
+                self.loadModule(uid)
 
     def findLoadedCounterpart(self, module: Module) -> Optional[Module]:
         """Find a module in a freshly loaded copy of its outermost referenced ancestor."""
@@ -224,7 +248,7 @@ class ModuleTracker(QObject):
     def clearCache(self):
         """Clear all loaded reference modules."""
         self._cache.clear()
-        self.setModulesPath(settings.modulesPath)
+        self.setModulesPath(settings.modulesPath, settings.moduleDependenciesPaths)
 
 
 class RenameModuleCommand(QUndoCommand):
@@ -1816,8 +1840,9 @@ class ModuleModel(QAbstractItemModel):
         if role == Qt.DisplayRole:
             if column == 0:
                 icon = ""
-                if module.referenceFile():
-                    icon = "📦 "
+                referencePath = module.referenceFile()
+                if referencePath:
+                    icon = "🔗 " if isDependencyModuleFile(referencePath) else "📦 "
                 elif self.isInsideReferenceModule(module):
                     icon = "🔒 "
                 
@@ -1832,9 +1857,8 @@ class ModuleModel(QAbstractItemModel):
                 return icon + name
 
         elif role == self.PathRole:
-            ref = module.referenceFile()
-            path = relativePath(ref, settings.modulesPath).replace("\\", "/") if ref else ""
-            return os.path.splitext(path)[0]
+            referencePath = module.referenceFile()
+            return getModuleDisplayPath(referencePath) if referencePath else ""
 
         elif role == Qt.EditRole:
             if column == 0:
@@ -1843,6 +1867,10 @@ class ModuleModel(QAbstractItemModel):
 
         elif role == Qt.ToolTipRole and column == 0:
             parts = []
+            referencePath = module.referenceFile()
+            if referencePath:
+                parts.append(f"<b>Path</b>: {html.escape(os.path.abspath(referencePath))}")
+
             loadedModule = self.moduleTracker.findLoadedCounterpart(module)
             if loadedModule and module.isModified(loadedModule):
                 parts.append("* <b>Modified locally</b>: this module contains values that differ from a fresh module load.")
@@ -1868,13 +1896,9 @@ class ModuleModel(QAbstractItemModel):
                 if isMuted:
                     color = QColor(100, 100, 100)
                 elif module.referenceFile():
-                    refPath = os.path.normcase(os.path.abspath(module.referenceFile()))
-                    modulesPath = os.path.normcase(os.path.abspath(settings.modulesPath))
-                    if refPath.startswith(modulesPath + os.sep):
-                        category = os.path.dirname(os.path.relpath(refPath, modulesPath))
-                        folderColor = getCategoryColor(category)
-                        if folderColor:
-                            color = QColor(folderColor)
+                    folderColor = getModuleFolderColor(module.referenceFile())
+                    if folderColor:
+                        color = QColor(folderColor)
                 return color
 
         elif role == Qt.BackgroundRole:
@@ -2446,6 +2470,8 @@ class ModuleTreeWidget(QTreeView):
             
             if not forceDialog:
                 outputPath = module.referenceFile()
+                if outputPath and relativePath(outputPath, settings.modulesPath) == os.path.normpath(outputPath):
+                    outputPath = None
 
             if not outputPath:
                 initialPath = os.path.join(settings.modulesPath, module.name())
@@ -3273,7 +3299,8 @@ class RigBuilderWindow(QFrame):
         self.moduleBrowser.folderColorsChanged.connect(self.treeWidget.moduleModel.layoutChanged.emit)
         self.moduleBrowser.modulesAutoReloadWatcher.fileChanged.connect(self._onModuleFileChanged)
         
-        self.workspaceWidget.updateRequested.connect(self.moduleBrowser.refreshModules)
+        self.workspaceWidget.updateRequested.connect(self._onWorkspaceSettingsUpdated)
+        self.moduleBrowser.modulesReloaded.connect(self._refreshModuleReferences)
 
         self.logWidget = LogWidget()
         self.logWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -3783,7 +3810,12 @@ class RigBuilderWindow(QFrame):
         self.loadFromWorkspace(ws)
         self.attributesTreeView.setModule(None)
         self.attributesTreeView.setEnabled(False)
-        self.attributesTreeView._attrModel.moduleTracker.setModulesPath(ws.settings.modulesPath)
+        self.treeWidget.moduleModel.moduleTracker.setModulesPath(
+            ws.settings.modulesPath, ws.settings.moduleDependenciesPaths
+        )
+        self.attributesTreeView._attrModel.moduleTracker.setModulesPath(
+            ws.settings.modulesPath, ws.settings.moduleDependenciesPaths
+        )
         self.flushUndo()
         self.aiChatDialog.loadChat()
         self._updateAutoSaveInterval()
@@ -3794,6 +3826,21 @@ class RigBuilderWindow(QFrame):
         hostExecutor.switchWorkspace(ws.name)
 
         logger.info(f"Workspace changed: {ws.name}")
+
+    def _onWorkspaceSettingsUpdated(self):
+        """Refresh module trackers after workspace settings are edited."""
+        self.treeWidget.moduleModel.moduleTracker.setModulesPath(
+            settings.modulesPath, settings.moduleDependenciesPaths
+        )
+        self.attributesTreeView._attrModel.moduleTracker.setModulesPath(
+            settings.modulesPath, settings.moduleDependenciesPaths
+        )
+        self.moduleBrowser.refreshModules()
+
+    def _refreshModuleReferences(self):
+        """Refresh tracked module references after the module browser reloads."""
+        self.treeWidget.moduleModel.moduleTracker.refresh()
+        self.attributesTreeView._attrModel.moduleTracker.refresh()
         
     def saveToWorkspace(self):
         """Save UI state to active workspace."""

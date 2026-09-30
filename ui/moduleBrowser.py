@@ -13,6 +13,7 @@ from .docBrowser import DocBrowser
 from .qt import *
 from ..core.uidManager import UidManager
 from ..core.settings import settings, MODULE_EXTS, RIG_BUILDER_PATH, RIG_BUILDER_USER_PATH
+from ..core.utils import relativePath
 from ..core.logger import logger
 from .fileTracker import DirectoryWatcher
 from ..core.moduleIndexer import ModuleIndexer
@@ -88,9 +89,62 @@ class IndexWorker(QThread):
 
 def getCategoryColor(category: str) -> Optional[str]:
     """Return a folder's assigned color, if any."""
-    folder = os.path.normcase(os.path.abspath(os.path.join(settings.modulesPath, category)))
+    return getFolderColor(os.path.join(settings.modulesPath, category))
+
+
+def getFolderColor(folderPath: str) -> Optional[str]:
+    """Return the saved color for a folder path."""
+    folder = os.path.normcase(os.path.abspath(folderPath))
     savedColors = QSettings("RigBuilder").value(FOLDER_COLORS_KEY, {}) or {}
     return savedColors.get(folder)
+
+
+def _getModuleLocation(filepath: str) -> Optional[tuple[bool, str, str]]:
+    """Return whether a module is a dependency, its root, and its relative path."""
+    filepath = os.path.normpath(filepath)
+    for index, rootPath in enumerate([settings.modulesPath, *settings.moduleDependenciesPaths]):
+        path = relativePath(filepath, rootPath)
+        if path != filepath:
+            return index > 0, rootPath, path
+    return None
+
+
+def getModuleDisplayPath(filepath: str) -> str:
+    """Return a dependency's root-folder name and relative module path."""
+    location = _getModuleLocation(filepath)
+    isDependency, rootPath, path = location if location else (False, "", os.path.basename(filepath))
+    path = os.path.splitext(path)[0].replace("\\", "/")
+    if not isDependency:
+        return path
+
+    rootName = os.path.basename(os.path.normpath(rootPath)).replace("\\", "/")
+    return f"{rootName}/{path}"
+
+
+def isDependencyModuleFile(filepath: str) -> bool:
+    """Return whether a module file belongs to a configured dependency root."""
+    location = _getModuleLocation(filepath)
+    return bool(location and location[0])
+
+
+def getModuleFolderColor(filepath: str) -> Optional[str]:
+    """Return the saved color for a module's folder or its dependency parent."""
+    location = _getModuleLocation(filepath)
+    if not location:
+        return None
+
+    isDependency, rootPath, relativeModulePath = location
+    folderPath = os.path.dirname(relativeModulePath)
+    if not isDependency:
+        return getCategoryColor(folderPath.replace("\\", "/"))
+
+    while folderPath not in ("", "."):
+        color = getFolderColor(os.path.join(rootPath, folderPath))
+        if color:
+            return color
+        folderPath = os.path.dirname(folderPath)
+
+    return getFolderColor(rootPath)
 
 
 # ---------------------------------------------------------------------------
@@ -98,40 +152,49 @@ def getCategoryColor(category: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 class ModuleCardWidget(QWidget):
-    def __init__(self, name: str, filepath: str, score: float = 0.0, parent=None):
+    def __init__(self, name: str, filepath: str, score: float = 0.0, parent=None, dependencyPath: str = ""):
         super().__init__(parent)
         self.name = name
         self.filepath = filepath
         self.setStyleSheet("background: transparent;")
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(8)
 
-        rel = os.path.relpath(filepath, settings.modulesPath)
-        cat = os.path.dirname(rel)
-        color = getCategoryColor(cat)
-        if color:
-            dot = QFrame()
-            dot.setFixedSize(8, 8)
-            dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
-            layout.addWidget(dot)
+        headerLayout = QHBoxLayout()
+        if not dependencyPath:
+            rel = os.path.relpath(filepath, settings.modulesPath)
+            cat = os.path.dirname(rel)
+            color = getCategoryColor(cat)
+            if color:
+                dot = QFrame()
+                dot.setFixedSize(8, 8)
+                dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
+                headerLayout.addWidget(dot)
 
         self.nameLabel = QLabel(name)
 
-        layout.addWidget(self.nameLabel)
-        layout.addStretch()
+        headerLayout.addWidget(self.nameLabel)
+        headerLayout.addStretch()
 
         if 0.0 < score < 1.0:
             self.scoreLabel = QLabel(f"{score:.0%}")
-            layout.addWidget(self.scoreLabel)
+            headerLayout.addWidget(self.scoreLabel)
+
+        layout.addLayout(headerLayout)
+
+        if dependencyPath:
+            self.pathLabel = QLabel(dependencyPath)
+            self.pathLabel.setStyleSheet("color: #888888; font-size: 10px;")
+            layout.addWidget(self.pathLabel)
 
 
 class CategoryItemWidget(QWidget):
     """Category list item with a matching color dot."""
     contextMenuRequested = Signal(str, QPoint)
 
-    def __init__(self, label: str, category: str, parent=None):
+    def __init__(self, label: str, category: str, parent=None, folderPath: str = ""):
         super().__init__(parent)
         self.category = category
         self.setStyleSheet("background: transparent;")
@@ -139,7 +202,12 @@ class CategoryItemWidget(QWidget):
         layout.setContentsMargins(4, 3, 4, 3)
         layout.setSpacing(6)
 
-        color = getCategoryColor(category) if category not in ("__recent__", "__all__") else None
+        if folderPath:
+            color = getFolderColor(folderPath)
+        elif category not in ("__recent__", "__workspace__", "__dependencies__") and not category.startswith("__dependency_root__:"):
+            color = getCategoryColor(category)
+        else:
+            color = None
         if color:
             dot = QFrame()
             dot.setFixedSize(8, 8)
@@ -150,6 +218,9 @@ class CategoryItemWidget(QWidget):
 
         lbl = QLabel(label)
         lbl.setStyleSheet("background: transparent;")
+        font = lbl.font()
+        font.setBold(category in ("__recent__", "__workspace__", "__dependencies__"))
+        lbl.setFont(font)
         layout.addWidget(lbl)
         layout.addStretch()
 
@@ -223,6 +294,7 @@ class ModuleBrowser(QDialog):
 
         self.indexer = ModuleIndexer()
         self.semanticResults = []
+        self._dependencyCategoryPaths = {}
         self._indexWorker = None
         self._currentSearchWorker = None
         self._activeThreads = set()
@@ -264,13 +336,21 @@ class ModuleBrowser(QDialog):
 
         # Left Panel: Categories Sidebar & Action Buttons
         self.sidebarWidget = QWidget()
+        self.sidebarWidget.setMinimumWidth(210)
         sidebarLayout = QVBoxLayout(self.sidebarWidget)
         sidebarLayout.setContentsMargins(0, 0, 0, 0)
         sidebarLayout.setSpacing(6)
 
-        self.categoryList = QListWidget()
+        self.categoryList = QTreeWidget()
+        self.categoryList.setHeaderHidden(True)
+        self.categoryList.setIndentation(14)
         self.categoryList.itemSelectionChanged.connect(self._rebuildModulesList)
         sidebarLayout.addWidget(self.categoryList)
+
+        self.refreshModulesBtn = QPushButton("↻ Refresh")
+        self.refreshModulesBtn.setToolTip("Rescan owned and dependency module folders")
+        self.refreshModulesBtn.clicked.connect(self.refreshModules)
+        sidebarLayout.addWidget(self.refreshModulesBtn)
 
         self.openFolderBtn = QPushButton("📂 Open Folder")
         self.openFolderBtn.clicked.connect(self.openModulesFolder)
@@ -298,7 +378,7 @@ class ModuleBrowser(QDialog):
 
         self.splitter.addWidget(self.docContainer)
 
-        self.splitter.setSizes([140, 240, 360])
+        self.splitter.setSizes([220, 260, 360])
 
 
         # Setup Timers
@@ -381,56 +461,117 @@ class ModuleBrowser(QDialog):
 
         self._rebuildCategoryList()
         self._rebuildModulesList()
+        self.modulesReloaded.emit()
 
     def _rebuildCategoryList(self):
         selected = self.categoryList.currentItem()
-        selectedCat = selected.data(Qt.UserRole) if selected else "__all__"
+        selectedCat = selected.data(0, Qt.UserRole) if selected else "__workspace__"
 
         self.categoryList.clear()
+        self._dependencyCategoryPaths = {}
 
-        categories = set()
-        for filepath in UidManager.uids().values():
-            rel = os.path.relpath(filepath, settings.modulesPath)
-            cat = os.path.dirname(rel).replace("\\", "/")
-            if cat and cat != ".":
-                categories.add(cat)
+        modules = self._getAvailableModules()
+        def addCategory(label, category, parent=None, folderPath=""):
+            item = QTreeWidgetItem()
+            item.setData(0, Qt.UserRole, category)
+            if parent:
+                parent.addChild(item)
+            else:
+                self.categoryList.addTopLevelItem(item)
 
-        categoryItems = [("Recent", "__recent__"), ("All Modules", "__all__")]
-        categoryItems.extend((cat, cat) for cat in sorted(categories))
-        for label, catKey in categoryItems:
-            item = QListWidgetItem()
-            widget = CategoryItemWidget(label, catKey)
-            item.setData(Qt.UserRole, catKey)
-            self.categoryList.addItem(item)
-            self.categoryList.setItemWidget(item, widget)
+            widget = CategoryItemWidget(label, category, folderPath=folderPath)
+            self.categoryList.setItemWidget(item, 0, widget)
             widget.contextMenuRequested.connect(self._onCategoryContextMenu)
+            return item
+
+        def addFolderBranches(parentItem, folders, rootPath, dependencyIndex=None):
+            folderItems = {"": parentItem}
+            for folder in sorted(folders):
+                parent = parentItem
+                currentFolder = ""
+                for part in folder.split("/"):
+                    currentFolder = f"{currentFolder}/{part}".strip("/")
+                    if currentFolder not in folderItems:
+                        category = (
+                            currentFolder if dependencyIndex is None
+                            else f"__dependency_root__:{dependencyIndex}:{currentFolder}"
+                        )
+                        folderItem = addCategory(
+                            part, category, parent, os.path.join(rootPath, currentFolder)
+                        )
+                        folderItems[currentFolder] = folderItem
+                        if dependencyIndex is not None:
+                            self._dependencyCategoryPaths[category] = (rootPath, currentFolder)
+                    parent = folderItems[currentFolder]
+                parent.setExpanded(True)
+
+        addCategory("Recent", "__recent__")
+        ownedFolders = {
+            module["category"]
+            for module in modules.values()
+            if not module["dependency"] and module["category"]
+        }
+        workspaceModulesItem = addCategory("Workspace Modules", "__workspace__")
+        addFolderBranches(workspaceModulesItem, ownedFolders, settings.modulesPath)
+        workspaceModulesItem.setExpanded(True)
+
+        dependencyModules = [module for module in modules.values() if module["dependency"]]
+        if dependencyModules:
+            dependencyRoot = addCategory("Dependency Modules", "__dependencies__")
+            dependencyRoot.setExpanded(True)
+
+            for rootIndex, rootPath in enumerate(settings.moduleDependenciesPaths):
+                rootModules = [
+                    module for module in dependencyModules
+                    if os.path.normcase(os.path.abspath(module["dependencyRoot"]))
+                    == os.path.normcase(os.path.abspath(rootPath))
+                ]
+                if not rootModules:
+                    continue
+
+                rootName = os.path.basename(os.path.normpath(rootPath)) or rootPath
+                rootCategory = f"__dependency_root__:{rootIndex}:"
+                rootItem = addCategory(rootName, rootCategory, dependencyRoot, rootPath)
+                rootItem.setToolTip(0, rootPath)
+                rootItem.setExpanded(True)
+                self._dependencyCategoryPaths[rootCategory] = (rootPath, "")
+
+                folders = {module["category"] for module in rootModules if module["category"]}
+                addFolderBranches(rootItem, folders, rootPath, rootIndex)
 
         # Restore selection
-        for i in range(self.categoryList.count()):
-            item = self.categoryList.item(i)
-            if item.data(Qt.UserRole) == selectedCat:
+        items = [self.categoryList.topLevelItem(i) for i in range(self.categoryList.topLevelItemCount())]
+        while items:
+            item = items.pop(0)
+            if item.data(0, Qt.UserRole) == selectedCat:
                 self.categoryList.setCurrentItem(item)
                 break
+            items[0:0] = [item.child(i) for i in range(item.childCount())]
         else:
-            self.categoryList.setCurrentRow(0)
+            self.categoryList.setCurrentItem(self.categoryList.topLevelItem(0))
 
     def _onCategoryContextMenu(self, category, globalPos):
         """Choose or disable the color of a folder in the category list."""
-        if category in ("__recent__", "__all__"):
+        if category in ("__recent__", "__workspace__", "__dependencies__"):
             return
 
+        dependencyPath = self._dependencyCategoryPaths.get(category)
+        folderPath = (
+            os.path.join(dependencyPath[0], dependencyPath[1])
+            if dependencyPath else os.path.join(settings.modulesPath, category)
+        )
+        folder = os.path.normcase(os.path.abspath(folderPath))
         menu = QMenu(self)
         chooseAction = menu.addAction("Choose color...")
         disableAction = menu.addAction("Disable color")
-        disableAction.setEnabled(bool(getCategoryColor(category)))
+        disableAction.setEnabled(bool(getFolderColor(folderPath)))
         action = menu.exec(globalPos)
         if action not in (chooseAction, disableAction):
             return
 
-        folder = os.path.normcase(os.path.abspath(os.path.join(settings.modulesPath, category)))
         savedColors = QSettings("RigBuilder").value(FOLDER_COLORS_KEY, {}) or {}
         if action == chooseAction:
-            color = QColorDialog.getColor(QColor(getCategoryColor(category) or "#c8c8c8"), self, "Folder color")
+            color = QColorDialog.getColor(QColor(getFolderColor(folderPath) or "#c8c8c8"), self, "Choose color")
             if not color.isValid():
                 return
             savedColors[folder] = color.name()
@@ -446,12 +587,13 @@ class ModuleBrowser(QDialog):
         """Return dict mapping normpath -> module info dict."""
         modules = {}
         for filepath in UidManager.uids().values():
+            location = _getModuleLocation(filepath)
+            if not location:
+                continue
+
+            isDependency, rootPath, rel = location
             name = os.path.splitext(os.path.basename(filepath))[0]
-            rel = os.path.relpath(filepath, settings.modulesPath).replace("\\", "/")
-            cat = os.path.dirname(rel)
-            if cat in (".", ""):
-                cat = ""
-                
+            cat = os.path.dirname(rel).replace("\\", "/")
             norm = os.path.normpath(filepath)
             modules[norm] = {
                 "name": name,
@@ -459,6 +601,9 @@ class ModuleBrowser(QDialog):
                 "path": filepath,
                 "category": cat,
                 "score": 0.0,
+                "dependency": isDependency,
+                "dependencyRoot": rootPath if isDependency else "",
+                "dependencyPath": getModuleDisplayPath(filepath) if isDependency else "",
             }
         return modules
 
@@ -482,7 +627,7 @@ class ModuleBrowser(QDialog):
 
     def _rebuildModulesList(self):
         catItem = self.categoryList.currentItem()
-        selectedCategory = catItem.data(Qt.UserRole) if catItem else None
+        selectedCategory = catItem.data(0, Qt.UserRole) if catItem else None
         searchQuery = self.searchWidget.text().strip().lower()
 
         # Save current module selection
@@ -494,10 +639,30 @@ class ModuleBrowser(QDialog):
         # 1. Category Filter
         if selectedCategory == "__recent__":
             modules = [modulesMap[p] for p in self.getRecentModules() if p in modulesMap]
-        elif selectedCategory and selectedCategory != "__all__":
-            modules = [m for m in modulesMap.values() if m["category"] == selectedCategory or m["category"].startswith(selectedCategory + "/")]
+        elif selectedCategory == "__dependencies__":
+            modules = [m for m in modulesMap.values() if m["dependency"]]
+        elif selectedCategory in self._dependencyCategoryPaths:
+            rootPath, folder = self._dependencyCategoryPaths[selectedCategory]
+            modules = [
+                module for module in modulesMap.values()
+                if module["dependency"]
+                and module["dependencyRoot"] == rootPath
+                and (
+                    not folder
+                    or module["category"] == folder
+                    or module["category"].startswith(folder + "/")
+                )
+            ]
+        elif selectedCategory and selectedCategory != "__workspace__":
+            modules = [
+                m for m in modulesMap.values()
+                if not m["dependency"] and (
+                    m["category"] == selectedCategory
+                    or m["category"].startswith(selectedCategory + "/")
+                )
+            ]
         else:
-            modules = list(modulesMap.values())
+            modules = [m for m in modulesMap.values() if not m["dependency"]]
 
         # 2. Search Filter & Sort
         if searchQuery:
@@ -518,7 +683,9 @@ class ModuleBrowser(QDialog):
         for m in modules:
             item = QListWidgetItem()
             item.setData(Qt.UserRole, m["filepath"])
-            card = ModuleCardWidget(m["name"], m["filepath"], score=m["score"])
+            card = ModuleCardWidget(
+                m["name"], m["filepath"], score=m["score"], dependencyPath=m["dependencyPath"]
+            )
             item.setSizeHint(card.sizeHint())
             self.modulesList.addItem(item)
             self.modulesList.setItemWidget(item, card)

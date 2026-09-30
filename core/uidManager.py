@@ -12,8 +12,13 @@ class UidManager:
 
     @classmethod
     def sync(cls):
-        """Sync cached UIDs from modules directory."""
-        cls._uids = cls.findUids(settings.modulesPath)
+        """Sync cached UIDs from dependency and owned module directories."""
+        uids = {}
+        for path in reversed(settings.moduleDependenciesPaths):
+            uids.update(cls.findUids(path))
+
+        uids.update(cls.findUids(settings.modulesPath))
+        cls._uids = uids
 
     @classmethod
     def get(cls, uid: str) -> Optional[str]:

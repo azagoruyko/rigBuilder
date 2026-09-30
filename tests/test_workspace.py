@@ -217,6 +217,31 @@ class TestWorkspaceSaveLoad:
 
         assert Workspace.load(workspaceName).settings.autoSaveInterval == 42
 
+    def testModuleDependencyPathsPersistInOrder(self, workspaceName):
+        """Workspace module dependency folders survive a save → load in order."""
+        ws = Workspace(workspaceName)
+        ws.settings.moduleDependenciesPaths = ["public/modules", "shared/modules"]
+        ws.save()
+
+        assert Workspace.load(workspaceName).settings.moduleDependenciesPaths == [
+            "public/modules",
+            "shared/modules",
+        ]
+
+    def testLegacySettingsDefaultToNoModuleDependencies(self, workspaceName):
+        """Settings files without dependency folders retain an empty default."""
+        ws = Workspace(workspaceName)
+        ws.save()
+        settingsPath = os.path.join(ws.folderPath(), "settings.json")
+
+        with open(settingsPath, "r", encoding="utf-8") as settingsFile:
+            data = json.load(settingsFile)
+        data.pop("moduleDependenciesPaths")
+        with open(settingsPath, "w", encoding="utf-8") as settingsFile:
+            json.dump(data, settingsFile)
+
+        assert Workspace.load(workspaceName).settings.moduleDependenciesPaths == []
+
 
 # ============================================================================
 # Workspace — exists / list
@@ -305,10 +330,12 @@ class TestWorkspaceActivate:
 
         ws = Workspace(workspaceName)
         ws.settings.vscode = "vscode-insiders"
+        ws.settings.moduleDependenciesPaths = ["public/modules", "shared/modules"]
         ws.save()
         ws.activate()
 
         assert settings.vscode == "vscode-insiders"
+        assert settings.moduleDependenciesPaths == ["public/modules", "shared/modules"]
 
     def testActivateCreatesRequiredDirs(self, workspaceName):
         """activate() ensures historyPath, modulesPath, and scriptsPath directories exist."""

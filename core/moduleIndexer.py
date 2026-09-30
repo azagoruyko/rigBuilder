@@ -102,12 +102,14 @@ class ModuleIndexer:
             return
 
         moduleFiles = core.Module.listModules(folder)
+        moduleUids = set()
 
         for f in moduleFiles:
             currentHash = fileHash(f)
             uid = UidManager.getUidFromFile(f)
             if not uid:
                 continue
+            moduleUids.add(uid)
 
             cachedData = self.cache["modules"].get(uid)
             
@@ -130,7 +132,7 @@ class ModuleIndexer:
 
         # remove older files from cache
         for uid in list(self.cache["modules"].keys()):            
-            if uid not in UidManager.uids():
+            if uid not in moduleUids:
                 del self.cache["modules"][uid]
                 changed = True
         

@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 import os
 import json
 import tempfile
@@ -12,6 +13,7 @@ from rigBuilder.core import (
     printError, printWarning, exitModule,
     APIRegistry)
 from rigBuilder.core.uidManager import UidManager
+from rigBuilder.core.moduleIndexer import ModuleIndexer, engine
 from rigBuilder.core.settings import settings, RIG_BUILDER_USER_PATH
 from rigBuilder.core.utils import copyJson, relativePath
 
@@ -2019,6 +2021,92 @@ class TestPathAndSettings:
 
         resolved = UidManager.resolve(spec)
         assert os.path.normpath(resolved) == os.path.normpath(filePath)
+
+    def testUidManagerResolveFromDependencyPaths(self, tmp_path, monkeypatch):
+        """UID lookup includes dependency roots with local and ordered precedence."""
+        modulesPath = tmp_path / "modules"
+        firstDependencyPath = tmp_path / "first"
+        secondDependencyPath = tmp_path / "second"
+        modulesPath.mkdir()
+        firstDependencyPath.mkdir()
+        secondDependencyPath.mkdir()
+
+        monkeypatch.setattr(settings, "modulesPath", str(modulesPath))
+        monkeypatch.setattr(
+            settings,
+            "moduleDependenciesPaths",
+            [str(firstDependencyPath), str(secondDependencyPath)],
+        )
+
+        for name, uid, path in (
+            ("first", "shared_uid", firstDependencyPath),
+            ("second", "shared_uid", secondDependencyPath),
+            ("owned", "shared_uid", modulesPath),
+            ("dependency_only", "dependency_uid", secondDependencyPath),
+            ("first_dependency", "ordered_uid", firstDependencyPath),
+            ("second_dependency", "ordered_uid", secondDependencyPath),
+        ):
+            module = createModule(name)
+            module._uid = uid
+            module.saveToFile(str(path / f"{name}.rb"))
+
+        UidManager.sync()
+
+        assert UidManager.resolve("shared_uid") == os.path.normpath(str(modulesPath / "owned.rb"))
+        assert UidManager.resolve("dependency_uid") == os.path.normpath(
+            str(secondDependencyPath / "dependency_only.rb")
+        )
+        assert UidManager.resolve("ordered_uid") == os.path.normpath(
+            str(firstDependencyPath / "first_dependency.rb")
+        )
+
+    def testUidManagerResolveDoesNotSearchDependencyPathsByName(self, tmp_path, monkeypatch):
+        """Path-like module specs do not search dependency roots."""
+        modulesPath = tmp_path / "modules"
+        dependencyPath = tmp_path / "dependency"
+        modulesPath.mkdir()
+        dependencyPath.mkdir()
+
+        module = createModule("only_in_dependency")
+        module.saveToFile(str(dependencyPath / "only_in_dependency.rb"))
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(settings, "modulesPath", str(modulesPath))
+        monkeypatch.setattr(settings, "moduleDependenciesPaths", [str(dependencyPath)])
+        UidManager.sync()
+
+        assert UidManager.resolve("only_in_dependency") == ""
+
+class TestModuleIndexer:
+    """Tests for semantic module indexing."""
+
+    def testRemovesCachedOwnedEmbeddingWhenUidOnlyExistsInDependency(self, tmp_path, monkeypatch):
+        """Dependency UIDs must not keep embeddings for removed owned modules."""
+        modulesPath = tmp_path / "modules"
+        dependencyPath = tmp_path / "dependency"
+        modulesPath.mkdir()
+        dependencyPath.mkdir()
+
+        monkeypatch.setattr(UidManager, "_uids", UidManager._uids.copy())
+        monkeypatch.setattr(settings, "modulesPath", str(modulesPath))
+        monkeypatch.setattr(settings, "moduleDependenciesPaths", [str(dependencyPath)])
+        monkeypatch.setattr(settings, "ollamaEmbeddingModel", "test-model")
+        monkeypatch.setattr(engine, "isOllamaAvailable", lambda: True)
+
+        dependencyModule = createModule("dependency_module")
+        dependencyModule._uid = "owned_uid"
+        dependencyModule.saveToFile(str(dependencyPath / "dependency_module.rb"))
+        UidManager.sync()
+
+        indexer = ModuleIndexer()
+        indexer.cache = {
+            "model": "test-model",
+            "modules": {"owned_uid": {"hash": "old", "embedding": [0.1], "name": "owned_module"}},
+        }
+
+        asyncio.run(indexer.indexModules(str(modulesPath)))
+
+        assert "owned_uid" not in indexer.cache["modules"]
 
 class TestAPIRegistryMetaclass:
     """Additional tests for APIRegistry metaclass behaviour."""
