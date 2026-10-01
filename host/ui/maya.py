@@ -440,7 +440,7 @@ class FileSelectorWidget(MayaWidget):
         fileMode = 2 if mode == "directory" else (0 if mode == "saveFile" else 1)
         self.ctrl = cmds.textFieldButtonGrp(
             label=self.attr.name(),
-            text=str(self.attr.get() or ""),
+            text=str(data.get("unresolvedValue") or data.get("value", "")),
             buttonLabel="📁",
             buttonCommand=partial(self._onBrowseClicked, fileMode, data.get("title", "Select File")),
             changeCommand=partial(self._onChanged),
@@ -450,22 +450,35 @@ class FileSelectorWidget(MayaWidget):
         )
 
     def _onChanged(self, *args):
-        self.attr.set(self.getValueFromUI())
+        self.syncToAttribute()
+
+    def _setPath(self, path: str):
+        """Store the editable path and its expanded value."""
+        data = self.attr.data()
+        data["unresolvedValue"] = path
+        data["value"] = os.path.expandvars(path)
+        self.attr.setData(data)
+
+    def syncToAttribute(self):
+        """Write the current Maya field text to the attribute."""
+        self._setPath(self.getValueFromUI())
 
     def _onBrowseClicked(self, fileMode: int, title: str, *args):
         res = cmds.fileDialog2(fileMode=fileMode, caption=title)
         if res and self.ctrl and cmds.control(self.ctrl, exists=True):
+            self._setPath(res[0])
             self.setValueToUI(res[0])
-            self.attr.set(res[0])
 
     def getValueFromUI(self) -> str:
         if self.ctrl and cmds.control(self.ctrl, exists=True):
             return cmds.textFieldButtonGrp(self.ctrl, query=True, text=True)
-        return str(self.attr.get() or "")
+        data = self.attr.data()
+        return str(data.get("unresolvedValue") or data.get("value", ""))
 
     def setValueToUI(self, value: Any):
         if self.ctrl and cmds.control(self.ctrl, exists=True):
-            cmds.textFieldButtonGrp(self.ctrl, edit=True, text=str(value or ""))
+            data = self.attr.data()
+            cmds.textFieldButtonGrp(self.ctrl, edit=True, text=str(data.get("unresolvedValue") or value or ""))
 
 
 class ListBoxWidget(MayaWidget):

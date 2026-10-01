@@ -184,15 +184,16 @@ Every attribute uses a widget template determining how it is configured and disp
 
 ```json
 {
-  "value": "",
-  "mode": "openFile", 
+  "value": "/expanded/path/file",
+  "unresolvedValue": "$TEMP/file",
+  "mode": "openFile",
   "filter": "All Files (*.*)",
   "title": "Select File",
   "default": "value"
 }
 ```
 
-*Note on `mode`: `"openFile"`, `"saveFile"`, or `"existingDirectory"`.*
+*Note: `unresolvedValue` keeps the editable path. `mode` can be `"openFile"`, `"saveFile"`, or `"directory"`.*
 
 ### `label` (Read-only HTML display)
 

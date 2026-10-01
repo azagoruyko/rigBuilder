@@ -24,7 +24,7 @@ DEFAULT_WIDGETS_DATA = {
         "templates": ["listBox", "button"],
         "default": "values"
     },
-    "fileSelector": {"value": "", "mode": "openFile", "filter": "All Files (*.*)", "title": "Select File", "default": "value"},
+    "fileSelector": {"value": "", "unresolvedValue": "", "mode": "openFile", "filter": "All Files (*.*)", "title": "Select File", "default": "value"},
     "json": {"data": [{"a": 1, "b": 2}], "height": 200, "readonly": False, "default": "data"},
     "label": {"text": "Description", "default": "text"},
     "lineEditAndButton": {
