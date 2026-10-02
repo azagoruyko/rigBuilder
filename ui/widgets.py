@@ -1532,15 +1532,10 @@ class FileSelectorTemplateWidget(TemplateWidget):
             self.somethingChanged.emit()
 
     def getJsonData(self):
-        return {"value": os.path.expandvars(self.value),
-                "unresolvedValue": self.value,
-                "mode": self.mode,
-                "filter": self.filter,
-                "title": self.title,
-                "default": "value"}
+        return {"value": self.value, "mode": self.mode, "filter": self.filter, "title": self.title, "default": "value"}
 
     def setJsonData(self, data):
-        self.value = data.get("unresolvedValue") or data.get("value", "")
+        self.value = data.get("value", "")
         self.mode = data.get("mode", "openFile")
         self.filter = data.get("filter", "All Files (*.*)")
         self.title = data.get("title", "Select File")
