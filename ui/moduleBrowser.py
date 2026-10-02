@@ -72,17 +72,16 @@ class SearchWorker(QThread):
 
 
 class IndexWorker(QThread):
-    def __init__(self, indexer: ModuleIndexer, folder: str):
+    def __init__(self, indexer: ModuleIndexer):
         super().__init__()
         self.setObjectName("IndexWorker")
         self.indexer = indexer
-        self.folder = folder
 
     def run(self):
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.indexer.indexModules(self.folder))
+            loop.run_until_complete(self.indexer.indexModules())
         except Exception as e:
             logger.error(f"Background Indexing Error: {e}")
 
@@ -296,6 +295,7 @@ class ModuleBrowser(QDialog):
         self.semanticResults = []
         self._dependencyCategoryPaths = {}
         self._indexWorker = None
+        self._indexRefreshPending = False
         self._currentSearchWorker = None
         self._activeThreads = set()
 
@@ -440,13 +440,21 @@ class ModuleBrowser(QDialog):
         if self._indexWorker:
             try:
                 if self._indexWorker.isRunning():
+                    self._indexRefreshPending = True
                     return
             except RuntimeError:
                 self._indexWorker = None
 
-        self._indexWorker = IndexWorker(self.indexer, settings.modulesPath)
-        self._indexWorker.finished.connect(lambda: setattr(self, "_indexWorker", None))
+        self._indexWorker = IndexWorker(self.indexer)
+        self._indexWorker.finished.connect(self._onIndexingFinished)
         self._launchThread(self._indexWorker)
+
+    def _onIndexingFinished(self):
+        """Run a refresh requested while indexing was already in progress."""
+        self._indexWorker = None
+        if self._indexRefreshPending:
+            self._indexRefreshPending = False
+            self._startIndexing()
 
     def refreshModules(self):
         """Syncs modules, trigger indexing, and rebuild the UI list."""

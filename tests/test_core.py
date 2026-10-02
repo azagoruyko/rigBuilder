@@ -2057,8 +2057,8 @@ class TestPathAndSettings:
 class TestModuleIndexer:
     """Tests for semantic module indexing."""
 
-    def testRemovesCachedOwnedEmbeddingWhenUidOnlyExistsInDependency(self, tmp_path, monkeypatch):
-        """Dependency UIDs must not keep embeddings for removed owned modules."""
+    def testIndexesDependenciesForSearchAndPrunesRemovedRoots(self, tmp_path, monkeypatch):
+        """Search includes dependency modules and drops them when their root is removed."""
         modulesPath = tmp_path / "modules"
         dependencyPath = tmp_path / "dependency"
         modulesPath.mkdir()
@@ -2069,21 +2069,98 @@ class TestModuleIndexer:
         monkeypatch.setattr(settings, "moduleDependenciesPaths", [str(dependencyPath)])
         monkeypatch.setattr(settings, "ollamaEmbeddingModel", "test-model")
         monkeypatch.setattr(engine, "isOllamaAvailable", lambda: True)
+        monkeypatch.setattr(engine, "cosineSimilarity", lambda _query, _module: 1.0)
+
+        indexedTexts = []
+
+        async def embed(text):
+            """Record embedding requests without calling Ollama."""
+            indexedTexts.append(text)
+            return [1.0]
+
+        monkeypatch.setattr(engine, "embed", embed)
+
+        ownedModule = createModule("owned_module")
+        ownedModule._uid = "owned_uid"
+        ownedPath = modulesPath / "owned_module.rb"
+        ownedModule.saveToFile(str(ownedPath))
 
         dependencyModule = createModule("dependency_module")
-        dependencyModule._uid = "owned_uid"
-        dependencyModule.saveToFile(str(dependencyPath / "dependency_module.rb"))
+        dependencyModule._uid = "dependency_uid"
+        dependencyFile = dependencyPath / "dependency_module.rb"
+        dependencyModule.saveToFile(str(dependencyFile))
         UidManager.sync()
 
         indexer = ModuleIndexer()
-        indexer.cache = {
-            "model": "test-model",
-            "modules": {"owned_uid": {"hash": "old", "embedding": [0.1], "name": "owned_module"}},
+        asyncio.run(indexer.indexModules())
+
+        assert set(indexer.cache["modules"]) == {"owned_uid", "dependency_uid"}
+        assert len(indexedTexts) == 2
+        assert {path for path, _score in asyncio.run(indexer.search("module"))} == {
+            os.path.normpath(str(ownedPath)), os.path.normpath(str(dependencyFile))
         }
 
-        asyncio.run(indexer.indexModules(str(modulesPath)))
+        asyncio.run(indexer.indexModules())
+        assert len(indexedTexts) == 3  # search embedded its query; unchanged files were skipped
 
-        assert "owned_uid" not in indexer.cache["modules"]
+        indexer.cache["modules"]["owned_uid"].pop("path")  # Legacy cache entry.
+        asyncio.run(indexer.indexModules())
+        assert len(indexedTexts) == 4
+        assert indexer.cache["modules"]["owned_uid"]["path"] == os.path.normpath(str(ownedPath))
+
+        asyncio.run(indexer.indexModules())
+        assert len(indexedTexts) == 4
+
+        settings.moduleDependenciesPaths = []
+        UidManager.sync()
+        asyncio.run(indexer.indexModules())
+
+        assert set(indexer.cache["modules"]) == {"owned_uid"}
+        assert asyncio.run(indexer.search("module")) == [(os.path.normpath(str(ownedPath)), 1.0)]
+
+    def testIndexesWinningFileForDuplicateUid(self, tmp_path, monkeypatch):
+        """The index follows the same UID priority as module loading."""
+        modulesPath = tmp_path / "modules"
+        firstDependencyPath = tmp_path / "first"
+        secondDependencyPath = tmp_path / "second"
+        for path in (modulesPath, firstDependencyPath, secondDependencyPath):
+            path.mkdir()
+
+        monkeypatch.setattr(UidManager, "_uids", UidManager._uids.copy())
+        monkeypatch.setattr(settings, "modulesPath", str(modulesPath))
+        monkeypatch.setattr(settings, "moduleDependenciesPaths", [str(firstDependencyPath), str(secondDependencyPath)])
+        monkeypatch.setattr(settings, "ollamaEmbeddingModel", "test-model")
+        monkeypatch.setattr(engine, "isOllamaAvailable", lambda: True)
+
+        indexedTexts = []
+
+        async def embed(text):
+            """Record which module source was embedded."""
+            indexedTexts.append(text)
+            return [1.0]
+
+        monkeypatch.setattr(engine, "embed", embed)
+
+        for path, name in ((firstDependencyPath, "first"), (secondDependencyPath, "second")):
+            module = createModule(name)
+            module._uid = "shared_uid"
+            module.saveToFile(str(path / f"{name}.rb"))
+
+        UidManager.sync()
+        indexer = ModuleIndexer()
+        asyncio.run(indexer.indexModules())
+        assert indexer.cache["modules"]["shared_uid"]["path"] == os.path.normpath(
+            str(firstDependencyPath / "first.rb")
+        )
+
+        settings.moduleDependenciesPaths.reverse()
+        UidManager.sync()
+        asyncio.run(indexer.indexModules())
+
+        assert indexer.cache["modules"]["shared_uid"]["path"] == os.path.normpath(
+            str(secondDependencyPath / "second.rb")
+        )
+        assert len(indexedTexts) == 2
 
 class TestAPIRegistryMetaclass:
     """Additional tests for APIRegistry metaclass behaviour."""

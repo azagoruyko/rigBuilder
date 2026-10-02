@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import os
 import re
-import json
-import xml.etree.ElementTree as ET
 from typing import Any
 
 from . import core
 from .uidManager import UidManager
 from ..ai import engine
 from .settings import settings
-from .utils import loadJson, saveJson, fileHash
+from .utils import loadJson, saveJson, fileHash, relativePath
 
 class ModuleIndexer:
     """
@@ -54,10 +52,17 @@ class ModuleIndexer:
         doc = (m.doc() or "").strip()
 
         category = "Root"
-        if settings.modulesPath and filePath.startswith(settings.modulesPath):
-            relDir = os.path.dirname(os.path.relpath(filePath, settings.modulesPath)).replace("\\", "/")
+        for rootPath in [settings.modulesPath, *settings.moduleDependenciesPaths]:
+            relPath = relativePath(filePath, rootPath)
+            if relPath == filePath:
+                continue
+
+            relDir = os.path.dirname(relPath).replace("\\", "/")
+            if rootPath != settings.modulesPath:
+                category = os.path.basename(os.path.normpath(rootPath))
             if relDir and relDir != ".":
-                category = relDir
+                category = f"{category}/{relDir}" if category != "Root" else relDir
+            break
 
         # Extract first section (preamble or text under first header)
         sections = re.split(r'\n(?=#{1,6}\s+)', doc)
@@ -69,13 +74,11 @@ class ModuleIndexer:
 
         return f"Module: {m.name()}. Category: {category}. Summary: {cleanSummary}"
 
-    async def indexModules(self, folder: str):
-        """
-        Walks through the modules directory and generates embeddings for new/changed files.
-        """
+    async def indexModules(self):
+        """Index the active workspace's owned and dependency modules by UID."""
         self.refresh() # Ensure we have the latest cache before indexing
         changed = False
-        force = False
+        ollamaAvailable = engine.isOllamaAvailable()
         
         # Initial model assignment
         currentModel = settings.ollamaEmbeddingModel
@@ -86,7 +89,7 @@ class ModuleIndexer:
             changed = True
             
         if cachedModel and cachedModel != currentModel:
-            if not engine.isOllamaAvailable():
+            if not ollamaAvailable:
                 print(f"Note: Current embedding model ({currentModel}) differs from the index ({cachedModel}).")
                 print("Re-indexing is pending until Ollama is available.")
             else:
@@ -94,27 +97,24 @@ class ModuleIndexer:
                 self.cache["model"] = currentModel
                 self.cache["modules"] = {} # Clear old embeddings
                 changed = True
-                force = True # Force re-indexing of all files
 
-        if not engine.isOllamaAvailable():
+        moduleFiles = dict(UidManager.uids())
+        for uid in list(self.cache["modules"]):
+            if uid not in moduleFiles:
+                del self.cache["modules"][uid]
+                changed = True
+
+        if not ollamaAvailable:
             if changed:
-                self._saveCache() # Save if we just initialized the model name
+                self._saveCache()
             return
 
-        moduleFiles = core.Module.listModules(folder)
-        moduleUids = set()
-
-        for f in moduleFiles:
+        for uid, f in moduleFiles.items():
             currentHash = fileHash(f)
-            uid = UidManager.getUidFromFile(f)
-            if not uid:
-                continue
-            moduleUids.add(uid)
-
             cachedData = self.cache["modules"].get(uid)
             
-            # Index if forced, or hash changed, or never indexed
-            if force or not cachedData or cachedData.get("hash") != currentHash:
+            # Index new modules and modules whose file or source path changed.
+            if not cachedData or cachedData.get("hash") != currentHash or cachedData.get("path") != f:
                 text = self._extractIndexableText(f)
                 if not text:
                     continue
@@ -126,16 +126,11 @@ class ModuleIndexer:
                     self.cache["modules"][uid] = {
                         "hash": currentHash,
                         "embedding": embedding,
-                        "name": os.path.splitext(os.path.basename(f))[0]
+                        "name": os.path.splitext(os.path.basename(f))[0],
+                        "path": f,
                     }
                     changed = True
 
-        # remove older files from cache
-        for uid in list(self.cache["modules"].keys()):            
-            if uid not in moduleUids:
-                del self.cache["modules"][uid]
-                changed = True
-        
         if changed:
             self._saveCache()
             print("Semantic index updated.")
@@ -162,7 +157,8 @@ class ModuleIndexer:
         files = []
         for uid, score in results:
             path = UidManager.get(uid)
-            files.append((path, score))
+            if path:
+                files.append((path, score))
 
         # Sort by score descending and return top_k
         files.sort(key=lambda x: x[1], reverse=True)
