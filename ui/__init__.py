@@ -1449,7 +1449,7 @@ class AttributesTreeView(QTreeView):
         undoStack.push(EditAttributeCommand(self, attr, attr.toXml(), newAttr.toXml(), f"Disconnect '{attr.name()}'"))
 
     def _buildConnectionMenu(self, menu: QMenu, attr, module: Module, path: str = "/"):
-        sub = QMenu(module.name(), self)
+        sub = QMenu(module.name() + " ", self)
         for a in module.attributes():
             if a.template() == attr.template() and a.name():
                 sub.addAction(a.name(), partial(self._connectAttr, attr, path + module.name() + "/" + a.name()))
