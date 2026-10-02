@@ -2226,6 +2226,24 @@ class ModuleTreeWidget(QTreeView):
             event.accept()
             return
 
+        if event.key() == Qt.Key_P and event.modifiers() in (Qt.NoModifier, Qt.ShiftModifier):
+            modules = self.selectedModules()
+            if event.modifiers() == Qt.ShiftModifier:
+                parent = self.moduleModel.rootModule()
+                modules = [module for module in modules if module.parent() is not parent]
+            else:
+                parent = self.currentModule()
+                modules = [module for module in modules if module is not parent and module.parent() is not parent]
+
+            if modules and parent:
+                command = MoveModulesCommand(self.moduleModel, modules, parent)
+                if len(command.items) == len(modules):
+                    undoStack.push(command)
+                    self.selectModules(modules)
+
+            event.accept()
+            return
+
         if event.key() == Qt.Key_Space and event.modifiers() in (Qt.NoModifier, Qt.ControlModifier):
             index = self.currentIndex()
             if index.isValid():
