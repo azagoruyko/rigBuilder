@@ -99,20 +99,6 @@ class APIRegistry(metaclass=APIRegistryMeta):
         return DictExt(APIRegistry._objects)
 
 
-def legacy_convertLineEditTemplate(attr): # get rid of legacy LineEdit        
-    if attr._template == "lineEdit":
-        attr._template = "lineEditAndButton"
-        attr._data["buttonEnabled"] = False
-
-    if attr._template == "compound":
-        templates = attr._data["templates"]
-        widgetsData = attr._data["widgets"]
-        for i, _ in enumerate(templates):
-            if templates[i] == "lineEdit":
-                templates[i] = "lineEditAndButton"
-                widgetsData[i]["buttonEnabled"] = False
-
-
 # Safe builtins allowlist for attribute expressions.
 EXPRESSION_BUILTINS = {
     k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k)
@@ -378,7 +364,6 @@ class Attribute:
         raw = root.text or "{}"
         attr._data = json.loads(raw) if raw.strip() else {}
         attr._expression = attr._data.pop("_expression", "")
-        legacy_convertLineEditTemplate(attr)
         return attr
 
     def toText(self, indent: int = 0) -> str:

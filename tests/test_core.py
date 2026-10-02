@@ -1,7 +1,6 @@
 import pytest
 import asyncio
 import os
-import json
 import tempfile
 import shutil
 import xml.etree.ElementTree as ET
@@ -491,28 +490,6 @@ class TestAttributeXML:
 
         xmlWith = simpleAttribute.toXml()
         assert 'connect="/parent/attr"' in xmlWith
-
-    def testLegacyLineEditConversion(self):
-        """Test that legacy lineEdit template is converted to lineEditAndButton."""
-        xml = '<attr name="legacy" template="lineEdit"><![CDATA[{"default": "value", "value": "text"}]]></attr>'
-        attr = Attribute.fromXml(xml)
-        
-        assert attr.template() == "lineEditAndButton"
-        assert attr.localData()["buttonEnabled"] is False
-
-    def testLegacyCompoundLineEditConversion(self):
-        """Test that legacy lineEdit inside compound template is converted."""
-        data = {
-            "templates": ["float", "lineEdit"],
-            "widgets": [{}, {}]
-        }
-        xml = '<attr name="comp" template="compound"><![CDATA[{}]]></attr>'.format(json.dumps(data))
-        attr = Attribute.fromXml(xml)
-        
-        newData = attr.localData()
-        assert newData["templates"][1] == "lineEditAndButton"
-        assert newData["widgets"][1]["buttonEnabled"] is False
-
 
 # ============================================================================
 # MODULE TESTS
