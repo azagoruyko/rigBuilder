@@ -439,8 +439,7 @@ class RigBuilderAPI:
         if not module:
             return {"error": f"Module not found: {module_path}"}
             
-        cls.mainWindow.treeWidget.selectModule(module)
-        cls.mainWindow.runModule()
+        cls.mainWindow.executeModule(module)
         return {"message": f"Executed module {module_path}"}
 
     @classmethod

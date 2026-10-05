@@ -3771,13 +3771,15 @@ class RigBuilderWindow(QFrame):
         self._progressCounter += 1
 
     def runModule(self):
-        """Run module on the host server."""
+        """Run the selected module on the host server."""
+        module = self.treeWidget.currentModule()
+        if module:
+            self.executeModule(module)
+
+    def executeModule(self, module: Module):
+        """Run the given module on the host server."""
         def getChildrenCount(m: Module) -> int:
             return sum(1 + getChildrenCount(ch) for ch in m.children())
-
-        currentModule = self.treeWidget.currentModule()
-        if not currentModule:
-            return
 
         if not connectionManager.activeConnection():
             QMessageBox.warning(self, "Rig Builder", "Not connected to host server")
@@ -3787,18 +3789,18 @@ class RigBuilderWindow(QFrame):
         self.showLog()
         self.runBtn.setEnabled(False)
 
-        count = getChildrenCount(currentModule)
+        count = getChildrenCount(module)
         self.progressBarWidget.initialize()
-        self.progressBarWidget.beginProgress(currentModule.path(), count + 1)
+        self.progressBarWidget.beginProgress(module.path(), count + 1)
         self._progressCounter = 0
 
         ts = time.strftime("%H:%M:%S")
         logger.info(f"Running on {connectionManager.activeServerName()} at {ts}")
 
-        newModule = hostExecutor.runModule(currentModule)
+        newModule = hostExecutor.runModule(module)
 
         if newModule is not None:
-            idx = self.treeWidget.moduleModel.indexForModule(currentModule)
+            idx = self.treeWidget.moduleModel.indexForModule(module)
             if idx.isValid():
                 self.treeWidget.replaceModule(idx, newModule)
             else:            
