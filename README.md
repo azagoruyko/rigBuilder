@@ -1,3 +1,5 @@
+
+
 <div align="center">
    
    <img width="64" height="64" alt="icon" src="https://github.com/user-attachments/assets/2430f885-223b-4c67-83a8-101f69c24d14" />
@@ -74,7 +76,7 @@ run.bat
 
 ### 4. Host Setup (Connectivity)
 
-Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine), it will automatically appear in the Host Manager.
+Rig Builder features **Automatic Host Detection**. When you launch a supported host (Maya, Blender, Unreal Engine, or Houdini), it will automatically appear in the Host Manager.
 
 To execute scripts inside a host, you need **`zmq`** (or `pyzmq`) installed in that host's Python environment.
 
