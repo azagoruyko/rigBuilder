@@ -3889,6 +3889,7 @@ class RigBuilderWindow(QFrame):
             self.workspaceWidget.combo.setCurrentIndex(idx)
         self.workspaceWidget.combo.blockSignals(False)
 
+        self.treeWidget.filterEdit.clear()
         self.treeWidget.clear()
 
         for module in ws.file.modules:
