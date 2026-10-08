@@ -1,5 +1,8 @@
+![GitHub Tag](https://img.shields.io/github/v/tag/azagoruyko/rigBuilder?label=Version)
+
+
 <div align="center">
-   
+
    <img width="64" height="64" alt="icon" src="https://github.com/user-attachments/assets/2430f885-223b-4c67-83a8-101f69c24d14" />
    
 </div>
