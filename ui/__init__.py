@@ -143,6 +143,9 @@ class ModuleTracker(QObject):
         if path != self._modulesPath or dependencyPaths != self._dependencyPaths:
             self._modulesPath = path
             self._dependencyPaths = dependencyPaths
+            self._cache.clear()
+            self._fileSnapshot = self._scanModuleFiles()
+
         self._watcher.setRoots([path])
 
     def getModule(self, uid: str) -> Optional[Module]:
