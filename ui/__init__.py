@@ -31,7 +31,7 @@ from .widgets import TemplateWidgets, EditTextDialog, EditJsonDialog, TemplateWi
 from ..core.workspace import Workspace
 from .aichat import AIChatDialog
 from .apiBrowser import ApiBrowser
-from .diffBrowser import DiffBrowserDialog, calculateModulesDiff, DiffBrowserDialogWithConfirm
+from .diffBrowser import DiffBrowserDialog, calculateAttributesDiff, calculateModulesDiff, DiffBrowserDialogWithConfirm
 from .docBrowser import DocBrowser, DocGeneratorWorker, activeWorkers
 from .editor import CodeEditorWithNumbersWidget
 from .fileTracker import DirectoryWatcher
@@ -1706,12 +1706,7 @@ class AttributesTreeView(QTreeView):
             QMessageBox.warning(self, "Rig Builder", "Can't find reference file: {}".format(refPath))
             return
 
-        module = attr.module()
-        if not module:
-            QMessageBox.warning(self, "Rig Builder", "This attribute has no owning module.")
-            return
-
-        diffText = calculateModulesDiff([module], [refPath])
+        diffText = calculateAttributesDiff([attr])
         if not diffText.strip():
             QMessageBox.information(self, "Rig Builder", "No changes detected.")
             return

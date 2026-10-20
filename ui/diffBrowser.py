@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import difflib
 import asyncio
-from ..core import Module
+from ..core import Attribute, Module
 from .qt import *
 from .utils import centerWindow
 from ..core.logger import logger
@@ -55,6 +55,32 @@ def calculateModulesDiff(modules: list[Module], paths: list[str] | None = None) 
             diffText = "\n".join(diff)
             if diffText:
                 diffTexts.append(diffText)
+
+    return "\n".join(diffTexts)
+
+
+def calculateAttributesDiff(attributes: list[Attribute]) -> str:
+    """Calculate unified diffs for attributes against their saved modules."""
+    diffTexts = []
+    for attr in attributes:
+        filePath = attr.module().referenceFile()
+        preview = attr.copy()
+        preview.setConnect("")
+        newText = preview.toText()
+
+        oldAttr = Module.loadModule(filePath).findAttribute(attr.name()) if filePath and os.path.exists(filePath) else None
+        oldText = oldAttr.toText() if oldAttr else ""
+        label = f"{os.path.basename(filePath)}: @{attr.name()}" if filePath else f"@{attr.name()}"
+        diff = difflib.unified_diff(
+            oldText.splitlines(),
+            newText.splitlines(),
+            fromfile=label if oldAttr else "/dev/null",
+            tofile=label + " (memory)",
+            lineterm="",
+        )
+        diffText = "\n".join(diff)
+        if diffText:
+            diffTexts.append(diffText)
 
     return "\n".join(diffTexts)
 
