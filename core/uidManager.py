@@ -38,12 +38,11 @@ class UidManager:
             
         modulePath = cls.get(spec)
         if not modulePath:
-            root = settings.modulesPath
             spec = os.path.expandvars(spec)
 
             specPaths = [
-                root + spec + ext
-                for root in ("", f"{root}/")
+                os.path.join(root, spec + ext)
+                for root in ("", settings.modulesPath, *settings.moduleDependenciesPaths)
                 for ext in ("",) + MODULE_EXTS
             ]
 

@@ -2037,8 +2037,9 @@ class TestPathAndSettings:
             str(firstDependencyPath / "first_dependency.rb")
         )
 
-    def testUidManagerResolveDoesNotSearchDependencyPathsByName(self, tmp_path, monkeypatch):
-        """Path-like module specs do not search dependency roots."""
+    @pytest.mark.parametrize("spec", ["only_in_dependency", "only_in_dependency.rb"])
+    def testUidManagerResolveSearchesDependencyPathsByName(self, tmp_path, monkeypatch, spec):
+        """Load dependency modules by filename, with or without an extension."""
         modulesPath = tmp_path / "modules"
         dependencyPath = tmp_path / "dependency"
         modulesPath.mkdir()
@@ -2052,7 +2053,8 @@ class TestPathAndSettings:
         monkeypatch.setattr(settings, "moduleDependenciesPaths", [str(dependencyPath)])
         UidManager.sync()
 
-        assert UidManager.resolve("only_in_dependency") == ""
+        assert UidManager.resolve(spec) == os.path.normpath(str(dependencyPath / "only_in_dependency.rb"))
+        assert Module.loadModule(spec).uid() == module.uid()
 
 class TestModuleIndexer:
     """Tests for semantic module indexing."""
