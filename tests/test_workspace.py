@@ -297,7 +297,7 @@ class TestWorkspaceDelete:
         """delete() removes the entire folder tree and returns True."""
         ws = Workspace(workspaceName)
         ws.save()
-        ws.activate()  # ensures history/ and modules/ exist
+        ws.activate()
 
         historyPath = ws.settings.historyPath
         modulesPath = ws.settings.modulesPath
@@ -337,11 +337,17 @@ class TestWorkspaceActivate:
         assert settings.vscode == "vscode-insiders"
         assert settings.moduleDependenciesPaths == ["public/modules", "shared/modules"]
 
-    def testActivateCreatesRequiredDirs(self, workspaceName):
-        """activate() ensures historyPath, modulesPath, and scriptsPath directories exist."""
+    def testActivateDoesNotCreateDirs(self, workspaceName):
+        """Only saving an activated workspace creates its directories."""
         ws = Workspace(workspaceName)
-        ws.save()
         ws.activate()
+
+        assert not os.path.exists(ws.folderPath())
+        assert not os.path.exists(ws.settings.historyPath)
+        assert not os.path.exists(ws.settings.modulesPath)
+        assert not os.path.exists(ws.settings.scriptsPath)
+
+        ws.save()
 
         assert os.path.isdir(ws.settings.historyPath)
         assert os.path.isdir(ws.settings.modulesPath)
