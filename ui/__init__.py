@@ -3686,15 +3686,12 @@ class RigBuilderWindow(QFrame):
     def removeAllModules(self):
         if QMessageBox.question(self, "Rig Builder", "Remove all modules?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
             model = self.treeWidget.moduleModel
-            rootIndices = [model.index(i, 0) for i in range(model.rowCount())]
+            rootModules = list(model.rootModule().children())
             
-            if not rootIndices:
+            if not rootModules:
                 return
 
-            if model.undoStack:
-                model.undoStack.push(RemoveModulesCommand(model, rootIndices))
-            else:
-                self.treeWidget.clear()
+            undoStack.push(RemoveModulesCommand(model, rootModules))
 
     def _onModuleAdditionRequested(self, module: Module):
         """Handle module addition from external browsers."""
