@@ -53,7 +53,7 @@ def getDocFromFile(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 class SearchWorker(QThread):
-    finished = Signal(str, list)
+    searchFinished = Signal(str, list)
 
     def __init__(self, indexer: ModuleIndexer, query: str, k: int = 5):
         super().__init__()
@@ -65,10 +65,10 @@ class SearchWorker(QThread):
     def run(self):
         try:
             results = asyncio.run(self.indexer.search(self.query, k=self.k))
-            self.finished.emit(self.query, results)
+            self.searchFinished.emit(self.query, results)
         except Exception as e:
             logger.error(f"Semantic Search Error: {e}")
-            self.finished.emit(self.query, [])
+            self.searchFinished.emit(self.query, [])
 
 
 class IndexWorker(QThread):
@@ -710,18 +710,8 @@ class ModuleBrowser(QDialog):
             self._rebuildModulesList()
             return
 
-        if self._currentSearchWorker:
-            try:
-                self._currentSearchWorker.finished.disconnect()
-                if self._currentSearchWorker.isRunning():
-                    self._currentSearchWorker.terminate()
-                    self._currentSearchWorker.wait()
-            except (RuntimeError, TypeError):
-                pass
-            self._currentSearchWorker = None
-
         self._currentSearchWorker = SearchWorker(self.indexer, query, k=15)
-        self._currentSearchWorker.finished.connect(self._onSemanticSearchFinished)
+        self._currentSearchWorker.searchFinished.connect(self._onSemanticSearchFinished)
         self._launchThread(self._currentSearchWorker)
 
         self.semanticResults = []
@@ -729,7 +719,7 @@ class ModuleBrowser(QDialog):
 
     def _onSemanticSearchFinished(self, query: str, results: list[tuple[str, float]]):
         """Handle results from the semantic search thread."""
-        if query != self.searchWidget.text().strip():
+        if self.sender() is not self._currentSearchWorker or query != self.searchWidget.text().strip():
             return
         self.semanticResults = results
         self._rebuildModulesList()
