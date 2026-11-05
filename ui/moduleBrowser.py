@@ -162,17 +162,10 @@ class ModuleCardWidget(QWidget):
         layout.setSpacing(8)
 
         headerLayout = QHBoxLayout()
-        if not dependencyPath:
-            rel = os.path.relpath(filepath, settings.modulesPath)
-            cat = os.path.dirname(rel)
-            color = getCategoryColor(cat)
-            if color:
-                dot = QFrame()
-                dot.setFixedSize(8, 8)
-                dot.setStyleSheet(f"background-color: {color}; border-radius: 4px; border: none;")
-                headerLayout.addWidget(dot)
-
         self.nameLabel = QLabel(name)
+        color = getModuleFolderColor(filepath)
+        if color:
+            self.nameLabel.setStyleSheet(f"color: {color};")
 
         headerLayout.addWidget(self.nameLabel)
         headerLayout.addStretch()
@@ -187,46 +180,6 @@ class ModuleCardWidget(QWidget):
             self.pathLabel = QLabel(dependencyPath)
             self.pathLabel.setStyleSheet("color: #888888; font-size: 10px;")
             layout.addWidget(self.pathLabel)
-
-
-class CategoryItemWidget(QWidget):
-    """Category list item with a matching color dot."""
-    contextMenuRequested = Signal(str, QPoint)
-
-    def __init__(self, label: str, category: str, parent=None, folderPath: str = ""):
-        super().__init__(parent)
-        self.category = category
-        self.setStyleSheet("background: transparent;")
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 3, 4, 3)
-        layout.setSpacing(6)
-
-        if folderPath:
-            color = getFolderColor(folderPath)
-        elif category not in ("__recent__", "__workspace__", "__dependencies__") and not category.startswith("__dependency_root__:"):
-            color = getCategoryColor(category)
-        else:
-            color = None
-        if color:
-            dot = QFrame()
-            dot.setFixedSize(8, 8)
-            dot.setStyleSheet(
-                f"background-color: {color};"
-                " border-radius: 4px; border: none;")
-            layout.addWidget(dot)
-
-        lbl = QLabel(label)
-        lbl.setStyleSheet("background: transparent;")
-        font = lbl.font()
-        font.setBold(category in ("__recent__", "__workspace__", "__dependencies__"))
-        lbl.setFont(font)
-        layout.addWidget(lbl)
-        layout.addStretch()
-
-    def contextMenuEvent(self, event):
-        """Forward a right-click on the visible folder row to the browser."""
-        self.contextMenuRequested.emit(self.category, event.globalPos())
-        event.accept()
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +297,8 @@ class ModuleBrowser(QDialog):
         self.categoryList = QTreeWidget()
         self.categoryList.setHeaderHidden(True)
         self.categoryList.setIndentation(14)
+        self.categoryList.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.categoryList.customContextMenuRequested.connect(self._onCategoryContextMenu)
         self.categoryList.itemSelectionChanged.connect(self._rebuildModulesList)
         sidebarLayout.addWidget(self.categoryList)
 
@@ -480,16 +435,23 @@ class ModuleBrowser(QDialog):
 
         modules = self._getAvailableModules()
         def addCategory(label, category, parent=None, folderPath=""):
-            item = QTreeWidgetItem()
+            item = QTreeWidgetItem([label])
             item.setData(0, Qt.UserRole, category)
+            if category in ("__recent__", "__workspace__", "__dependencies__"):
+                font = item.font(0)
+                font.setBold(True)
+                item.setFont(0, font)
+
+            if folderPath:
+                color = getFolderColor(folderPath)
+                if color:
+                    item.setForeground(0, QColor(color))
+
             if parent:
                 parent.addChild(item)
             else:
                 self.categoryList.addTopLevelItem(item)
 
-            widget = CategoryItemWidget(label, category, folderPath=folderPath)
-            self.categoryList.setItemWidget(item, 0, widget)
-            widget.contextMenuRequested.connect(self._onCategoryContextMenu)
             return item
 
         def addFolderBranches(parentItem, folders, rootPath, dependencyIndex=None):
@@ -558,8 +520,13 @@ class ModuleBrowser(QDialog):
         else:
             self.categoryList.setCurrentItem(self.categoryList.topLevelItem(0))
 
-    def _onCategoryContextMenu(self, category, globalPos):
+    def _onCategoryContextMenu(self, pos: QPoint):
         """Choose or disable the color of a folder in the category list."""
+        item = self.categoryList.itemAt(pos)
+        if item is None:
+            return
+
+        category = item.data(0, Qt.UserRole)
         if category in ("__recent__", "__workspace__", "__dependencies__"):
             return
 
@@ -573,7 +540,7 @@ class ModuleBrowser(QDialog):
         chooseAction = menu.addAction("Choose color...")
         disableAction = menu.addAction("Disable color")
         disableAction.setEnabled(bool(getFolderColor(folderPath)))
-        action = menu.exec(globalPos)
+        action = menu.exec(self.categoryList.viewport().mapToGlobal(pos))
         if action not in (chooseAction, disableAction):
             return
 
