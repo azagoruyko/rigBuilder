@@ -241,8 +241,7 @@ class ModuleBrowser(QDialog):
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
 
-        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
         self.indexer = ModuleIndexer()
         self.semanticResults = []
@@ -350,7 +349,8 @@ class ModuleBrowser(QDialog):
 
         # Resize grip for frameless window resizing
         self.sizeGrip = QSizeGrip(self)
-        self.sizeGrip.setStyleSheet("background: transparent;")
+        self.sizeGrip.setFixedSize(18, 18)
+        self.sizeGrip.setCursor(Qt.SizeFDiagCursor)
 
         self._setupAutoReloadWatcher()
 
