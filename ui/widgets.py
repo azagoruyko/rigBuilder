@@ -679,7 +679,7 @@ class ListBoxTemplateWidget(TemplateWidget):
         for i in range(self.listWidget.count()):
             height += self.listWidget.sizeHintForRow(i)
         height += 2*self.listWidget.frameWidth() + 50
-        self.setFixedHeight(clamp(height, 100, 300))
+        self.setFixedHeight(clamp(height, 100, 200))
 
     def selectInHost(self, allItems=True):
         items = ["'{}'".format(self.listWidget.item(i).text())
