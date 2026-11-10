@@ -1225,18 +1225,19 @@ class AttributesTreeView(QTreeView):
         return tw
 
     def _onWidgetChanged(self, widget: TemplateWidget):
+        """Save a widget edit and refresh the affected attribute labels and values."""
         try:
             widgetData = widget.getJsonData()
-            if widget.attr.localData() == widgetData:
+            oldData = widget.attr.localData()
+            if oldData == widgetData:
                 return
 
             module = widget.attr.module()
-            oldData = widget.attr.localData()
             previousData = {attr: attr.localData() for attr in module.attributes()}
 
             widget.attr.setData(widgetData)
-            for a in module.attributes():
-                a.pull()
+            for attr in module.attributes():
+                attr.pull()
 
             modifiedAttrs = {
                 attr
@@ -1244,13 +1245,20 @@ class AttributesTreeView(QTreeView):
                 if previousData[attr] != attr.localData()
             }
             self.moduleChanged.emit(module)
-            self._attrModel.layoutChanged.emit()
 
             for ci, (_, attrs) in enumerate(self._attrModel._categories):
                 categoryIdx = self._attrModel.index(ci, 0, QModelIndex())
+                self._attrModel.dataChanged.emit(categoryIdx, categoryIdx)
+
                 for ai, attr in enumerate(attrs):
                     if attr in modifiedAttrs:
+                        attrNameIdx = self._attrModel.index(ai, 0, categoryIdx)
+                        self._attrModel.dataChanged.emit(attrNameIdx, attrNameIdx)
+
                         changedWidget = self.indexWidget(self._attrModel.index(ai, 1, categoryIdx))
+                        if changedWidget is widget and attr.localData() == widgetData:
+                            continue
+
                         if changedWidget:
                             with blockedWidgetContext(changedWidget) as blockedWidget:
                                 blockedWidget.setJsonData(attr.localData())
