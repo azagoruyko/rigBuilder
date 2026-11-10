@@ -856,10 +856,7 @@ class TableTemplateWidget(TemplateWidget):
         self.tableWidget.itemChanged.connect(self._onTableItemChanged)
 
         header = self.tableWidget.horizontalHeader()
-        if "setResizeMode" in dir(header):
-            header.setResizeMode(QHeaderView.ResizeToContents)
-        elif "setSectionResizeMode" in dir(header):
-            header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
 
         self.tableWidget.horizontalHeader().sectionDoubleClicked.connect(self._onSectionDoubleClicked)
 
@@ -926,7 +923,7 @@ class TableTemplateWidget(TemplateWidget):
 
         headerHeight = self.tableWidget.verticalHeader().sizeHint().height()
         height += headerHeight*2
-        self.tableWidget.setFixedHeight(clamp(height, headerHeight+100, 500))
+        self.tableWidget.setFixedHeight(clamp(height, headerHeight+100, 250))
 
     def clearAll(self):
         ok = QMessageBox.question(self, "Rig Builder", "Really remove all items?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
@@ -950,15 +947,20 @@ class TableTemplateWidget(TemplateWidget):
         self.resizeWidget()
 
     def duplicateRow(self):
-        newRow = self.tableWidget.currentRow()+1
         prevRow = self.tableWidget.currentRow()
-        self.tableWidget.insertRow(newRow)
+        if prevRow < 0:
+            return
 
-        for c in range(self.tableWidget.columnCount()):
-            prevItem = self.tableWidget.item(prevRow, c)
-            self.tableWidget.setItem(newRow, c, prevItem.clone() if prevItem else QTableWidgetItem())
+        newRow = prevRow + 1
+        with blockedWidgetContext(self.tableWidget) as table:
+            table.insertRow(newRow)
+
+            for c in range(table.columnCount()):
+                prevItem = table.item(prevRow, c)
+                table.setItem(newRow, c, prevItem.clone() if prevItem else QTableWidgetItem())
 
         self.resizeWidget()
+        self.somethingChanged.emit()
 
     def getJsonData(self):
         sortedColumns = sorted([c for c in range(self.tableWidget.columnCount())], key=lambda c: self.tableWidget.visualColumn(c))
@@ -981,28 +983,30 @@ class TableTemplateWidget(TemplateWidget):
     def setJsonData(self, data):
         header = data.get("header", [])
         items = data.get("items", [])
-        
-        self.tableWidget.setColumnCount(len(header))
-        self.tableWidget.setHorizontalHeaderLabels(header)
 
         if type(items) != list:
             items = [items]
 
-        self.tableWidget.setRowCount(len(items))
-        for r, row in enumerate(items):
-            if type(row) != list:
-                row = [row]
+        with blockedWidgetContext(self.tableWidget) as table:
+            table.setColumnCount(len(header))
+            table.setHorizontalHeaderLabels(header)
+            table.setRowCount(len(items))
 
-            for c in range(len(header)): # fill each column
-                if c < len(row):
-                    d = row[c]
-                    item = QTableWidgetItem(fromSmartConversion(d))
-                    item.setForeground(jsonColor(d))
-                else:
-                    item = QTableWidgetItem()
-                self.tableWidget.setItem(r, c, item)
+            for r, row in enumerate(items):
+                if type(row) != list:
+                    row = [row]
 
-        self.tableWidget.resizeRowsToContents()
+                for c in range(len(header)): # fill each column
+                    if c < len(row):
+                        d = row[c]
+                        item = QTableWidgetItem(fromSmartConversion(d))
+                        item.setForeground(jsonColor(d))
+                    else:
+                        item = QTableWidgetItem()
+                    table.setItem(r, c, item)
+
+            table.resizeRowsToContents()
+
         self.resizeWidget()
 
 class TextTemplateWidget(TemplateWidget):
