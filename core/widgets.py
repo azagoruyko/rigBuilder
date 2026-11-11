@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 from .utils import *
 
 DEFAULT_WIDGETS_DATA = {
-    "button": {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"},
+    "button": {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "label"},
     "checkBox": {"checked": False, "default": "checked"},
     "comboBox": {"items": ["a", "b"], "current": "a", "default": "current"},
     "curve": {"default": "cvs", "cvs": [[0.0, 1.0], [0.13973423457023273, 0.722154453101879], 
@@ -18,9 +18,9 @@ DEFAULT_WIDGETS_DATA = {
     "compound": {
         "widgets": [
             {"items": ["a", "b"], "current": 0, "default": "items"},
-            {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "command"}
+            {"command": 'chset("/someAttr", 1)', "label": "Press me", "color": "", "default": "label"}
         ],
-        "values": [["a", "b"], 'chset("/someAttr", 1)'],
+        "values": [["a", "b"], "Press me"],
         "templates": ["listBox", "button"],
         "default": "values"
     },

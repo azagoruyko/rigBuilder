@@ -224,7 +224,7 @@ class ButtonTemplateWidget(TemplateWidget):
         return {"command": self.buttonCommand,
                 "label": self.buttonWidget.text(),
                 "color": self.buttonColor,
-                "default": "command"}
+                "default": "label"}
 
     def setJsonData(self, data):
         self.buttonCommand = data.get("command", "")
