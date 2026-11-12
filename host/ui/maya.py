@@ -1043,27 +1043,15 @@ class MainWindow:
         self._refreshModuleList()
 
     def _loadModules(self):
+        """List workspace and dependency modules under their folder hierarchies."""
         self.modules = []
         if not self.currentWorkspace:
             return
 
-        modulesPath = self.currentWorkspace.settings.modulesPath
-        if not os.path.isdir(modulesPath):
-            return
-
-        # Build folder hierarchy tree
-        tree: dict = {}
-        for f in sorted(Module.listModules(modulesPath)):
-            relPath = os.path.relpath(f, modulesPath).replace("\\", "/")
-            parts = relPath.split("/")
-            curr = tree
-            for folder in parts[:-1]:
-                curr = curr.setdefault(folder, {})
-            curr[parts[-1]] = f
-
         def _traverse(node: dict, depth: int):
+            """Append a folder tree to the visible module list."""
             for key, val in sorted(node.items(), key=lambda x: (not isinstance(x[1], dict), x[0])):
-                indent = " " * depth * 4
+                indent = " " * depth * 3
                 if isinstance(val, dict):  # Folder header
                     self.modules.append((f"{indent}{key}", None))
                     _traverse(val, depth + 1)
@@ -1071,7 +1059,33 @@ class MainWindow:
                     modName = os.path.splitext(key)[0]
                     self.modules.append((f"{indent}{modName}", val))
 
-        _traverse(tree, 0)
+        moduleRoots = [
+            ("Workspace Modules", self.currentWorkspace.settings.modulesPath),
+            *[(os.path.basename(os.path.normpath(path)) or path, path)
+              for path in self.currentWorkspace.settings.moduleDependenciesPaths],
+        ]
+        dependencyHeaderAdded = False
+        for index, (label, modulesPath) in enumerate(moduleRoots):
+            if not os.path.isdir(modulesPath):
+                continue
+
+            tree: dict = {}
+            for filepath in Module.listModules(modulesPath):
+                parts = os.path.relpath(filepath, modulesPath).replace("\\", "/").split("/")
+                curr = tree
+                for folder in parts[:-1]:
+                    curr = curr.setdefault(folder, {})
+                curr[parts[-1]] = filepath
+
+            if index == 0:
+                self.modules.append((label, None))
+                _traverse(tree, 1)
+            elif tree:
+                if not dependencyHeaderAdded:
+                    self.modules.append(("Dependency Modules", None))
+                    dependencyHeaderAdded = True
+                self.modules.append((f"   {label}", None))
+                _traverse(tree, 2)
 
     def _refreshModuleList(self, *args):
         query = (cmds.textField(self.filterField, query=True, text=True) or "").lower()
