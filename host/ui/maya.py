@@ -17,6 +17,7 @@ from typing import Optional, Union, Any
 import maya.cmds as cmds
 
 from ...core import Module, Attribute, UidManager
+from ...core.logger import logger
 from ...core.widgets import DEFAULT_WIDGETS_DATA
 from ...core.settings import settings
 from ...core.workspace import Workspace, flattenModules
@@ -1094,7 +1095,13 @@ class MainWindow:
         if selIdx and selIdx[0] <= len(self.filteredModules):
             spec = self.filteredModules[selIdx[0] - 1][1]
             if spec:
-                ModuleWindow(spec).show()
+                try:
+                    module = Module.loadModule(spec)
+                except Exception:
+                    logger.exception(f"Failed to load module: {spec}")
+                    return
+
+                ModuleWindow(module).show()
 
     def _showSelectedModuleCode(self, *args):
         selIdx = cmds.textScrollList(self.moduleListCtrl, query=True, selectIndexedItem=True)

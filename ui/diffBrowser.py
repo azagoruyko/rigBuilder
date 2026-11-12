@@ -28,7 +28,12 @@ def calculateModulesDiff(modules: list[Module], paths: list[str] | None = None) 
 
         newText = preview.toText()
         if filePath and os.path.exists(filePath):
-            oldModule = Module.loadModule(filePath) # load and sync
+            try:
+                oldModule = Module.loadModule(filePath) # load and sync
+            except Exception:
+                logger.exception(f"Skipping module in diff due to an error loading file: {filePath}")
+                continue
+
             oldText = oldModule.toText()
             oldLabel = os.path.basename(filePath)
             newLabel = oldLabel + " (memory)"
@@ -68,7 +73,14 @@ def calculateAttributesDiff(attributes: list[Attribute]) -> str:
         preview.setConnect("")
         newText = preview.toText()
 
-        oldAttr = Module.loadModule(filePath).findAttribute(attr.name()) if filePath and os.path.exists(filePath) else None
+        oldAttr = None
+        if filePath and os.path.exists(filePath):
+            try:
+                oldAttr = Module.loadModule(filePath).findAttribute(attr.name())
+            except Exception:
+                logger.exception(f"Skipping module in attribute diff due to an error loading file: {filePath}")
+                continue
+
         oldText = oldAttr.toText() if oldAttr else ""
         label = f"{os.path.basename(filePath)}: @{attr.name()}" if filePath else f"@{attr.name()}"
         diff = difflib.unified_diff(

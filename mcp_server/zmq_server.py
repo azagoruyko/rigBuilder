@@ -105,7 +105,13 @@ class RigBuilderAPI:
         from rigBuilder.ui import AddModuleCommand, undoStack
         
         if reference_path:
-            new_module = Module.loadModule(reference_path)
+            try:
+                new_module = Module.loadModule(reference_path)
+            except Exception as e:
+                from rigBuilder.core.logger import logger
+                logger.exception(f"Failed to load module: {reference_path}")
+                return {"error": f"Failed to load module '{reference_path}': {e}"}
+
             if module_name and module_name != "new_module":
                 new_module.setName(module_name)
         else:

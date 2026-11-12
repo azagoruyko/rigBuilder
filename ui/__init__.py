@@ -10,7 +10,6 @@ import sys
 import shutil
 import logging
 import textwrap
-import xml.etree.ElementTree as ET
 from functools import partial
 from typing import Callable, Optional, Union, Any, TYPE_CHECKING
 
@@ -130,6 +129,7 @@ class ModuleTracker(QObject):
                         stat = os.stat(path)
                         uid = UidManager.getUidFromFile(path)
                     except OSError:
+                        logger.exception(f"ModuleTracker: Failed to read module file: {path}")
                         continue
                     files[path] = (uid, (stat.st_mtime_ns, stat.st_size))
 
@@ -170,8 +170,8 @@ class ModuleTracker(QObject):
             refModule = Module.loadModule(path)
             self._cache[uid] = refModule
 
-        except Exception as e:
-            logger.error(f"ModuleTracker: Failed to load module for {uid}: {str(e)}")
+        except Exception:
+            logger.exception(f"ModuleTracker: Failed to load module for {uid} ({path})")
             self._cache[uid] = None
 
     def _changedUids(self, currentSnapshot: dict[str, tuple[str, tuple[int, int]]]) -> set[str]:
@@ -203,10 +203,15 @@ class ModuleTracker(QObject):
                 self.loadModule(uid)
                 self.moduleChanged.emit(uid)
 
-        for module in self._cache.values():
-            if module and any(module.dependsOn(uid) for uid in changedUids):
-                module.sync()
-                self.moduleChanged.emit(module._uid)
+        for uid, module in self._cache.items():
+            if module and any(module.dependsOn(changedUid) for changedUid in changedUids):
+                try:
+                    module.sync()
+                except Exception:
+                    logger.exception(f"ModuleTracker: Synchronization canceled due to an error reading module file: {module.referenceFile() or uid}")
+                    self._cache[uid] = None
+
+                self.moduleChanged.emit(uid)
 
     def refresh(self):
         """Rescan module sources and reload references whose files changed."""
@@ -2023,7 +2028,12 @@ class ModuleModel(QAbstractItemModel):
                     filePath = url.toLocalFile()
                     if not filePath or not os.path.exists(filePath): continue
                     if any(filePath.endswith(ext) for ext in MODULE_EXTS):
-                        m = Module.loadModule(filePath)
+                        try:
+                            m = Module.loadModule(filePath)
+                        except Exception:
+                            logger.exception(f"Failed to load module: {filePath}")
+                            continue
+
                         self.addModuleAt(m, parentModule, row)
                         row += 1
                 return True
@@ -2458,11 +2468,13 @@ class ModuleTreeWidget(QTreeView):
 
         try:
             m = Module.loadModule(filePath)
-            self.moduleModel.addModuleAt(m, self.currentModule())
-            self.selectModule(m)
-        except ET.ParseError:
-            logger.error(f"'{filePath}': invalid module")
+        except Exception:
+            logger.exception(f"Failed to load module: {filePath}")
             mainWindow.showLog()
+            return
+
+        self.moduleModel.addModuleAt(m, self.currentModule())
+        self.selectModule(m)
 
     def importScript(self):
         filePath, _ = QFileDialog.getOpenFileName(mainWindow, "Import script", settings.modulesPath, "Python (*.py);;All files (*)")
@@ -3569,7 +3581,12 @@ class RigBuilderWindow(QFrame):
             return
             
         relpath = os.path.splitext(relativePath(path, settings.modulesPath))[0]
-        uid = UidManager.getUidFromFile(path)
+        try:
+            uid = UidManager.getUidFromFile(path)
+        except OSError:
+            logger.exception(f"Failed to read module UID: {path}")
+            return
+
         logger.warning(f"Module is updated on disk: {relpath} ({uid[:8]})")
 
     def _onOpenAIChat(self):
@@ -3634,6 +3651,10 @@ class RigBuilderWindow(QFrame):
         except ModuleNotFoundError:
             logger.warning("Module not found: {}".format(spec))
             return
+        except Exception:
+            logger.exception(f"Failed to load module: {spec}")
+            return
+
         self.treeWidget.moduleModel.addModuleAt(module, parent)
         self.treeWidget.selectModule(module)
 

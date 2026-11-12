@@ -2059,6 +2059,42 @@ class TestPathAndSettings:
 class TestModuleIndexer:
     """Tests for semantic module indexing."""
 
+    def testInvalidModuleDoesNotStopIndexingOthers(self, tmp_path, monkeypatch):
+        """A broken module is removed from the index while valid modules still update."""
+        modulesPath = tmp_path / "modules"
+        modulesPath.mkdir()
+        monkeypatch.setattr(UidManager, "_uids", UidManager._uids.copy())
+        monkeypatch.setattr(settings, "modulesPath", str(modulesPath))
+        monkeypatch.setattr(settings, "moduleDependenciesPaths", [])
+        monkeypatch.setattr(settings, "ollamaEmbeddingModel", "test-model")
+        monkeypatch.setattr(engine, "isOllamaAvailable", lambda: True)
+
+        async def embed(text):
+            """Return a fixed embedding without calling Ollama."""
+            return [1.0]
+
+        monkeypatch.setattr(engine, "embed", embed)
+
+        broken = createModule("broken")
+        broken._uid = "broken_uid"
+        brokenPath = modulesPath / "broken.rb"
+        broken.saveToFile(str(brokenPath))
+
+        valid = createModule("valid")
+        valid._uid = "valid_uid"
+        validPath = modulesPath / "valid.rb"
+        valid.saveToFile(str(validPath))
+
+        indexer = ModuleIndexer()
+        asyncio.run(indexer.indexModules())
+        assert set(indexer.cache["modules"]) == {"broken_uid", "valid_uid"}
+
+        brokenPath.write_text('<module uid="broken_uid">', encoding="utf-8")
+        UidManager.sync()
+        asyncio.run(indexer.indexModules())
+
+        assert set(indexer.cache["modules"]) == {"valid_uid"}
+
     def testIndexesDependenciesForSearchAndPrunesRemovedRoots(self, tmp_path, monkeypatch):
         """Search includes dependency modules and drops them when their root is removed."""
         modulesPath = tmp_path / "modules"

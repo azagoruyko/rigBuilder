@@ -4,6 +4,7 @@ import os
 import re
 import glob
 from .settings import settings, MODULE_EXTS
+from .logger import logger
 from typing import Optional
 
 class UidManager:
@@ -87,7 +88,12 @@ class UidManager:
             for file in sorted(files):
                 if any(file.endswith(ext) for ext in MODULE_EXTS):
                     fpath = os.path.join(root, file)
-                    uid = cls.getUidFromFile(fpath)
+                    try:
+                        uid = cls.getUidFromFile(fpath)
+                    except OSError:
+                        logger.exception(f"Failed to read module UID: {fpath}")
+                        continue
+
                     if uid:
                         uids[uid] = os.path.normpath(fpath)
         return uids

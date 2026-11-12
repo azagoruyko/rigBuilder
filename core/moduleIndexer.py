@@ -8,6 +8,7 @@ from . import core
 from .uidManager import UidManager
 from ..ai import engine
 from .settings import settings
+from .logger import logger
 from .utils import loadJson, saveJson, fileHash, relativePath
 
 class ModuleIndexer:
@@ -112,10 +113,18 @@ class ModuleIndexer:
         for uid, f in moduleFiles.items():
             currentHash = fileHash(f)
             cachedData = self.cache["modules"].get(uid)
-            
+
             # Index new modules and modules whose file or source path changed.
             if not cachedData or cachedData.get("hash") != currentHash or cachedData.get("path") != f:
-                text = self._extractIndexableText(f)
+                try:
+                    text = self._extractIndexableText(f)
+                except Exception:
+                    logger.exception(f"Failed to parse module for indexing: {f}")
+                    if cachedData:
+                        del self.cache["modules"][uid]
+                        changed = True
+                    continue
+
                 if not text:
                     continue
 

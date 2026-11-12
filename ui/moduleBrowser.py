@@ -28,21 +28,22 @@ def getDocFromFile(path: str) -> str:
     """Fetch doc content from file with caching based on mtime."""
     if not os.path.exists(path):
         return ""
+
     mtime = os.path.getmtime(path)
     if path in _docCache:
         cachedMtime, content = _docCache[path]
         if cachedMtime == mtime:
             return content
 
-    content = ""
     try:
         tree = ET.parse(path)
-        root = tree.getroot()
-        docEl = root.find("doc")
-        if docEl is not None:
-            content = docEl.text or ""
-    except Exception:
-        pass
+    except (OSError, ET.ParseError):
+        logger.exception(f"Failed to read module documentation: {path}")
+        return ""
+
+    root = tree.getroot()
+    docEl = root.find("doc")
+    content = (docEl.text or "") if docEl is not None else ""
 
     _docCache[path] = (mtime, content)
     return content
