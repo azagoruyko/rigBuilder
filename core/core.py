@@ -39,6 +39,10 @@ class DictExt(dict):
 
 
 class ExitModuleException(Exception):pass
+
+class ModuleUserError(Exception):
+    """Stop a module tree with a user-facing error."""
+
 class AttributeResolverError(Exception):pass
 class AttributeExpressionError(Exception):pass
 class ModuleNotFoundError(Exception):pass
@@ -1000,9 +1004,8 @@ UidManager.sync()
 # API
 
 def printError(msg: str):
-    """Raise a RuntimeError and stop execution."""
-    print("Error: "+msg)
-    exitModule()
+    """Stop the module tree and report an error to the caller."""
+    raise ModuleUserError(msg)
 
 def printWarning(msg: str):
     """Print a warning message to the log."""

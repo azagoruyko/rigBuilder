@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 
 from rigBuilder.core import (
     Attribute, Module, AttrsWrapper, AttributeDataAccessor, DictExt,
-    ExitModuleException, AttributeResolverError, AttributeExpressionError,
+    ExitModuleException, ModuleUserError, AttributeResolverError, AttributeExpressionError,
     ModuleNotFoundError, CopyJsonError, APIError,
     printError, printWarning, exitModule,
     APIRegistry)
@@ -15,6 +15,7 @@ from rigBuilder.core.uidManager import UidManager
 from rigBuilder.core.moduleIndexer import ModuleIndexer, engine
 from rigBuilder.core.settings import settings, RIG_BUILDER_USER_PATH
 from rigBuilder.core.utils import copyJson, relativePath
+from rigBuilder.host.runner import executeCode as executeHostCode, runModule
 
 
 # ============================================================================
@@ -1406,6 +1407,72 @@ class TestModuleFileOperations:
 
 class TestModuleExecution:
     """Tests for module execution."""
+
+    def testExitKeepsRunningChildren(self):
+        """exit() stops the current script while child modules still run."""
+        parent = createModule("parent")
+        child = createModule("child")
+        parent.setRunCode("events.append('parent'); exit(); events.append('after_exit')")
+        child.setRunCode("events.append('child')")
+        parent.addChild(child)
+        events = []
+
+        parent.run(context={"events": events})
+
+        assert events == ["parent", "child"]
+
+    def testErrorStopsChildrenAndLaterSiblings(self):
+        """error() aborts the full run, including descendants and later siblings."""
+        parent = createModule("parent")
+        failing = createModule("failing")
+        grandchild = createModule("grandchild")
+        sibling = createModule("sibling")
+        failing.setRunCode("error('Cannot continue')")
+        grandchild.setRunCode("events.append('grandchild')")
+        sibling.setRunCode("events.append('sibling')")
+        failing.addChild(grandchild)
+        parent.addChild(failing)
+        parent.addChild(sibling)
+        events = []
+
+        with pytest.raises(ModuleUserError, match="Cannot continue"):
+            parent.run(context={"events": events})
+
+        assert events == []
+
+    def testHostReportsModuleErrorWithoutTraceback(self):
+        """The host reports an error() message without a Python traceback."""
+        module = createModule("module")
+        module.setRunCode("error('Do not run this module')")
+        events = []
+
+        reply = runModule(module.toXml(), ".", events.append, "test-run")
+
+        assert reply["ok"] is False
+        assert reply["error"] == "Do not run this module"
+        assert reply["traceback"] == ""
+        assert [event for event in events if event["event"] == "error"] == [{
+            "event": "error",
+            "id": "test-run",
+            "text": "Do not run this module",
+            "traceback": "",
+        }]
+
+    def testReplReportsModuleErrorWithoutTraceback(self):
+        """The host REPL reports error() as a user-facing message."""
+        events = []
+
+        reply = executeHostCode("error('Invalid input')", events.append, "test-repl")
+
+        assert reply["ok"] is False
+        assert reply["error"] == "Invalid input"
+        assert reply["traceback"] == ""
+        assert [event for event in events if event["event"] == "error"] == [{
+            "event": "error",
+            "id": "test-repl",
+            "text": "Invalid input",
+            "traceback": "",
+        }]
 
     def testModuleContext(self, simpleModule):
         """Test module execution context contains required functions."""

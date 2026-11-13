@@ -3,7 +3,7 @@
 import io
 import traceback
 
-from ..core import Module, APIRegistry
+from ..core import Module, APIRegistry, ModuleUserError
 from ..core.utils import captureOutput, jsonifyContext, getErrorStack, executeWithResult
 
 # Persistent execution contexts for interactive (line-by-line) code execution.
@@ -96,6 +96,8 @@ def _runWithModuleXml(moduleXml: str, modulePath: str, emitFn, runId: str, conte
 
     try:
         ctx = _runHostTask(emitFn, runId, _task)
+    except ModuleUserError as e:
+        return _emitError(emitFn, runId, str(e))
     except Exception as e:
         return _emitError(emitFn, runId, str(e), getErrorStack())
 
@@ -149,6 +151,8 @@ def executeCode(code: str, emitFn, runId: str, contextKey: str = "") -> dict:
 
     try:
         _runHostTask(emitFn, runId, _task)
+    except ModuleUserError as e:
+        return _emitError(emitFn, runId, str(e))
     except Exception as e:
         return _emitError(emitFn, runId, str(e), getErrorStack())
 
