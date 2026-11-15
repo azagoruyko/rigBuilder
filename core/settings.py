@@ -29,7 +29,7 @@ class Settings:
         self.vscode = "code"
         self.trackHistory = True
         self.persistContext = False
-        self.ollamaModel = "gpt-oss:20b-cloud"
+        self.ollamaModel = "gpt-oss:20b"
         self.ollamaEmbeddingModel = "nomic-embed-text"
         self.aiLanguage = "English"
         self.workspacePath = os.path.join(RIG_BUILDER_WORKSPACES_PATH, "default")

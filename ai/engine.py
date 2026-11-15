@@ -39,6 +39,22 @@ def isOllamaAvailable(ttl: float = 5.0) -> bool:
     return available
 
 
+def getMissingOllamaModels(generationModel: str, embeddingModel: str) -> list[tuple[str, str]]:
+    """Return configured models that are absent from the running Ollama server."""
+    response = ollama.Client(timeout=1).list()
+    installed = {
+        (model.get('model') or model.get('name')) if isinstance(model, dict) else model.model
+        for model in response['models']
+    }
+    installed = {name if ':' in name else f'{name}:latest' for name in installed}
+
+    required = [('generation', generationModel), ('indexing', embeddingModel)]
+    return [
+        (purpose, name) for purpose, name in required
+        if (name if ':' in name else f'{name}:latest') not in installed
+    ]
+
+
 with open(os.path.join(RootDirectory, '..', 'docs', 'tech.md'), 'r', encoding='utf-8') as f:
     TECH_DOCS = f.read()
 

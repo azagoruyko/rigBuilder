@@ -15,6 +15,7 @@ from typing import Callable, Optional, Union, Any, TYPE_CHECKING
 
 from .. import __version__
 from ..core import workspace
+from ..ai import engine
 from ..ai.engine import isOllamaAvailable
 from .hostExecutor import hostExecutor
 from ..core import *
@@ -3872,6 +3873,7 @@ class RigBuilderWindow(QFrame):
         hostExecutor.switchWorkspace(ws.name)
 
         logger.info(f"Workspace changed: {ws.name}")
+        QTimer.singleShot(0, self._checkOllamaModels)
 
     def _onWorkspaceSettingsUpdated(self):
         """Refresh module trackers after workspace settings are edited."""
@@ -3882,6 +3884,26 @@ class RigBuilderWindow(QFrame):
             settings.modulesPath, settings.moduleDependenciesPaths
         )
         self.moduleBrowser.refreshModules()
+
+    def _checkOllamaModels(self):
+        """Log missing configured models when a workspace becomes active."""
+        if not isOllamaAvailable():
+            return
+
+        try:
+            missing = engine.getMissingOllamaModels(settings.ollamaModel, settings.ollamaEmbeddingModel)
+        except Exception as e:
+            logger.warning(f"Could not check Ollama models: {e}")
+            return
+
+        if missing:
+            details = "; ".join(
+                f"{purpose}: {name}" for purpose, name in missing
+            )
+            logger.warning(
+                f"Ollama models are not installed: {details}. "
+                "Check the names in Workspace Settings, or pull published models with ollama pull <name>."
+            )
 
     def _refreshModuleReferences(self):
         """Refresh tracked module references after the module browser reloads."""

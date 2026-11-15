@@ -59,12 +59,10 @@ To enable Local AI Assistance and Semantic Search, install Ollama and pull the r
    - For code assistance: `ollama pull your-favorite-model` (e.g., `codellama`, `llama3`).
    - For semantic search (REQUIRED for indexing): `ollama pull nomic-embed-text`.
 
-4. **Login (Optional)**: If using cloud models, open your terminal and run `ollama signin`.
-
    > **Note on Indexing**: Rig Builder automatically indexes your modules using vector embeddings. This allows you to search for modules using natural language (e.g., "how to build a spine").
    >
    > The default models can be customized via the `settings.json` file in your active workspace:
-   > - `ollamaModel`: Model for code generation (defaults to `gpt-oss:20b-cloud`).
+   > - `ollamaModel`: Model for code generation (defaults to `gpt-oss:20b`).
    > - `ollamaEmbeddingModel`: Model for semantic search (defaults to `nomic-embed-text`).
 
 ### 3. Launch
