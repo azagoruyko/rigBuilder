@@ -109,7 +109,7 @@ class ModuleTracker(QObject):
         self._dependencyPaths = list(settings.moduleDependenciesPaths)
         self._fileSnapshot = self._scanModuleFiles()
         self._watcher = DirectoryWatcher(
-            [settings.modulesPath],
+            [self._modulesPath, *self._dependencyPaths],
             filePatterns=["*" + ext for ext in MODULE_EXTS],
             recursive=True,
             parent=self,
@@ -147,7 +147,7 @@ class ModuleTracker(QObject):
             self._cache.clear()
             self._fileSnapshot = self._scanModuleFiles()
 
-        self._watcher.setRoots([path])
+        self._watcher.setRoots([path, *dependencyPaths])
 
     def getModule(self, uid: str) -> Optional[Module]:
         """Get the cached reference module by UID, loading it if necessary."""
